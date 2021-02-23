@@ -32,31 +32,6 @@
 #     steps:
 #       - checkout
 
-#       # Cache git-lfs installation
-#       - restore_cache:
-#           key: git-lfs-bin-v1-key
-#       - run:
-#           name: Install git-lfs
-#           command: >
-#             test -f ~/bin/git-lfs || (
-#             curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash;
-#             sudo apt-get install git-lfs;
-#             mkdir ~/bin; sudo mv /usr/bin/git-lfs ~/bin/git-lfs;)
-#       - save_cache:
-#           key: git-lfs-bin-v1-key
-#           paths:
-#             - ~/bin/git-lfs
-
-#       # Cache git-lfs files
-#       - run: git lfs install
-#       - run: git lfs ls-files -l | cut -d' ' -f1 | sort > git-lfs.sha
-#       - restore_cache:
-#           key: git-lfs-files-v1-key-{{ checksum "git-lfs.sha" }}
-#       - run: git lfs pull
-#       - save_cache:
-#           key: git-lfs-files-v1-key-{{ checksum "git-lfs.sha" }}
-#           paths:
-#             -  ~/nta/nupic.embodied/.git/lfs
 
 #       # Save current workspace for other steps
 #       - persist_to_workspace:
