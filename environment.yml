@@ -6,7 +6,7 @@ channels:
   - defaults
 
 dependencies:
-  - python=3.9
+  - python=3.8
   - pip=20.2
 
   # Dependencies not available in conda
