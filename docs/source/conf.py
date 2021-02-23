@@ -110,7 +110,6 @@ autodoc_inherit_docstrings = True
 autodoc_mock_imports = [
     "tqdm",
     "numpy",
-    "librosa",
     "torch",
     "torchvision",
     "nupic.torch",
