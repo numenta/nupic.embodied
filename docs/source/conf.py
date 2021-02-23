@@ -44,7 +44,7 @@ import nupic.embodied  # noqa: E402 isort:skip
 # -- Project information -----------------------------------------------------
 
 project = "nupic.embodied"
-copyright = "2019, Numenta"  # noqa: A001
+copyright = "2021, Numenta"  # noqa: A001
 author = "Numenta"
 version = nupic.embodied.__version__
 release = version
