@@ -23,7 +23,6 @@
 nupic.torch @ git+https://github.com/numenta/nupic.torch.git
 
 awscli
-ax-platform
 boto3
 jupyter
 matplotlib
