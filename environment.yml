@@ -6,18 +6,17 @@ channels:
   - defaults
 
 dependencies:
-  - python=3.7
+  - python=3.9
   - pip=20.2
 
   # Dependencies not available in conda
   - pip:
-      # Install nupic.torch and  nupic.tensorflow libraries in develop mode.
+      # Install nupic.torch in develop mode.
       # Assume both libraries were cloned into ${HOME}/nta folder
-      # If you don't want to install nupic.torch and nupic.tensorflow in develop
+      # If you don't want to install nupic.torch in develop
       # mode just comment the following lines and use the versions indicated in
       # the requirements.txt file
       - -e ${HOME}/nta/nupic.torch --no-binary :all
-      - -e ${HOME}/nta/nupic.tensorflow --no-binary :all
 
       # Install nupic.embodied in develop mode
       - -r requirements-dev.txt
