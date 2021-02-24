@@ -19,38 +19,3 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-# Install nupic.torch and nupic.tensorflow directly from github master branch
-nupic.torch @ git+https://github.com/numenta/nupic.torch.git
-
-awscli
-boto3
-jupyter
-matplotlib
-numpy
-pandas
-python-dateutil
-pillow
-python-dotenv
-ray[tune]==0.8.3  # ray yaml config files built for this version
-requests
-scikit-image
-scikit-learn
-seaborn
-sigopt
-tabulate
-torch
-torchvision
-tqdm
-h5py
-pretrainedmodels
-wandb
-
-# FIXME: this is needed because the pip install isn't properly choosing a version
-# of colorama or urllib3 compatible with awscli
-# required for CircleCI validation
-colorama==0.4.3
-urllib3==1.25.11
-
-# added by exploring arm project
-real-robots==0.1.21
-stable_baselines3

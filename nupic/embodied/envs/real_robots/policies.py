@@ -19,38 +19,25 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-# Install nupic.torch and nupic.tensorflow directly from github master branch
-nupic.torch @ git+https://github.com/numenta/nupic.torch.git
+from real_robots.policy import BasePolicy
+import numpy as np
 
-awscli
-boto3
-jupyter
-matplotlib
-numpy
-pandas
-python-dateutil
-pillow
-python-dotenv
-ray[tune]==0.8.3  # ray yaml config files built for this version
-requests
-scikit-image
-scikit-learn
-seaborn
-sigopt
-tabulate
-torch
-torchvision
-tqdm
-h5py
-pretrainedmodels
-wandb
+"""
+TODO::
+add the start_intrinsic_phase, end_intrinsic_phase, start_extrinsic_phase,
+end_extrinsic_phase, start_extrinsic_trial, end_extrinsic_trial functions
+from https://github.com/AIcrowd/real_robots/blob/6dd5b70bad14426483e2d3ee29b3d8708d34e1ba/real_robots/policy.py
+to perform actions at start or end of phases and trials.
+"""
 
-# FIXME: this is needed because the pip install isn't properly choosing a version
-# of colorama or urllib3 compatible with awscli
-# required for CircleCI validation
-colorama==0.4.3
-urllib3==1.25.11
 
-# added by exploring arm project
-real-robots==0.1.21
-stable_baselines3
+class RandomPolicy(BasePolicy):
+    def __init__(self, action_space, observation_space):
+        self.action_space = action_space
+        self.observation_space = observation_space
+        self.action = action_space.sample()
+
+    def step(self, observation, reward, done):
+        if np.random.rand() < 0.05:
+            self.action = self.action_space.sample()
+        return self.action
