@@ -52,5 +52,5 @@ colorama==0.4.3
 urllib3==1.25.11
 
 # added by exploring arm project
-real_robots==0.1.21
-stable_baselines3==2.10
+real-robots==0.1.21
+stable_baselines3
