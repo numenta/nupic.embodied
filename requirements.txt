@@ -57,4 +57,3 @@ stable_baselines3
 # required for CircleCI validation
 colorama==0.4.3
 urllib3==1.25.11
-t
