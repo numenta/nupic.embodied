@@ -1,0 +1,23 @@
+# This file may be used to create an environment using:
+# $ conda env create --name <env> --file <this file>
+# platform: osx-64
+name: nupic.embodied
+channels:
+  - defaults
+
+dependencies:
+  - python=3.7
+  - pip=20.2
+
+  # Dependencies not available in conda
+  - pip:
+      # Install nupic.torch in develop mode.
+      # Assume both libraries were cloned into ${HOME}/nta folder
+      # If you don't want to install nupic.torch in develop
+      # mode just comment the following lines and use the versions indicated in
+      # the requirements.txt file
+      - -e ${HOME}/nta/nupic.torch --no-binary :all
+
+      # Install nupic.embodied in develop mode
+      - -r requirements-dev.txt
+      - -e . --no-binary :all
