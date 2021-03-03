@@ -8,7 +8,6 @@ from torch.distributions.independent import Independent
 
 from garage.torch.distributions import TanhNormal
 from nupic.embodied.utils.models import MultiHeadedSparseMLP
-from garage.torch.modules.multi_headed_mlp_module import MultiHeadedMLPModule
 
 
 class GaussianSparseMLPBaseModule(nn.Module):
