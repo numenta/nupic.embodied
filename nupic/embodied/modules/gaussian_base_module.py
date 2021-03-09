@@ -3,6 +3,7 @@ import torch
 from torch import nn
 from torch.distributions.independent import Independent
 from torch.distributions import Normal
+from garage.torch.distributions import TanhNormal
 
 
 class GaussianBaseModule(nn.Module):
@@ -20,7 +21,7 @@ class GaussianBaseModule(nn.Module):
         self._min_std = min_std
         self._max_std = max_std
         self._std_parameterization = std_parameterization
-        self._normal_distribution_cls = normal_distribution_cls
+        self._norm_dist_class = normal_distribution_cls
 
         if self._std_parameterization not in ('exp', 'softplus'):
             raise NotImplementedError
