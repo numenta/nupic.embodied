@@ -147,7 +147,7 @@ class MultiHeadedDendriticMLP(nn.Module):
             linear_layer = nn.Linear(prev_dim, output_dims[i])
             output_layer.add_module('linear', linear_layer)
 
-            if output_nonlinearities:
+            if output_nonlinearities[i]:
                 output_layer.add_module('non_linearity',
                                         NonLinearity(output_nonlinearities[i]))
             self._output_layers.append(output_layer)
