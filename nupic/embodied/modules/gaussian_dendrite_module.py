@@ -1,14 +1,11 @@
 """GaussianMLPModule."""
 
 import torch
-from torch import nn
 from torch.distributions import Normal
 from nupic.embodied.modules.gaussian_base_module import GaussianBaseModule
 from nupic.embodied.utils.models import MultiHeadedDendriticMLP
 from nupic.research.frameworks.dendrites import (
     AbsoluteMaxGatingDendriticLayer,
-    DendriticAbsoluteMaxGate1d,
-    DendriticGate1d
 )
 
 class GaussianDendriteTwoHeadedModule(GaussianBaseModule):
