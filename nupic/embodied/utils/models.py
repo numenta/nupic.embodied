@@ -56,7 +56,7 @@ class MultiHeadedSparseMLP(nn.Module):
             linear_layer = nn.Linear(input_size, output_dims[i])
             output_layer.add_module('linear', linear_layer)
 
-            if output_nonlinearities:
+            if output_nonlinearities[i]:
                 output_layer.add_module('non_linearity',
                                         NonLinearity(output_nonlinearities[i]))
             self._output_layers.append(output_layer)
@@ -157,14 +157,3 @@ class MultiHeadedDendriticMLP(nn.Module):
             x = activation(layer(x, context))
 
         return [output_layer(x) for output_layer in self._output_layers]
-
-if __name__ == '__main__':
-    import torch
-    from nupic.torch.modules import rezero_weights
-    d = MultiHeadedDendriticMLP(10, 2, (5, 5), 3)
-    s = MultiHeadedSparseMLP(10, 2, (5, 5))
-    d(torch.ones(1, 10), torch.ones(1, 3))
-    s(torch.ones(1, 10))
-    d.apply(rezero_weights)
-    s.apply(rezero_weights)
-    a = 2
