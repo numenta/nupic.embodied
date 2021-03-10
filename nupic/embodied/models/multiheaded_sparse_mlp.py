@@ -8,7 +8,7 @@ class MultiHeadedSparseMLP(nn.Module):
     def __init__(self, input_size,
                  num_heads,
                  output_dims,
-                 output_nonlinearities=None,
+                 output_nonlinearities=(None, None),
                  hidden_sizes=(32, 32),
                  linear_activity_percent_on=(0.1, 0.1),
                  linear_weight_percent_on=(0.4, 0.4),
@@ -21,7 +21,8 @@ class MultiHeadedSparseMLP(nn.Module):
                  consolidated_sparse_weights=False,
                  ):
         super(MultiHeadedSparseMLP, self).__init__()
-        assert len(output_dims) == num_heads
+        assert len(output_dims) == len(output_nonlinearities) == num_heads
+        assert len(hidden_sizes) == len(linear_weight_percent_on) == len(linear_weight_percent_on)
         self.num_heads = num_heads
 
         self._hidden_base = nn.Sequential()

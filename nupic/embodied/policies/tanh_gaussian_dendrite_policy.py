@@ -107,7 +107,7 @@ class TanhGaussianDendriticPolicy(StochasticPolicy):
         """
         # separate the env observation into true observation and context
         obs_portion, context_portion = observations[:, :self._obs_dim], observations[:, self._obs_dim:]
-        dist = self._module(observations, context_portion)
+        dist = self._module(obs_portion, context_portion)
         ret_mean = dist.mean.cpu()
         ret_log_std = (dist.variance.sqrt()).log().cpu()
         return dist, dict(mean=ret_mean, log_std=ret_log_std)
