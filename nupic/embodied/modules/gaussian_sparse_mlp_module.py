@@ -11,7 +11,7 @@ class GaussianSparseMLPTwoHeadedModule(GaussianBaseModule):
 
     Args:
         input_dim (int): Input dimension of the model.
-        action_dim (int): Action dimension to output.
+        output_dim (int): Action dimension to output.
         mean_nonlinearity (callable): Activation function for mean output dense
             layer. It should return a torch.Tensor. Set it to None to
             maintain a linear activation.
@@ -51,7 +51,7 @@ class GaussianSparseMLPTwoHeadedModule(GaussianBaseModule):
 
     def __init__(self,
                  input_dim,
-                 action_dim,
+                 output_dim,
                  mean_nonlinearity=None,
                  std_nonlinearity=None,
                  hidden_sizes=(32, 32),
@@ -82,7 +82,7 @@ class GaussianSparseMLPTwoHeadedModule(GaussianBaseModule):
         self._shared_mean_log_std_network = MultiHeadedSparseMLP(
             input_size=input_dim,
             num_heads=2,
-            output_dims=(action_dim, action_dim),
+            output_dims=(output_dim, output_dim),
             output_nonlinearities=(mean_nonlinearity, std_nonlinearity),
             hidden_sizes=hidden_sizes,
             linear_activity_percent_on=linear_activity_percent_on,

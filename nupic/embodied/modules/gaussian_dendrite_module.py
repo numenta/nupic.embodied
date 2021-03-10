@@ -56,7 +56,7 @@ class GaussianDendriteTwoHeadedModule(GaussianBaseModule):
 
     def __init__(self,
                  input_dim,
-                 action_dim,
+                 output_dim,
                  dim_context,
                  hidden_sizes=(32, 32),
                  num_segments=(5,5),
@@ -85,7 +85,7 @@ class GaussianDendriteTwoHeadedModule(GaussianBaseModule):
         self._shared_mean_log_std_network = MultiHeadedDendriticMLP(
             input_size=input_dim,
             num_heads=2,
-            output_dims=(action_dim, action_dim),
+            output_dims=(output_dim, output_dim),
             dim_context=dim_context,
             hidden_sizes=hidden_sizes,
             num_segments=num_segments,
