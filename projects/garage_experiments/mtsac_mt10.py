@@ -20,7 +20,6 @@ from garage.torch.policies import TanhGaussianMLPPolicy
 from garage.torch.q_functions import ContinuousMLPQFunction
 from garage.trainer import Trainer
 
-
 @click.command()
 @click.option('--seed', 'seed', type=int, default=1)
 @click.option('--gpu', '_gpu', type=int, default=None)
