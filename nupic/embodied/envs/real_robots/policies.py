@@ -19,14 +19,15 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-from real_robots.policy import BasePolicy
 import numpy as np
+from real_robots.policy import BasePolicy
+
 
 """
 TODO::
 add the start_intrinsic_phase, end_intrinsic_phase, start_extrinsic_phase,
 end_extrinsic_phase, start_extrinsic_trial, end_extrinsic_trial functions
-from https://github.com/AIcrowd/real_robots/blob/6dd5b70bad14426483e2d3ee29b3d8708d34e1ba/real_robots/policy.py
+from https://github.com/AIcrowd/real_robots/blob/6dd5b70bad14426483e2d3ee29b3d8708d34e1ba/real_robots/policy.py  # noqa E:501
 to perform actions at start or end of phases and trials.
 """
 

@@ -19,22 +19,13 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-import gym
-import numpy as np
-import time
-from nupic.embodied.envs.real_robots import (
-    RandomPolicy,
-    WrapRobot,
-)
 from real_robots.envs import REALRobotEnv
-
-import torch
-
 from stable_baselines3 import PPO
 
+from nupic.embodied.envs.real_robots import WrapRobot
 
 print("setting up environment")
-#env = gym.make("REALRobot2020-R2J3-v0")
+# env = gym.make("REALRobot2020-R2J3-v0")
 env = REALRobotEnv(objects=1)
 env = WrapRobot(env, crop_obs=True)
 
@@ -47,7 +38,7 @@ print("start learning")
 model.learn(total_timesteps=10)  # 256
 print("learning done")
 
-#Here we need to restart the environent to make rendering possible
+# Here we need to restart the environent to make rendering possible
 env = REALRobotEnv(objects=1)
 env = WrapRobot(env, crop_obs=True)
 
@@ -57,6 +48,6 @@ print("display model")
 observation = env.reset()
 action = env.action_space.sample()
 reward, done = 0, False
-for t in range(400):
+for _ in range(400):
     action, _states = model.predict(observation, deterministic=True)
     observation, reward, done, info = env.step(action)
