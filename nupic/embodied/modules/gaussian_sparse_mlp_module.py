@@ -2,7 +2,7 @@
 
 import torch
 from torch.distributions import Normal
-from nupic.embodied.utils.models import MultiHeadedSparseMLP
+from nupic.embodied.models import MultiHeadedSparseMLP
 from nupic.embodied.modules.gaussian_base_module import GaussianBaseModule
 
 

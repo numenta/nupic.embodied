@@ -3,7 +3,7 @@
 import torch
 from torch.distributions import Normal
 from nupic.embodied.modules.gaussian_base_module import GaussianBaseModule
-from nupic.embodied.utils.models import MultiHeadedDendriticMLP
+from nupic.embodied.models import MultiHeadedDendriticMLP
 from nupic.research.frameworks.dendrites import (
     AbsoluteMaxGatingDendriticLayer,
 )
