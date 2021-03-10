@@ -6,7 +6,7 @@ from nupic.embodied.modules.gaussian_sparse_mlp_module import GaussianSparseMLPT
 from garage.torch.policies.stochastic_policy import StochasticPolicy
 
 
-class TanhGaussianMLPPolicy(StochasticPolicy):
+class TanhGaussianSparseMLPPolicy(StochasticPolicy):
     """Multiheaded MLP whose outputs are fed into a TanhNormal distribution.
 
     A policy that contains a MLP to make prediction based on a gaussian
