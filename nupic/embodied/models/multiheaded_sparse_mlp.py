@@ -1,7 +1,30 @@
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
 import torch.nn as nn
-from nupic.research.frameworks.pytorch.models.le_sparse_net import add_sparse_linear_layer
 
 from garage.torch import NonLinearity
+from nupic.research.frameworks.pytorch.models.le_sparse_net import (
+    add_sparse_linear_layer,
+)
 
 
 class MultiHeadedSparseMLP(nn.Module):
@@ -22,7 +45,8 @@ class MultiHeadedSparseMLP(nn.Module):
                  ):
         super(MultiHeadedSparseMLP, self).__init__()
         assert len(output_dims) == len(output_nonlinearities) == num_heads
-        assert len(hidden_sizes) == len(linear_weight_percent_on) == len(linear_weight_percent_on)
+        assert len(hidden_sizes) == len(linear_weight_percent_on)
+        assert len(linear_weight_percent_on) == len(linear_weight_percent_on)
         self.num_heads = num_heads
 
         self._hidden_base = nn.Sequential()
@@ -50,10 +74,10 @@ class MultiHeadedSparseMLP(nn.Module):
         for i in range(self.num_heads):
             output_layer = nn.Sequential()
             linear_layer = nn.Linear(input_size, output_dims[i])
-            output_layer.add_module('linear', linear_layer)
+            output_layer.add_module("linear", linear_layer)
 
             if output_nonlinearities[i]:
-                output_layer.add_module('non_linearity',
+                output_layer.add_module("non_linearity",
                                         NonLinearity(output_nonlinearities[i]))
             self._output_layers.append(output_layer)
 
