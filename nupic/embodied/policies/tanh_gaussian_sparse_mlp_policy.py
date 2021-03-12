@@ -1,9 +1,35 @@
-"""TanhGaussianMLPPolicy."""
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
+"""TanhGaussianSparseMLPPolicy."""
 import numpy as np
 
 from garage.torch.distributions import TanhNormal
-from nupic.embodied.modules.gaussian_sparse_mlp_module import GaussianSparseMLPTwoHeadedModule
 from garage.torch.policies.stochastic_policy import StochasticPolicy
+from nupic.embodied.modules.gaussian_sparse_mlp_module import (
+    GaussianSparseMLPTwoHeadedModule,
+)
+
+MIN_STD = np.exp(-20.)
+MAX_STD = np.exp(2.)
 
 
 class TanhGaussianSparseMLPPolicy(StochasticPolicy):
@@ -65,10 +91,10 @@ class TanhGaussianSparseMLPPolicy(StochasticPolicy):
                  dropout=0.0,
                  consolidated_sparse_weights=False,
                  init_std=1.0,
-                 min_std=np.exp(-20.),
-                 max_std=np.exp(2.),
-                 std_parameterization='exp'):
-        super().__init__(env_spec, name='TanhGaussianPolicy')
+                 min_std=MIN_STD,
+                 max_std=MAX_STD,
+                 std_parameterization="exp"):
+        super().__init__(env_spec, name="TanhGaussianPolicy")
 
         self._obs_dim = env_spec.observation_space.flat_dim
         self._action_dim = env_spec.action_space.flat_dim
