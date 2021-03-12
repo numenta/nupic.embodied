@@ -1,12 +1,32 @@
-"""GaussianMLPModule."""
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
+"""Gaussian Multi-Headed Dendrite Module."""
 
-import torch
 from torch.distributions import Normal
-from nupic.embodied.modules.gaussian_base_module import GaussianBaseModule
+
 from nupic.embodied.models import MultiHeadedDendriticMLP
-from nupic.research.frameworks.dendrites import (
-    AbsoluteMaxGatingDendriticLayer,
-)
+from nupic.embodied.modules.gaussian_base_module import GaussianBaseModule
+from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer
+
 
 class GaussianDendriteTwoHeadedModule(GaussianBaseModule):
     """GaussianMLPModule which has only one mean network.
@@ -59,7 +79,7 @@ class GaussianDendriteTwoHeadedModule(GaussianBaseModule):
                  output_dim,
                  dim_context,
                  hidden_sizes=(32, 32),
-                 num_segments=(5,5),
+                 num_segments=(5, 5),
                  sparsity=0.5,
                  kw=False,
                  relu=False,
@@ -70,7 +90,7 @@ class GaussianDendriteTwoHeadedModule(GaussianBaseModule):
                  init_std=1.0,
                  min_std=1e-6,
                  max_std=None,
-                 std_parameterization='exp',
+                 std_parameterization="exp",
                  normal_distribution_cls=Normal):
 
         super(GaussianDendriteTwoHeadedModule,

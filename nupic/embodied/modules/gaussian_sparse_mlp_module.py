@@ -1,7 +1,28 @@
-"""GaussianMLPModule."""
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
+"""Sparse Gaussian Multi-Headed MLP Module."""
 
-import torch
 from torch.distributions import Normal
+
 from nupic.embodied.models import MultiHeadedSparseMLP
 from nupic.embodied.modules.gaussian_base_module import GaussianBaseModule
 
@@ -22,8 +43,8 @@ class GaussianSparseMLPTwoHeadedModule(GaussianBaseModule):
             the MLP for mean. For example, (32, 32) means the MLP consists
             of two hidden layers, each with 32 hidden units.
         linear_activity_percent_on (list[float]): Percent of ON (non-zero) units
-        linear_weight_percent_on (list[float]): Percent of weights that are allowed to be
-                                       non-zero in the linear layer
+        linear_weight_percent_on (list[float]): Percent of weights that are allowed to
+                                       be non-zero in the linear layer
         boost_strength (float): boost strength (0.0 implies no boosting)
         boost_strength_factor (float): Boost strength factor to use [0..1]
         duty_cycle_period (int): The period used to calculate duty cycles
@@ -68,7 +89,7 @@ class GaussianSparseMLPTwoHeadedModule(GaussianBaseModule):
                  init_std=1.0,
                  min_std=1e-6,
                  max_std=None,
-                 std_parameterization='exp',
+                 std_parameterization="exp",
                  normal_distribution_cls=Normal):
 
         super(GaussianSparseMLPTwoHeadedModule,
