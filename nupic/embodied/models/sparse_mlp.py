@@ -48,8 +48,8 @@ class SparseMLP(MultiHeadedSparseMLP):
         super(SparseMLP, self).__init__(
             input_size=input_size,
             num_heads=1,
-            output_dims=(output_dim),
-            output_nonlinearities=(output_nonlinearity),
+            output_dims=(output_dim,),
+            output_nonlinearities=(output_nonlinearity,),
             hidden_sizes=hidden_sizes,
             linear_activity_percent_on=linear_activity_percent_on,
             linear_weight_percent_on=linear_weight_percent_on,
