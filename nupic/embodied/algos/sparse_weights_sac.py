@@ -22,6 +22,7 @@
 from garage.torch.algos.sac import SAC
 from nupic.torch.modules.sparse_weights import rezero_weights
 
+
 class SparseWeightsSAC(SAC):
 
     def optimize_policy(self, samples_data):
@@ -48,7 +49,7 @@ class SparseWeightsSAC(SAC):
             torch.Tensor: loss from 2nd q-function after optimization.
 
         """
-        obs = samples_data['observation']
+        obs = samples_data["observation"]
         qf1_loss, qf2_loss = self._critic_objective(samples_data)
 
         self._qf1_optimizer.zero_grad()
