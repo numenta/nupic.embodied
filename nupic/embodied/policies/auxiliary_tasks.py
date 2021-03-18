@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from utils.model_parts import (
+from nupic.embodied.utils.model_parts import (
     small_convnet,
     flatten_dims,
     unflatten_first_dim,

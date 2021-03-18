@@ -116,4 +116,4 @@ domino*
 
 # add references to other files to be ignored by git here
 nupic/embodied/wandb
-nupic/embodied/statistics
+projects/robot_arm/statistics

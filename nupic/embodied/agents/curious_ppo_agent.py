@@ -1,12 +1,16 @@
 import time
-from utils.model_parts import flatten_dims
+from nupic.embodied.utils.model_parts import flatten_dims
 import torch
 import numpy as np
-from utils.mpi import mpi_moments
+from nupic.embodied.utils.mpi import mpi_moments
 
-from envs.rollout import Rollout
-from utils.utils import get_mean_and_std, explained_variance, RunningMeanStd
-from envs.vec_env import ShmemVecEnv as VecEnv
+from nupic.embodied.envs.rollout import Rollout
+from nupic.embodied.utils.utils import (
+    get_mean_and_std,
+    explained_variance,
+    RunningMeanStd,
+)
+from nupic.embodied.envs.vec_env import ShmemVecEnv as VecEnv
 
 
 class PpoOptimizer(object):

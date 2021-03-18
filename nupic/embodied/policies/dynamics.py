@@ -1,6 +1,6 @@
 import torch
 
-from utils.model_parts import flatten_dims, unflatten_first_dim
+from nupic.embodied.utils.model_parts import flatten_dims, unflatten_first_dim
 
 
 class Dynamics(object):

@@ -12,7 +12,7 @@ from baselines.bench import Monitor
 import wandb
 
 
-from envs.wrappers import (
+from nupic.embodied.envs.wrappers import (
     MontezumaInfoWrapper,
     make_mario_env,
     make_multi_pong,
@@ -23,11 +23,15 @@ from envs.wrappers import (
     StickyActionEnv,
     CartesianControlDiscrete,
 )
-from policies.auxiliary_tasks import FeatureExtractor, InverseDynamics, VAE
-from policies.dynamics import Dynamics
-from policies.curious_cnn_policy import CnnPolicy
-from agents.curious_ppo_agent import PpoOptimizer
-from utils.utils import random_agent_ob_mean_std
+from nupic.embodied.policies.auxiliary_tasks import (
+    FeatureExtractor,
+    InverseDynamics,
+    VAE,
+)
+from nupic.embodied.policies.dynamics import Dynamics
+from nupic.embodied.policies.curious_cnn_policy import CnnPolicy
+from nupic.embodied.agents.curious_ppo_agent import PpoOptimizer
+from nupic.embodied.utils.utils import random_agent_ob_mean_std
 
 
 class Trainer(object):

@@ -3,7 +3,7 @@ if __name__ == "__main__":
 
     # from real_robots.envs import REALRobotEnv
     # from envs.wrappers import CartesianControlDiscrete
-    from policies.curious_cnn_policy import CnnPolicy
+    from nupic.embodied.policies.curious_cnn_policy import CnnPolicy
     import torch
     import numpy as np
     from learn import make_env_all_params
