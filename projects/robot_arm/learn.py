@@ -43,16 +43,19 @@ class Trainer(object):
         envs_per_process,
         num_dyna,
         var_output,
+        device,
     ):
         self.make_env = make_env
         self.hyperparamter = hyperparamter
         self.envs_per_process = envs_per_process
         self.num_timesteps = num_timesteps
+        self.device = device
         self._set_env_vars()
 
         # Initialize the PPO policy for action selection
         self.policy = CnnPolicy(
             scope="policy",
+            device=self.device,
             ob_space=self.ob_space,
             ac_space=self.ac_space,
             feat_dim=self.hyperparamter["feature_dim"],
@@ -86,6 +89,7 @@ class Trainer(object):
         self.feature_extractor = self.feature_extractor(
             policy=self.policy,
             features_shared_with_policy=False,
+            device=self.device,
             feat_dim=hyperparamter["feature_dim"],
             layernormalize=hyperparamter["layernorm"],
         )
@@ -99,6 +103,7 @@ class Trainer(object):
                 self.dynamics_class(
                     auxiliary_task=self.feature_extractor,
                     feat_dim=hyperparamter["feature_dim"],
+                    device=self.device,
                     scope="dynamics_{}".format(i),
                     var_output=var_output,
                 )
@@ -107,6 +112,7 @@ class Trainer(object):
         # Initialize the agent.
         self.agent = PpoOptimizer(
             scope="ppo",
+            device=self.device,
             ob_space=self.ob_space,
             ac_space=self.ac_space,
             stochpol=self.policy,
@@ -353,6 +359,15 @@ if __name__ == "__main__":
 
     print("Initializing Trainer.")
 
+    if torch.cuda.is_available():
+        print("GPU detected")
+        dev_name = "cuda:0"
+    else:
+        print("no GPU detected, using CPU instead.")
+        dev_name = "cpu"
+    device = torch.device(dev_name)
+    print("device: " + str(device))
+
     trainer = Trainer(
         make_env=make_env,
         num_timesteps=args.num_timesteps,
@@ -360,6 +375,7 @@ if __name__ == "__main__":
         envs_per_process=args.envs_per_process,
         num_dyna=args.num_dynamics,
         var_output=args.no_var_output,
+        device=device,
     )
 
     # TODO: Add pytorch model loading if args["load"].

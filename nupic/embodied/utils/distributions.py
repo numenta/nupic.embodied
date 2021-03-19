@@ -180,7 +180,9 @@ class CategoricalPd(Pd):
         return torch.sum(p0 * (torch.log(z0) - a0), dim=-1)
 
     def sample(self):
-        u = torch.rand(self.logits.shape, dtype=self.logits.dtype)
+        u = torch.rand(self.logits.shape, dtype=self.logits.dtype).to(
+            self.logits.device
+        )
         return torch.argmax(
             self.logits - torch.log(-torch.log(u)), dim=-1, keepdim=True
         )  # not really understand this formula

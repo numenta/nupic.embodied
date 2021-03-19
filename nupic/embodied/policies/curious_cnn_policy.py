@@ -31,6 +31,8 @@ class CnnPolicy(object):
         nonlinear activation function to use.
     scope : str
         Scope name.
+    device: torch.device
+        Which device to optimize the model on.
 
     Attributes
     ----------
@@ -69,6 +71,7 @@ class CnnPolicy(object):
         hid_dim,
         layernormalize,
         nonlinear,
+        device,
         scope="policy",
     ):
         if layernormalize:
@@ -90,6 +93,7 @@ class CnnPolicy(object):
         self.hid_dim = hid_dim
         self.feat_dim = feat_dim
         self.scope = scope
+        self.device = device
         pdparamsize = self.ac_pdtype.param_shape()[0]
 
         # Initialize the feature model as a small conv net (3 conv layer + 1 linear fc)
@@ -100,7 +104,8 @@ class CnnPolicy(object):
             last_nonlinear=None,
             layernormalize=self.layernormalize,
             batchnorm=False,
-        )
+            device=self.device,
+        ).to(self.device)
 
         # Policy network following the feature extraction network (2 fc layers, relu)
         self.pd_hidden = torch.nn.Sequential(
@@ -108,10 +113,10 @@ class CnnPolicy(object):
             torch.nn.ReLU(),
             torch.nn.Linear(self.hid_dim, self.hid_dim),
             torch.nn.ReLU(),
-        )
+        ).to(self.device)
         # policy and value function head of the policy network.
-        self.pd_head = torch.nn.Linear(self.hid_dim, pdparamsize)
-        self.vf_head = torch.nn.Linear(self.hid_dim, 1)
+        self.pd_head = torch.nn.Linear(self.hid_dim, pdparamsize).to(self.device)
+        self.vf_head = torch.nn.Linear(self.hid_dim, 1).to(self.device)
 
         # Define parameters to be optimized
         self.param_list = [
@@ -185,7 +190,7 @@ class CnnPolicy(object):
         # reshape observations: [N, H, W, C] --> [N, C, H, W]
         ob = np.transpose(ob, [i for i in range(len(ob.shape) - 3)] + [-1, -3, -2])
         # Run observations through feature model
-        ob = self.features_model(torch.tensor(ob))
+        ob = self.features_model(torch.tensor(ob).to(self.device))
 
         return ob
 
@@ -208,7 +213,7 @@ class CnnPolicy(object):
         a_samp = self.pd.sample()
         nlp_samp = self.pd.neglogp(a_samp)
         return (
-            a_samp.squeeze().data.numpy(),
-            self.vpred.squeeze().data.numpy(),
-            nlp_samp.squeeze().data.numpy(),
+            a_samp.squeeze().cpu().data.numpy(),
+            self.vpred.squeeze().cpu().data.numpy(),
+            nlp_samp.squeeze().cpu().data.numpy(),
         )

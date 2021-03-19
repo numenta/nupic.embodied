@@ -63,6 +63,8 @@ class small_convnet(torch.nn.Module):
         Whether to normalize the last layer.
     batchnorm : bool
         Whether to normalize batches.
+    device: torch.device
+        Which device to optimize the model on.
 
     Attributes
     ----------
@@ -88,16 +90,18 @@ class small_convnet(torch.nn.Module):
         feat_dim,
         last_nonlinear,
         layernormalize,
+        device,
         batchnorm=False,
     ):
         super(small_convnet, self).__init__()
+        self.device = device
         # Get the input shape
         self.H = ob_space.shape[0]
         self.W = ob_space.shape[1]
         self.C = ob_space.shape[2]
         # Attributes of the convolutional layers
         feat_list = [[self.C, 32, 8, (4, 4)], [32, 64, 8, (2, 2)], [64, 64, 3, (1, 1)]]
-        self.conv = torch.nn.Sequential()
+        self.conv = torch.nn.Sequential().to(device)
         oH = self.H
         oW = self.W
         for idx, f in enumerate(feat_list):
@@ -117,9 +121,10 @@ class small_convnet(torch.nn.Module):
 
         assert oH == int(oH)  # whether oH is a .0 float ?
         assert oW == int(oW)
+
         self.flatten_dim = int(oH * oW * feat_list[-1][1])
         # Add fc layer at end for feature output
-        self.fc = torch.nn.Linear(self.flatten_dim, feat_dim)
+        self.fc = torch.nn.Linear(self.flatten_dim, feat_dim).to(device)
 
         self.last_nonlinear = last_nonlinear
         self.layernormalize = layernormalize
@@ -152,7 +157,8 @@ class small_convnet(torch.nn.Module):
         # run x through the convolutional layers
         x = self.conv(x)
         # Get flattened version of conv output
-        x = x.view(
+        # TODO: check that contiguous.view actually does what its supposed to
+        x = x.contiguous().view(
             -1, self.flatten_dim
         )  # dims is calculated manually, 84*84 -> 20*20 -> 9*9 ->7*7
         # run through fully connected layer
@@ -167,8 +173,8 @@ class small_convnet(torch.nn.Module):
 
     def layernorm(self, x):
         """Normalize a layer."""
-        m = torch.mean(x, -1, keepdim=True)
-        v = torch.std(x, -1, keepdim=True)
+        m = torch.mean(x, -1, keepdim=True).to(device)
+        v = torch.std(x, -1, keepdim=True).to(device)
         return (x - m) / (v + 1e-8)
 
 

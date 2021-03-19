@@ -20,6 +20,8 @@ class PpoOptimizer(object):
     ----------
     scope : str
         Scope name.
+    device: torch.device
+        Which device to optimize the model on.
     ob_space : Space
         Observation space properties (from env.observation_space).
     ac_space : Space
@@ -77,6 +79,7 @@ class PpoOptimizer(object):
         self,
         *,
         scope,
+        device,
         ob_space,
         ac_space,
         stochpol,
@@ -101,6 +104,7 @@ class PpoOptimizer(object):
         self.dynamics_list = dynamics_list
         self.n_updates = 0
         self.scope = scope
+        self.device = device
         self.ob_space = ob_space
         self.ac_space = ac_space
         self.stochpol = stochpol
@@ -345,7 +349,9 @@ class PpoOptimizer(object):
                     dyn_partial_loss.append(torch.mean(dynamic.get_loss_partial()))
 
                 # Reshape actions and put in tensor
-                acs = torch.tensor(flatten_dims(acs, len(self.ac_space.shape)))
+                acs = torch.tensor(flatten_dims(acs, len(self.ac_space.shape))).to(
+                    self.device
+                )
                 # Get the negagtive log probs of the actions under the policy
                 neglogpac = self.stochpol.pd.neglogp(acs)
                 # Get the entropy of the current policy
@@ -353,14 +359,16 @@ class PpoOptimizer(object):
                 # Get the value estimate of the policies value head
                 vpred = self.stochpol.vpred
                 # Calculate the msq difference between value estimate and return
-                vf_loss = 0.5 * torch.mean((vpred.squeeze() - torch.tensor(rets)) ** 2)
+                vf_loss = 0.5 * torch.mean(
+                    (vpred.squeeze() - torch.tensor(rets).to(self.device)) ** 2
+                )
                 # Put old nlps from buffer into tensor
-                nlps = torch.tensor(flatten_dims(nlps, 0))
+                nlps = torch.tensor(flatten_dims(nlps, 0)).to(self.device)
                 # Calculate exp difference between old nlp and neglogpac
                 ratio = torch.exp(nlps - neglogpac.squeeze())
                 # Put advantages and negative advs into tensors
                 advs = flatten_dims(advs, 0)
-                negadv = torch.tensor(-advs)
+                negadv = torch.tensor(-advs).to(self.device)
                 # Calculate policy gradient loss. Once multiplied with original ratio
                 # between old and new policy probs (1 if identical) and once with
                 # clipped ratio.
@@ -400,32 +408,32 @@ class PpoOptimizer(object):
 
                 # Log statistics (divide by nminibatchs * nepochs because we add the
                 # loss in these two loops.)
-                to_report["total_loss"] += total_loss.data.numpy() / (
+                to_report["total_loss"] += total_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["policy_gradient_loss"] += pg_loss.data.numpy() / (
+                to_report["policy_gradient_loss"] += pg_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["value_loss"] += vf_loss.data.numpy() / (
+                to_report["value_loss"] += vf_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["entropy_loss"] += ent_loss.data.numpy() / (
+                to_report["entropy_loss"] += ent_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["approxkl"] += approxkl.data.numpy() / (
+                to_report["approxkl"] += approxkl.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["clipfrac"] += clipfrac.data.numpy() / (
+                to_report["clipfrac"] += clipfrac.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["feat_var"] += feat_var.data.numpy() / (
+                to_report["feat_var"] += feat_var.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["aux"] += feat_loss.data.numpy() / (
+                to_report["aux"] += feat_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
                 to_report["dyn_loss"] += np.sum(
-                    [e.data.numpy() for e in dyn_partial_loss]
+                    [e.cpu().data.numpy() for e in dyn_partial_loss]
                 ) / (self.nminibatches * self.nepochs)
 
         info.update(to_report)

@@ -57,6 +57,7 @@ class Dynamics(object):
         self,
         auxiliary_task,
         var_output,
+        device,
         feat_dim=None,
         scope="dynamics",
     ):
@@ -70,6 +71,7 @@ class Dynamics(object):
         self.param_list = []
         self.var_output = var_output
         self.features_model = None
+        self.device = device
 
         # Initialize the loss network.
         self.dynamics_net = dynamics_net(
@@ -77,8 +79,9 @@ class Dynamics(object):
             feat_dim=self.feat_dim,
             ac_dim=self.ac_space.n,
             out_feat_dim=self.feat_dim,
+            device=self.device,
             hid_dim=self.hid_dim,
-        )
+        ).to(self.device)
         # Add parameters of loss net to optimized parameters
         self.param_list = self.param_list + [
             dict(params=self.dynamics_net.parameters())
@@ -121,7 +124,7 @@ class Dynamics(object):
         assert x.shape[:-1] == ac.shape[:-1]
 
         # forward pass of actions and features in dynamics net
-        x = self.dynamics_net(x, ac)  # [nsteps_per_seg, feature_dim]
+        x = self.dynamics_net(x, ac.to(self.device))  # [nsteps_per_seg, feature_dim]
 
         # reshape
         x = unflatten_first_dim(x, sh)  # [1, nsteps_per_seg, feature_dim]
@@ -158,7 +161,7 @@ class Dynamics(object):
         assert x.shape[:-1] == ac.shape[:-1]
 
         # forward pass of actions and features in dynamics net
-        x = self.dynamics_net(x, ac)  # [nsteps_per_seg, feature_dim]
+        x = self.dynamics_net(x, ac.to(self.device))  # [nsteps_per_seg, feature_dim]
 
         # reshape
         x = unflatten_first_dim(x, sh)  # [1, nsteps_per_seg, feature_dim]
@@ -231,7 +234,7 @@ class Dynamics(object):
             else:
                 # concatenate the losses from the current slice
                 losses = torch.cat((losses, loss), 0)
-        return losses.data.numpy()
+        return losses.cpu().data.numpy()
 
 
 class dynamics_net(torch.nn.Module):
@@ -267,6 +270,7 @@ class dynamics_net(torch.nn.Module):
         ac_dim,
         out_feat_dim,
         hid_dim,
+        device,
         activation=torch.nn.LeakyReLU,
     ):
         super(dynamics_net, self).__init__()
@@ -275,19 +279,29 @@ class dynamics_net(torch.nn.Module):
         self.ac_dim = ac_dim
         self.out_feat_dim = out_feat_dim
         self.activation = activation
+        self.device = device
 
         # First layer of the model takes state features + actions as input and outputs
         # hid_dim activations
-        model_list = [torch.nn.Linear(feat_dim + ac_dim, hid_dim), activation()]
-        # n residual blocks with two linear layers each, teh first layer uses a non-
+        model_list = [
+            torch.nn.Linear(feat_dim + ac_dim, hid_dim).to(self.device),
+            activation(),
+        ]
+        # n residual blocks with two linear layers each, the first layer uses a non-
         # linear activation function.
         for _ in range(self.nblocks):
-            model_list.append(torch.nn.Linear(hid_dim + ac_dim, hid_dim))
+            model_list.append(
+                torch.nn.Linear(hid_dim + ac_dim, hid_dim).to(self.device)
+            )
             model_list.append(activation())
-            model_list.append(torch.nn.Linear(hid_dim + ac_dim, hid_dim))
+            model_list.append(
+                torch.nn.Linear(hid_dim + ac_dim, hid_dim).to(self.device)
+            )
         # Last layer takes hidden activations + actions as input and outputs features of
         # the size of the next_state features
-        model_list.append(torch.nn.Linear(hid_dim + ac_dim, out_feat_dim))
+        model_list.append(
+            torch.nn.Linear(hid_dim + ac_dim, out_feat_dim).to(self.device)
+        )
         self.model_list = model_list
         # initialize the weights with xavier uniform initialization
         self.init_weight()
@@ -318,7 +332,9 @@ class dynamics_net(torch.nn.Module):
         # concatenate state features with actions
         x = torch.cat((features, ac), dim=-1)  # shape=[nsteps_per_seg, feat_dim +n_act]
         for _ in range(2):
-            x = self.model_list[idx](x)  # shape = [nsteps_per_seg, hid_dim]
+            x = self.model_list[idx](x).to(
+                x.device
+            )  # shape = [nsteps_per_seg, hid_dim]
             idx += 1
         for _ in range(self.nblocks):
             x0 = x

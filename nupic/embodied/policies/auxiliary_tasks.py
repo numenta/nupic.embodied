@@ -23,6 +23,8 @@ class FeatureExtractor(object):
         Whether to normalize output of the last layer.
     scope : str
         torch model scope.
+    device: torch.device
+        Which device to optimize the model on.
 
     Attributes
     ----------
@@ -56,6 +58,7 @@ class FeatureExtractor(object):
         self,
         policy,
         features_shared_with_policy,
+        device,
         feat_dim=None,
         layernormalize=None,
         scope="feature_extractor",
@@ -70,6 +73,7 @@ class FeatureExtractor(object):
         self.ac_space = policy.ac_space
         self.ob_mean = self.policy.ob_mean
         self.ob_std = self.policy.ob_std
+        self.device = device
 
         self.features_shared_with_policy = features_shared_with_policy
         self.param_list = []
@@ -85,7 +89,8 @@ class FeatureExtractor(object):
                 feat_dim=self.feat_dim,
                 last_nonlinear=None,
                 layernormalize=self.layernormalize,
-            )
+                device=self.device,
+            ).to(self.device)
             # Add feature model to optimization parameters
             self.param_list = self.param_list + [
                 dict(params=self.features_model.parameters())
@@ -147,7 +152,7 @@ class FeatureExtractor(object):
         # Reshape observations
         obs = np.transpose(obs, [i for i in range(len(obs.shape) - 3)] + [-1, -3, -2])
         # Get features from the features_model
-        act = self.features_model(torch.tensor(obs))
+        act = self.features_model(torch.tensor(obs).to(self.device))
 
         if has_timesteps:
             act = unflatten_first_dim(act, sh)
@@ -164,11 +169,12 @@ class FeatureExtractor(object):
 
     def get_loss(self, *arg, **kwarg):
         # is 0 because we use no auxiliary task for feature learning
-        return torch.tensor(0.0)
+        return torch.tensor(0.0).to(self.device)
 
 
 class InverseDynamics(FeatureExtractor):
     # TODO: Add comments for rest of script
+    # TODO: Add .to(self.device)
     def __init__(
         self, policy, features_shared_with_policy, feat_dim=None, layernormalize=None
     ):
