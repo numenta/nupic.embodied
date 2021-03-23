@@ -3,6 +3,7 @@
 This experiment shows how MTSAC adapts to 50 environents of the same type
 but each environment has a goal variation.
 https://arxiv.org/pdf/1910.10897.pdf
+Adapted from https://github.com/rlworkgroup/garage/blob/master/src/garage/examples/torch/mtsac_metaworld_mt10.py.
 """
 import click
 import metaworld

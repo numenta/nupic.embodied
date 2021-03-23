@@ -52,7 +52,6 @@ class ContinuousDendriteMLPQFunction(DendriticMLP):
                               dim_context=dim_context,
                               **kwargs)
 
-    # pylint: disable=arguments-differ
     def forward(self, observations, actions):
         """Return Q-value(s).
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """MTSAC implementation based on Metaworld. Benchmarked on MT10.
 https://arxiv.org/pdf/1910.10897.pdf
+Adapted from https://github.com/rlworkgroup/garage/blob/master/src/garage/examples/torch/mtsac_metaworld_mt10.py.
 """
 import click
 import metaworld

@@ -37,7 +37,7 @@ class DendriticMLP(MultiHeadedDendriticMLP):
                  hidden_sizes=(32, 32),
                  num_segments=(5, 5),
                  sparsity=0.5,
-                 kw=False,
+                 k_winners=False,
                  relu=False,
                  output_nonlinearities=None,
                  dendritic_layer_class=AbsoluteMaxGatingDendriticLayer):
@@ -50,7 +50,7 @@ class DendriticMLP(MultiHeadedDendriticMLP):
             hidden_sizes=hidden_sizes,
             num_segments=num_segments,
             sparsity=sparsity,
-            kw=kw,
+            k_winners=k_winners,
             relu=relu,
             output_nonlinearities=output_nonlinearities,
             dendritic_layer_class=dendritic_layer_class

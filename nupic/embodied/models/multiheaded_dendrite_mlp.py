@@ -34,7 +34,8 @@ class MultiHeadedDendriticMLP(nn.Module):
     """
     A dendritic network which is similar to a MLP with a two hidden layers, except that
     activations are modified by dendrites. The context input to the network is used as
-    input to the dendritic weights.
+    input to the dendritic weights. Adapted from:
+    nupic.research/blob/master/projects/dendrites/supermasks/random_supermasks.py
                     _____
                    |_____|    # Classifier layer, no dendrite input
                       ^
@@ -58,7 +59,7 @@ class MultiHeadedDendriticMLP(nn.Module):
                  hidden_sizes=(32, 32),
                  num_segments=(5, 5),
                  sparsity=0.5,
-                 kw=False,
+                 k_winners=False,
                  relu=False,
                  output_nonlinearities=None,
                  dendritic_layer_class=AbsoluteMaxGatingDendriticLayer):
@@ -68,7 +69,7 @@ class MultiHeadedDendriticMLP(nn.Module):
                                          DendriticGate1d}
 
         # The nonlinearity can either be k-Winners or ReLU, but not both
-        assert not (kw and relu)
+        assert not (k_winners and relu)
         assert num_heads == len(output_dims)
 
         super().__init__()
@@ -79,7 +80,7 @@ class MultiHeadedDendriticMLP(nn.Module):
         self.hidden_sizes = hidden_sizes
         self.output_dims = output_dims
         self.dim_context = dim_context
-        self.kw = kw
+        self.k_winners = k_winners
         self.relu = relu
 
         self._layers = []
@@ -93,7 +94,7 @@ class MultiHeadedDendriticMLP(nn.Module):
                 module_sparsity=sparsity,
                 dendrite_sparsity=sparsity
             )
-            if kw:
+            if k_winners:
                 curr_activation = KWinners(n=hidden_sizes[i],
                                            percent_on=0.05,
                                            k_inference_factor=1.0,
