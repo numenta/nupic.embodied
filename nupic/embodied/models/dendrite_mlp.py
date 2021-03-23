@@ -38,20 +38,22 @@ class DendriticMLP(MultiHeadedDendriticMLP):
                  num_segments=(5, 5),
                  sparsity=0.5,
                  k_winners=False,
+                 k_winner_percent_on=0.1,
                  relu=False,
-                 output_nonlinearities=None,
+                 output_nonlinearities=(None, ),
                  dendritic_layer_class=AbsoluteMaxGatingDendriticLayer):
 
         super(DendriticMLP, self).__init__(
             input_size=input_size,
             num_heads=1,
-            output_dims=(output_dim),
+            output_dims=(output_dim, ),
             dim_context=dim_context,
             hidden_sizes=hidden_sizes,
             num_segments=num_segments,
             sparsity=sparsity,
             k_winners=k_winners,
             relu=relu,
+            k_winners_percent_on=k_winner_percent_on,
             output_nonlinearities=output_nonlinearities,
             dendritic_layer_class=dendritic_layer_class
         )

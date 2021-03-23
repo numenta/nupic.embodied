@@ -61,7 +61,8 @@ class MultiHeadedDendriticMLP(nn.Module):
                  sparsity=0.5,
                  k_winners=False,
                  relu=False,
-                 output_nonlinearities=None,
+                 k_winners_percent_on=0.1,
+                 output_nonlinearities=(None, None, ),
                  dendritic_layer_class=AbsoluteMaxGatingDendriticLayer):
 
         assert dendritic_layer_class in {AbsoluteMaxGatingDendriticLayer,
@@ -96,7 +97,7 @@ class MultiHeadedDendriticMLP(nn.Module):
             )
             if k_winners:
                 curr_activation = KWinners(n=hidden_sizes[i],
-                                           percent_on=0.05,
+                                           percent_on=k_winners_percent_on,
                                            k_inference_factor=1.0,
                                            boost_strength=0.0,
                                            boost_strength_factor=0.0)
