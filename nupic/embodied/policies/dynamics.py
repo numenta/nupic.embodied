@@ -169,7 +169,9 @@ class Dynamics(object):
         # features and action) and next features (shape=[1, nsteps_per_seg])
         next_features = self.next_features
         loss = torch.mean((x - next_features) ** 2, -1)
-        # TODO: Why is dropout applied here?
+        # Apply dropout here to ensure variability between dynamics models. This is done
+        # instead of bootstrapping the samples so that all samples can be used to train
+        # every model.
         do = torch.nn.Dropout(p=0.2)
         do_loss = do(loss)
         return do_loss
