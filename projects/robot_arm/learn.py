@@ -6,7 +6,12 @@ import torch
 import numpy as np
 import gym
 import os
-from real_robots.envs import REALRobotEnv
+
+try:
+    from real_robots.envs import REALRobotEnv
+except ModuleNotFoundError:
+    print("REALRobotEnv is not installed. This environment can't be used.")
+
 from baselines.common.atari_wrappers import NoopResetEnv, FrameStack
 from baselines.bench import Monitor
 import wandb
