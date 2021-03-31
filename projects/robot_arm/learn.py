@@ -367,6 +367,7 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         print("GPU detected")
         dev_name = "cuda:0"
+        torch.set_default_tensor_type("torch.cuda.FloatTensor")
     else:
         print("no GPU detected, using CPU instead.")
         dev_name = "cpu"

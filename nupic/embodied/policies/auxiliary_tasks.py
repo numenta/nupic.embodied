@@ -176,12 +176,18 @@ class InverseDynamics(FeatureExtractor):
     # TODO: Add comments for rest of script
     # TODO: Add .to(self.device)
     def __init__(
-        self, policy, features_shared_with_policy, feat_dim=None, layernormalize=None
+        self,
+        policy,
+        features_shared_with_policy,
+        device,
+        feat_dim=None,
+        layernormalize=None,
     ):
         super(InverseDynamics, self).__init__(
             scope="inverse_dynamics",
             policy=policy,
             features_shared_with_policy=features_shared_with_policy,
+            device=device,
             feat_dim=feat_dim,
             layernormalize=layernormalize,
         )
@@ -190,7 +196,7 @@ class InverseDynamics(FeatureExtractor):
             torch.nn.Linear(self.feat_dim * 2, self.policy.hid_dim),
             torch.nn.ReLU(),
             torch.nn.Linear(self.policy.hid_dim, self.ac_space.n),
-        )
+        ).to(self.device)
         self.param_list = self.param_list + [dict(params=self.fc.parameters())]
         self.init_weight()
 
@@ -202,12 +208,11 @@ class InverseDynamics(FeatureExtractor):
 
     def get_loss(self):
         x = torch.cat([self.features, self.next_features], 2)
-        # sh = x.shape
         x = flatten_dims(x, 1)
         param = self.fc(x)
         idfpd = self.policy.ac_pdtype.pdfromflat(param)
         ac = flatten_dims(self.ac, len(self.ac_space.shape))
-        return idfpd.neglogp(torch.tensor(ac))
+        return idfpd.neglogp(torch.tensor(ac).to(self.device))
 
 
 class VAE(FeatureExtractor):
@@ -215,6 +220,7 @@ class VAE(FeatureExtractor):
         self,
         policy,
         features_shared_with_policy,
+        device,
         feat_dim=None,
         layernormalize=False,
         spherical_obs=False,
@@ -226,6 +232,7 @@ class VAE(FeatureExtractor):
             scope="vae",
             policy=policy,
             features_shared_with_policy=features_shared_with_policy,
+            device=device,
             feat_dim=feat_dim,
             layernormalize=False,
         )
@@ -236,14 +243,16 @@ class VAE(FeatureExtractor):
             feat_dim=2 * self.feat_dim,
             last_nonlinear=None,
             layernormalize=False,
-        )
+            device=self.device,
+        ).to(self.device)
         self.decoder_model = small_deconvnet(
             self.ob_space,
             feat_dim=self.feat_dim,
             nonlinear=torch.nn.LeakyReLU,
             ch=4 if spherical_obs else 8,
             positional_bias=True,
-        )
+            device=self.device,
+        ).to(self.device)
 
         self.param_list = [
             dict(params=self.features_model.parameters()),

@@ -173,13 +173,13 @@ class small_convnet(torch.nn.Module):
 
     def layernorm(self, x):
         """Normalize a layer."""
-        m = torch.mean(x, -1, keepdim=True).to(device)
-        v = torch.std(x, -1, keepdim=True).to(device)
+        m = torch.mean(x, -1, keepdim=True).to(self.device)
+        v = torch.std(x, -1, keepdim=True).to(self.device)
         return (x - m) / (v + 1e-8)
 
 
 class small_deconvnet(torch.nn.Module):
-    def __init__(self, ob_space, feat_dim, nonlinear, ch, positional_bias):
+    def __init__(self, ob_space, feat_dim, nonlinear, ch, positional_bias, device):
         super(small_deconvnet, self).__init__()
         self.H = ob_space.shape[0]
         self.W = ob_space.shape[1]
@@ -189,11 +189,12 @@ class small_deconvnet(torch.nn.Module):
         self.nonlinear = nonlinear
         self.ch = ch
         self.positional_bias = positional_bias
+        self.device = device
 
         self.sh = (64, 8, 8)
         self.fc = torch.nn.Sequential(
             torch.nn.Linear(feat_dim, np.prod(self.sh)), nonlinear()
-        )
+        ).to(self.device)
 
         # The last kernel_size is 7 not 8 compare to the origin implementation,
         # to make the output shape be [96, 96]
@@ -202,7 +203,7 @@ class small_deconvnet(torch.nn.Module):
             [128, 64, 8, (2, 2), (3, 3)],
             [64, ch, 7, (3, 3), (2, 2)],
         ]
-        self.deconv = torch.nn.Sequential()
+        self.deconv = torch.nn.Sequential().to(self.device)
         for i, f in enumerate(feat_list):
             self.deconv.add_module(
                 "deconv_%i" % i,
