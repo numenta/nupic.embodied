@@ -26,6 +26,7 @@ from nupic.research.frameworks.dendrites import (
     AbsoluteMaxGatingDendriticLayer,
     DendriticAbsoluteMaxGate1d,
     DendriticGate1d,
+    OneSegmentDendriticLayer
 )
 from nupic.torch.modules import KWinners
 
@@ -67,7 +68,8 @@ class MultiHeadedDendriticMLP(nn.Module):
 
         assert dendritic_layer_class in {AbsoluteMaxGatingDendriticLayer,
                                          DendriticAbsoluteMaxGate1d,
-                                         DendriticGate1d}
+                                         DendriticGate1d,
+                                         OneSegmentDendriticLayer}
 
         # The nonlinearity can either be k-Winners or ReLU, but not both
         assert not (k_winners and relu)
@@ -84,8 +86,8 @@ class MultiHeadedDendriticMLP(nn.Module):
         self.k_winners = k_winners
         self.relu = relu
 
-        self._layers = []
-        self._activations = []
+        self._layers = nn.ModuleList()
+        self._activations = nn.ModuleList()
         prev_dim = input_size
         for i in range(len(hidden_sizes)):
             curr_dend = dendritic_layer_class(
