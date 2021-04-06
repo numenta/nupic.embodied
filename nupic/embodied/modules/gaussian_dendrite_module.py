@@ -109,7 +109,7 @@ class GaussianDendriteTwoHeadedModule(GaussianBaseModule):
             dim_context=dim_context,
             hidden_sizes=hidden_sizes,
             num_segments=num_segments,
-            sparsity=sparsity,
+            weight_sparsity=sparsity,
             k_winners=k_winners,
             relu=relu,
             output_nonlinearities=(mean_nonlinearity, std_nonlinearity),

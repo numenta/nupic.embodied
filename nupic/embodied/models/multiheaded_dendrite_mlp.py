@@ -59,8 +59,8 @@ class MultiHeadedDendriticMLP(nn.Module):
                  dim_context,
                  hidden_sizes=(32, 32),
                  num_segments=(5, 5),
-                 sparsity=0.5,
-                 k_winners=False,
+                 weight_sparsity=0.5,
+                 k_winners=True,
                  relu=False,
                  k_winners_percent_on=0.1,
                  output_nonlinearities=(None, None, ),
@@ -94,8 +94,8 @@ class MultiHeadedDendriticMLP(nn.Module):
                 module=nn.Linear(prev_dim, hidden_sizes[i]),
                 num_segments=num_segments[i],
                 dim_context=dim_context,
-                module_sparsity=sparsity,
-                dendrite_sparsity=sparsity
+                module_sparsity=weight_sparsity,
+                dendrite_sparsity=weight_sparsity
             )
             if k_winners:
                 curr_activation = KWinners(n=hidden_sizes[i],
