@@ -22,8 +22,10 @@
 import copy
 
 from garage.experiment.deterministic import get_seed
-from garage.sampler import LocalSampler, FragmentWorker
+from garage.sampler import FragmentWorker, LocalSampler
 from garage.sampler.worker_factory import WorkerFactory
+
+SEED = get_seed()
 
 
 class SingleVecWorkSampler(LocalSampler):
@@ -66,13 +68,13 @@ class SingleVecWorkSampler(LocalSampler):
             worker_factory=None,
             max_episode_length=None,
             is_tf_worker=False,
-            seed=get_seed(),
+            seed=SEED,
             worker_class=FragmentWorker,
             worker_args=None):
 
         if worker_factory is None and max_episode_length is None:
-            raise TypeError('Must construct a sampler from WorkerFactory or'
-                            'parameters (at least max_episode_length)')
+            raise TypeError("Must construct a sampler from WorkerFactory or"
+                            "parameters (at least max_episode_length)")
         if isinstance(worker_factory, WorkerFactory):
             self._factory = worker_factory
         else:
@@ -109,6 +111,8 @@ class SingleVecWorkSampler(LocalSampler):
 
         """
         agent_updates = self._factory.prepare_worker_messages(agent_update)
+        # copy updates for all envs
         env_updates = [copy.deepcopy(env_update) for _ in range(self._num_envs)]
+        # update the worker's agent, and all of the worker's envs
         self._workers[0].update_agent(agent_updates[0])
         self._workers[0].update_env(env_updates)
