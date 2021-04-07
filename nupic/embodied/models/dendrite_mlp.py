@@ -38,7 +38,7 @@ class DendriticMLP(MultiHeadedDendriticMLP):
                  num_segments=(5, 5),
                  weight_sparsity=0.5,
                  k_winners=False,
-                 k_winner_percent_on=0.1,
+                 k_winners_percent_on=0.1,
                  relu=False,
                  output_nonlinearities=(None, ),
                  dendritic_layer_class=AbsoluteMaxGatingDendriticLayer):
@@ -53,7 +53,7 @@ class DendriticMLP(MultiHeadedDendriticMLP):
             weight_sparsity=weight_sparsity,
             k_winners=k_winners,
             relu=relu,
-            k_winners_percent_on=k_winner_percent_on,
+            k_winners_percent_on=k_winners_percent_on,
             output_nonlinearities=output_nonlinearities,
             dendritic_layer_class=dendritic_layer_class
         )
