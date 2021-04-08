@@ -111,19 +111,28 @@ class small_convnet(torch.nn.Module):
                 torch.nn.Conv2d(f[0], f[1], kernel_size=f[2], stride=f[3]),
             )
             # Apply nonlinear activation function
-            self.conv.add_module("nl_%i" % idx, nonlinear())
+            if nonlinear == torch.nn.LeakyReLU:
+                print("setting leaky relu slope to 0.2")  # to make it like original
+                self.conv.add_module(
+                    "nl_%i" % idx, torch.nn.LeakyReLU(negative_slope=0.2)
+                )
+            else:
+                self.conv.add_module("nl_%i" % idx, nonlinear())
             if batchnorm:
                 # Normalize batch
                 self.conv.add_module("bn_%i" % idx, torch.nn.BatchNorm2d(f[1]))
             # Calculations to get flat output dimensionality of last conv layer
             oH = (oH - f[2]) / f[3][0] + 1
             oW = (oW - f[2]) / f[3][1] + 1
+            print("H: " + str(oH) + " W: " + str(oW))
 
         assert oH == int(oH)  # whether oH is a .0 float ?
         assert oW == int(oW)
-
+        print(self.conv)
         self.flatten_dim = int(oH * oW * feat_list[-1][1])
         # Add fc layer at end for feature output
+        # TODO: Here the original implementation uses normc_initializer(1.0) from
+        # baselines.common.tf_util -> is this important? It changes feature_var on ax=2
         self.fc = torch.nn.Linear(self.flatten_dim, feat_dim).to(device)
 
         self.last_nonlinear = last_nonlinear
@@ -212,6 +221,7 @@ class small_deconvnet(torch.nn.Module):
                 ),
             )
             if i != len(feat_list) - 1:
+                # TODO: Set negative slope like in smallconvnet
                 self.deconv.add_module("nl_%i" % i, nonlinear())
 
         self.bias = (
