@@ -404,9 +404,10 @@ class PpoOptimizer(object):
                 total_loss = pg_loss + ent_loss + vf_loss + feat_loss
                 for i in range(len(dyn_partial_loss)):
                     # add the loss of each of the dynamics networks to the total loss
-                    total_loss = total_loss + dyn_partial_loss[i] / (
-                        self.nminibatches * self.nepochs
-                    )
+                    total_loss = (
+                        total_loss + dyn_partial_loss[i]
+                    )  # / len(dyn_partial_loss)
+                # / (self.nminibatches * self.nepochs)
                 # propagate the loss back through the networks
                 total_loss.backward()
                 self.optimizer.step()
@@ -434,6 +435,9 @@ class PpoOptimizer(object):
                     self.nminibatches * self.nepochs
                 )
                 to_report["feat_var"] += feat_var.cpu().data.numpy() / (
+                    self.nminibatches * self.nepochs
+                )
+                to_report["feat_var_2"] += feat_var_2.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
                 to_report["aux"] += feat_loss.cpu().data.numpy() / (
