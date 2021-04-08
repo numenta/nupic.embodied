@@ -390,7 +390,7 @@ class PpoOptimizer(object):
 
                 # Get an approximation of the kl-difference between old and new policy
                 # probabilities (mean squared difference)
-                approxkl = 0.5 * torch.mean((neglogpac - nlps) ** 2)
+                approxkl = 0.5 * torch.mean((neglogpac.squeeze() - nlps) ** 2)
                 # Get the fraction of times that the policy gradient loss was clipped
                 clipfrac = torch.mean(
                     (torch.abs(pg_losses2 - pg_loss_surr) > 1e-6).float()
