@@ -100,7 +100,7 @@ class small_convnet(torch.nn.Module):
         self.W = ob_space.shape[1]
         self.C = ob_space.shape[2]
         # Attributes of the convolutional layers
-        feat_list = [[self.C, 32, 8, (4, 4)], [32, 64, 8, (2, 2)], [64, 64, 3, (1, 1)]]
+        feat_list = [[self.C, 32, 8, (4, 4)], [32, 64, 4, (2, 2)], [64, 64, 3, (1, 1)]]
         self.conv = torch.nn.Sequential().to(device)
         oH = self.H
         oW = self.W
