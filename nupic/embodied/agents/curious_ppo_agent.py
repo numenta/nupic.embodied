@@ -331,7 +331,14 @@ class PpoOptimizer(object):
                 self.dynamics_list[0].auxiliary_task.update_features(obs, last_obs)
                 # Get the loss and variance of the feature model
                 feat_loss = torch.mean(self.dynamics_list[0].auxiliary_task.get_loss())
-                feat_var = torch.std(self.dynamics_list[0].auxiliary_task.features)
+                # Take variance over steps -> [feat_dim] vars -> average
+                # This is the average variance in a feature over time
+                feat_var = torch.mean(
+                    torch.var(self.dynamics_list[0].auxiliary_task.features, [0, 1])
+                )
+                feat_var_2 = torch.mean(
+                    torch.var(self.dynamics_list[0].auxiliary_task.features, [2])
+                )
 
                 # dyn_loss = []
                 dyn_partial_loss = []
