@@ -31,44 +31,40 @@ class Rollout(object):
     dynamics_list : [object]
         List of dynamics networks.
 
-    Attributes # TODO:
+    Attributes:
     ----------
     nsteps : int
         nsteps_per_seg * nsegs_per_env.
-    lump_stride : type
-        Description of attribute `lump_stride`.
+    lump_stride : int
+        TODO.
     reward_fun : lambda
         reward function specifying how to combine internal and external rewards.
     buf_vpreds : array
-        Description of attribute `buf_vpreds`.
+        Buffer of value estimates.
     buf_nlps : array
-        Description of attribute `buf_nlps`.
+        Buffer of negative log probabilities.
     buf_rews : array
-        Description of attribute `buf_rews`.
+        Buffer of rewards.
     buf_ext_rews : array
-        Description of attribute `buf_ext_rews`.
+        Buffer of external rewards.
     buf_acs : array
-        Description of attribute `buf_acs`.
+        Buffer of actions.
     buf_obs : array
-        Description of attribute `buf_obs`.
+        Buffer of observations.
     buf_obs_last : array
-        Description of attribute `buf_obs_last`.
+        Buffer of last observations.
     buf_news : array
-        Description of attribute `buf_news`.
+        Buffer of 'dones'.
     buf_new_last : array
-        Description of attribute `buf_new_last`.
+        Buffer of last 'dones'.
     buf_vpred_last : array
-        Description of attribute `buf_vpred_last`.
-    env_results : type
-        Description of attribute `env_results`.
-    prev_feat : type
-        Description of attribute `prev_feat`.
-    prev_acs : type
-        Description of attribute `prev_acs`.
-    int_rew : type
-        Description of attribute `int_rew`.
-    statlists : type
-        Description of attribute `statlists`.
+        Buffer of last value estimates.
+    env_results : List
+        Outputs from the environment (observations, rewards, done, info).
+    int_rew : array
+        Internal rewards.
+    statlists : dict
+        Dictionary with run statistics.
 
     """
 

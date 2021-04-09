@@ -63,6 +63,8 @@ class small_convnet(torch.nn.Module):
         Whether to normalize the last layer.
     batchnorm : bool
         Whether to normalize batches.
+    device: torch.device
+        Which device to optimize the model on.
 
     Attributes
     ----------
@@ -88,16 +90,18 @@ class small_convnet(torch.nn.Module):
         feat_dim,
         last_nonlinear,
         layernormalize,
+        device,
         batchnorm=False,
     ):
         super(small_convnet, self).__init__()
+        self.device = device
         # Get the input shape
         self.H = ob_space.shape[0]
         self.W = ob_space.shape[1]
         self.C = ob_space.shape[2]
         # Attributes of the convolutional layers
-        feat_list = [[self.C, 32, 8, (4, 4)], [32, 64, 8, (2, 2)], [64, 64, 3, (1, 1)]]
-        self.conv = torch.nn.Sequential()
+        feat_list = [[self.C, 32, 8, (4, 4)], [32, 64, 4, (2, 2)], [64, 64, 3, (1, 1)]]
+        self.conv = torch.nn.Sequential().to(device)
         oH = self.H
         oW = self.W
         for idx, f in enumerate(feat_list):
@@ -107,19 +111,29 @@ class small_convnet(torch.nn.Module):
                 torch.nn.Conv2d(f[0], f[1], kernel_size=f[2], stride=f[3]),
             )
             # Apply nonlinear activation function
-            self.conv.add_module("nl_%i" % idx, nonlinear())
+            if nonlinear == torch.nn.LeakyReLU:
+                print("setting leaky relu slope to 0.2")  # to make it like original
+                self.conv.add_module(
+                    "nl_%i" % idx, torch.nn.LeakyReLU(negative_slope=0.2)
+                )
+            else:
+                self.conv.add_module("nl_%i" % idx, nonlinear())
             if batchnorm:
                 # Normalize batch
                 self.conv.add_module("bn_%i" % idx, torch.nn.BatchNorm2d(f[1]))
             # Calculations to get flat output dimensionality of last conv layer
             oH = (oH - f[2]) / f[3][0] + 1
             oW = (oW - f[2]) / f[3][1] + 1
+            print("H: " + str(oH) + " W: " + str(oW))
 
         assert oH == int(oH)  # whether oH is a .0 float ?
         assert oW == int(oW)
+        print(self.conv)
         self.flatten_dim = int(oH * oW * feat_list[-1][1])
         # Add fc layer at end for feature output
-        self.fc = torch.nn.Linear(self.flatten_dim, feat_dim)
+        # TODO: Here the original implementation uses normc_initializer(1.0) from
+        # baselines.common.tf_util -> is this important? It changes feature_var on ax=2
+        self.fc = torch.nn.Linear(self.flatten_dim, feat_dim).to(device)
 
         self.last_nonlinear = last_nonlinear
         self.layernormalize = layernormalize
@@ -152,7 +166,8 @@ class small_convnet(torch.nn.Module):
         # run x through the convolutional layers
         x = self.conv(x)
         # Get flattened version of conv output
-        x = x.view(
+        # TODO: check that contiguous.view actually does what its supposed to
+        x = x.contiguous().view(
             -1, self.flatten_dim
         )  # dims is calculated manually, 84*84 -> 20*20 -> 9*9 ->7*7
         # run through fully connected layer
@@ -167,13 +182,13 @@ class small_convnet(torch.nn.Module):
 
     def layernorm(self, x):
         """Normalize a layer."""
-        m = torch.mean(x, -1, keepdim=True)
-        v = torch.std(x, -1, keepdim=True)
+        m = torch.mean(x, -1, keepdim=True).to(self.device)
+        v = torch.std(x, -1, keepdim=True).to(self.device)
         return (x - m) / (v + 1e-8)
 
 
 class small_deconvnet(torch.nn.Module):
-    def __init__(self, ob_space, feat_dim, nonlinear, ch, positional_bias):
+    def __init__(self, ob_space, feat_dim, nonlinear, ch, positional_bias, device):
         super(small_deconvnet, self).__init__()
         self.H = ob_space.shape[0]
         self.W = ob_space.shape[1]
@@ -183,11 +198,12 @@ class small_deconvnet(torch.nn.Module):
         self.nonlinear = nonlinear
         self.ch = ch
         self.positional_bias = positional_bias
+        self.device = device
 
         self.sh = (64, 8, 8)
         self.fc = torch.nn.Sequential(
             torch.nn.Linear(feat_dim, np.prod(self.sh)), nonlinear()
-        )
+        ).to(self.device)
 
         # The last kernel_size is 7 not 8 compare to the origin implementation,
         # to make the output shape be [96, 96]
@@ -196,7 +212,7 @@ class small_deconvnet(torch.nn.Module):
             [128, 64, 8, (2, 2), (3, 3)],
             [64, ch, 7, (3, 3), (2, 2)],
         ]
-        self.deconv = torch.nn.Sequential()
+        self.deconv = torch.nn.Sequential().to(self.device)
         for i, f in enumerate(feat_list):
             self.deconv.add_module(
                 "deconv_%i" % i,
@@ -205,6 +221,7 @@ class small_deconvnet(torch.nn.Module):
                 ),
             )
             if i != len(feat_list) - 1:
+                # TODO: Set negative slope like in smallconvnet
                 self.deconv.add_module("nl_%i" % i, nonlinear())
 
         self.bias = (

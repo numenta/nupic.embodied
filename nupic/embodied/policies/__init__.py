@@ -19,3 +19,5 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
+from .tanh_gaussian_dendrite_policy import TanhGaussianDendriticPolicy
+from .tanh_gaussian_sparse_mlp_policy import TanhGaussianSparseMLPPolicy

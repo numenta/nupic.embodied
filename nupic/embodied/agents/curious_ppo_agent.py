@@ -12,6 +12,8 @@ from nupic.embodied.utils.utils import (
 )
 from nupic.embodied.envs.vec_env import ShmemVecEnv as VecEnv
 
+from collections import Counter
+
 
 class PpoOptimizer(object):
     """PPO optimizer used for learning from the rewards.
@@ -20,6 +22,8 @@ class PpoOptimizer(object):
     ----------
     scope : str
         Scope name.
+    device: torch.device
+        Which device to optimize the model on.
     ob_space : Space
         Observation space properties (from env.observation_space).
     ac_space : Space
@@ -77,6 +81,7 @@ class PpoOptimizer(object):
         self,
         *,
         scope,
+        device,
         ob_space,
         ac_space,
         stochpol,
@@ -101,6 +106,7 @@ class PpoOptimizer(object):
         self.dynamics_list = dynamics_list
         self.n_updates = 0
         self.scope = scope
+        self.device = device
         self.ob_space = ob_space
         self.ac_space = ac_space
         self.stochpol = stochpol
@@ -127,7 +133,7 @@ class PpoOptimizer(object):
         Parameters
         ----------
         env_fns : [envs]
-            List of environments, optionally with wrappers etc.
+            List of environments (functions), optionally with wrappers etc.
         dynamics_list : [Dynamics]
             List of dynamics models.
         nlump : int
@@ -135,14 +141,17 @@ class PpoOptimizer(object):
 
         """
         # Specify parameters that should be optimized
-        param_list = (
-            self.stochpol.param_list + self.dynamics_list[0].auxiliary_task.param_list
-        )
+        # auxiliary task params is the same for all dynamic models
+        param_list = [
+            *self.stochpol.param_list,
+            *self.dynamics_list[0].auxiliary_task.param_list
+        ]
         for dynamic in self.dynamics_list:
-            param_list = param_list + dynamic.param_list
+            param_list.extend(dynamic.param_list)
 
         # Initialize the optimizer
         self.optimizer = torch.optim.Adam(param_list, lr=self.lr)
+
         # Set gradients to zero
         self.optimizer.zero_grad()
 
@@ -174,11 +183,12 @@ class PpoOptimizer(object):
             dynamics_list=dynamics_list,
         )
 
-        # Initialize buffers for advantages and returns of each rollout
+        # Initialize replay buffers for advantages and returns of each rollout
+        # TODO: standardize to torch
         self.buf_advs = np.zeros((nenvs, self.rollout.nsteps), np.float32)
         self.buf_rets = np.zeros((nenvs, self.rollout.nsteps), np.float32)
 
-        if self.normrew:
+        if self.normrew:  # if normalize reward, defaults to True
             # Sum up and discount rewards
             self.rff = RewardForwardFilter(self.gamma)
             # Initialize running mean and std tracker
@@ -254,7 +264,9 @@ class PpoOptimizer(object):
         if self.normrew:
             # Normalize the rewards using the running mean and std
             rffs = np.array([self.rff.update(rew) for rew in self.rollout.buf_rews.T])
+            # rewards_mean, rewards_std, rewards_count
             rffs_mean, rffs_std, rffs_count = mpi_moments(rffs.ravel())
+            # reward forward filter running mean std
             self.rff_rms.update_from_moments(rffs_mean, rffs_std ** 2, rffs_count)
             rews = self.rollout.buf_rews / np.sqrt(self.rff_rms.var)
         else:
@@ -282,19 +294,9 @@ class PpoOptimizer(object):
         if self.rollout.best_ext_ret is not None:
             info["best_ext_return"] = self.rollout.best_ext_ret
 
-        to_report = {
-            "total_loss": 0.0,
-            "policy_gradient_loss": 0.0,
-            "value_loss": 0.0,
-            "entropy_loss": 0.0,
-            "approxkl": 0.0,
-            "clipfrac": 0.0,
-            "aux": 0.0,
-            "dyn_loss": 0.0,
-            "feat_var": 0.0,
-        }
+        to_report = Counter()
 
-        if self.normadv:
+        if self.normadv:  # defaults to True
             # normalize advantages
             m, s = get_mean_and_std(self.buf_advs)
             self.buf_advs = (self.buf_advs - m) / (s + 1e-7)
@@ -308,11 +310,11 @@ class PpoOptimizer(object):
             np.random.shuffle(envinds)
             for start in range(0, self.nenvs * self.nsegs_per_env, envsperbatch):
                 end = start + envsperbatch
-                mbenvinds = envinds[start:end]
+                mbenvinds = envinds[start:end]  # minibatch environment indexes
                 # Get rollout experiences for current minibatch
                 acs = self.rollout.buf_acs[mbenvinds]
                 rews = self.rollout.buf_rews[mbenvinds]
-                nlps = self.rollout.buf_nlps[mbenvinds]
+                nlps = self.rollout.buf_nlps[mbenvinds]  # negative log probabilities (action probabilities from pi)
                 obs = self.rollout.buf_obs[mbenvinds]
                 rets = self.buf_rets[mbenvinds]
                 advs = self.buf_advs[mbenvinds]
@@ -324,10 +326,18 @@ class PpoOptimizer(object):
                 # Update features of the auxiliary network to minibatch obs and acs
                 # Using first element in dynamics list is sufficient bc all dynamics
                 # models have the same auxiliary task model and features
+                # TODO: should the feature model be independent of dynamics?
                 self.dynamics_list[0].auxiliary_task.update_features(obs, last_obs)
                 # Get the loss and variance of the feature model
                 feat_loss = torch.mean(self.dynamics_list[0].auxiliary_task.get_loss())
-                feat_var = torch.std(self.dynamics_list[0].auxiliary_task.features)
+                # Take variance over steps -> [feat_dim] vars -> average
+                # This is the average variance in a feature over time
+                feat_var = torch.mean(
+                    torch.var(self.dynamics_list[0].auxiliary_task.features, [0, 1])
+                )
+                feat_var_2 = torch.mean(
+                    torch.var(self.dynamics_list[0].auxiliary_task.features, [2])
+                )
 
                 # dyn_loss = []
                 dyn_partial_loss = []
@@ -345,22 +355,28 @@ class PpoOptimizer(object):
                     dyn_partial_loss.append(torch.mean(dynamic.get_loss_partial()))
 
                 # Reshape actions and put in tensor
-                acs = torch.tensor(flatten_dims(acs, len(self.ac_space.shape)))
-                # Get the negagtive log probs of the actions under the policy
+                acs = torch.tensor(flatten_dims(acs, len(self.ac_space.shape))).to(
+                    self.device
+                )
+                # Get the negative log probs of the actions under the policy
                 neglogpac = self.stochpol.pd.neglogp(acs)
                 # Get the entropy of the current policy
                 entropy = torch.mean(self.stochpol.pd.entropy())
                 # Get the value estimate of the policies value head
                 vpred = self.stochpol.vpred
                 # Calculate the msq difference between value estimate and return
-                vf_loss = 0.5 * torch.mean((vpred.squeeze() - torch.tensor(rets)) ** 2)
+                vf_loss = 0.5 * torch.mean(
+                    (vpred.squeeze() - torch.tensor(rets).to(self.device)) ** 2
+                )
                 # Put old nlps from buffer into tensor
-                nlps = torch.tensor(flatten_dims(nlps, 0))
+                nlps = torch.tensor(flatten_dims(nlps, 0)).to(self.device)
                 # Calculate exp difference between old nlp and neglogpac
+                # nlps: negative log probability of the action (old)
+                # neglogpac: negative log probability of the action (new)
                 ratio = torch.exp(nlps - neglogpac.squeeze())
                 # Put advantages and negative advs into tensors
                 advs = flatten_dims(advs, 0)
-                negadv = torch.tensor(-advs)
+                negadv = torch.tensor(-advs).to(self.device)
                 # Calculate policy gradient loss. Once multiplied with original ratio
                 # between old and new policy probs (1 if identical) and once with
                 # clipped ratio.
@@ -375,7 +391,7 @@ class PpoOptimizer(object):
 
                 # Get an approximation of the kl-difference between old and new policy
                 # probabilities (mean squared difference)
-                approxkl = 0.5 * torch.mean((neglogpac - nlps) ** 2)
+                approxkl = 0.5 * torch.mean((neglogpac.squeeze() - nlps) ** 2)
                 # Get the fraction of times that the policy gradient loss was clipped
                 clipfrac = torch.mean(
                     (torch.abs(pg_losses2 - pg_loss_surr) > 1e-6).float()
@@ -389,9 +405,7 @@ class PpoOptimizer(object):
                 total_loss = pg_loss + ent_loss + vf_loss + feat_loss
                 for i in range(len(dyn_partial_loss)):
                     # add the loss of each of the dynamics networks to the total loss
-                    total_loss = total_loss + dyn_partial_loss[i] / (
-                        self.nminibatches * self.nepochs
-                    )
+                    total_loss = total_loss + dyn_partial_loss[i]
                 # propagate the loss back through the networks
                 total_loss.backward()
                 self.optimizer.step()
@@ -400,32 +414,35 @@ class PpoOptimizer(object):
 
                 # Log statistics (divide by nminibatchs * nepochs because we add the
                 # loss in these two loops.)
-                to_report["total_loss"] += total_loss.data.numpy() / (
+                to_report["total_loss"] += total_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["policy_gradient_loss"] += pg_loss.data.numpy() / (
+                to_report["policy_gradient_loss"] += pg_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["value_loss"] += vf_loss.data.numpy() / (
+                to_report["value_loss"] += vf_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["entropy_loss"] += ent_loss.data.numpy() / (
+                to_report["entropy_loss"] += ent_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["approxkl"] += approxkl.data.numpy() / (
+                to_report["approxkl"] += approxkl.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["clipfrac"] += clipfrac.data.numpy() / (
+                to_report["clipfrac"] += clipfrac.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["feat_var"] += feat_var.data.numpy() / (
+                to_report["feat_var"] += feat_var.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["aux"] += feat_loss.data.numpy() / (
+                to_report["feat_var_2"] += feat_var_2.cpu().data.numpy() / (
+                    self.nminibatches * self.nepochs
+                )
+                to_report["aux"] += feat_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
                 to_report["dyn_loss"] += np.sum(
-                    [e.data.numpy() for e in dyn_partial_loss]
+                    [e.cpu().data.numpy() for e in dyn_partial_loss]
                 ) / (self.nminibatches * self.nepochs)
 
         info.update(to_report)

@@ -6,7 +6,7 @@ import torch
 import numpy as np
 import gym
 import os
-from real_robots.envs import REALRobotEnv
+
 from baselines.common.atari_wrappers import NoopResetEnv, FrameStack
 from baselines.bench import Monitor
 import wandb
@@ -38,25 +38,28 @@ class Trainer(object):
     def __init__(
         self,
         make_env,
-        hyperparamter,
+        hyperparameter,
         num_timesteps,
         envs_per_process,
         num_dyna,
         var_output,
+        device,
     ):
         self.make_env = make_env
-        self.hyperparamter = hyperparamter
+        self.hyperparameter = hyperparameter
         self.envs_per_process = envs_per_process
         self.num_timesteps = num_timesteps
+        self.device = device
         self._set_env_vars()
 
         # Initialize the PPO policy for action selection
         self.policy = CnnPolicy(
             scope="policy",
+            device=self.device,
             ob_space=self.ob_space,
             ac_space=self.ac_space,
-            feat_dim=self.hyperparamter["feature_dim"],
-            hid_dim=self.hyperparamter["policy_hidden_dim"],
+            feat_dim=self.hyperparameter["feature_dim"],
+            hid_dim=self.hyperparameter["policy_hidden_dim"],
             ob_mean=self.ob_mean,
             ob_std=self.ob_std,
             layernormalize=False,
@@ -75,19 +78,20 @@ class Trainer(object):
                 decoder. Additionally a scaling factor is applied..
         vaenonsph: Same as vaesph but without the scaling factor.
         """
-        self.feature_extractor = {
+        self.feature_extractor_class = {
             "none": FeatureExtractor,
             "idf": InverseDynamics,
             "vaesph": partial(VAE, spherical_obs=True),
             "vaenonsph": partial(VAE, spherical_obs=False),
-        }[hyperparamter["feat_learning"]]
+        }[hyperparameter["feat_learning"]]
 
         # Initialize the feature extractor
-        self.feature_extractor = self.feature_extractor(
+        self.feature_extractor = self.feature_extractor_class(
             policy=self.policy,
             features_shared_with_policy=False,
-            feat_dim=hyperparamter["feature_dim"],
-            layernormalize=hyperparamter["layernorm"],
+            device=self.device,
+            feat_dim=hyperparameter["feature_dim"],
+            layernormalize=hyperparameter["layernorm"],
         )
 
         self.dynamics_class = Dynamics
@@ -98,8 +102,10 @@ class Trainer(object):
             self.dynamics_list.append(
                 self.dynamics_class(
                     auxiliary_task=self.feature_extractor,
-                    feat_dim=hyperparamter["feature_dim"],
+                    feat_dim=hyperparameter["feature_dim"],
+                    device=self.device,
                     scope="dynamics_{}".format(i),
+                    # whether to use the variance or the prediction error for the reward
                     var_output=var_output,
                 )
             )
@@ -107,25 +113,26 @@ class Trainer(object):
         # Initialize the agent.
         self.agent = PpoOptimizer(
             scope="ppo",
+            device=self.device,
             ob_space=self.ob_space,
             ac_space=self.ac_space,
-            stochpol=self.policy,
-            use_news=hyperparamter["use_news"],
-            gamma=hyperparamter["gamma"],
-            lam=hyperparamter["lambda"],
-            nepochs=hyperparamter["nepochs"],
-            nminibatches=hyperparamter["nminibatches"],
-            lr=hyperparamter["lr"],
-            cliprange=0.1,
-            nsteps_per_seg=hyperparamter["nsteps_per_seg"],
-            nsegs_per_env=hyperparamter["nsegs_per_env"],
-            ent_coef=hyperparamter["ent_coeff"],
-            normrew=hyperparamter["norm_rew"],
-            normadv=hyperparamter["norm_adv"],
-            ext_coeff=hyperparamter["ext_coeff"],
-            int_coeff=hyperparamter["int_coeff"],
-            expName=hyperparamter["exp_name"],
-            vLogFreq=hyperparamter["video_log_freq"],
+            stochpol=self.policy,  # change to policy
+            use_news=hyperparameter["use_news"],  # don't use the done information
+            gamma=hyperparameter["gamma"],  # discount factor
+            lam=hyperparameter["lambda"],   # discount factor for advantage
+            nepochs=hyperparameter["nepochs"],
+            nminibatches=hyperparameter["nminibatches"],
+            lr=hyperparameter["lr"],
+            cliprange=0.1,  # clipping policy gradient
+            nsteps_per_seg=hyperparameter["nsteps_per_seg"],  # number of steps in each environment before taking a learning step
+            nsegs_per_env=hyperparameter["nsegs_per_env"],  # how often to repeat before doing an update, 1
+            ent_coef=hyperparameter["ent_coeff"],  # entropy
+            normrew=hyperparameter["norm_rew"],  # whether to normalize reward
+            normadv=hyperparameter["norm_adv"],  # whether to normalize advantage
+            ext_coeff=hyperparameter["ext_coeff"],  # weight of the environment reward
+            int_coeff=hyperparameter["int_coeff"],  # weight of the disagreement reward
+            expName=hyperparameter["exp_name"],
+            vLogFreq=hyperparameter["video_log_freq"],  # not used yet
             dynamics_list=self.dynamics_list,
         )
 
@@ -145,15 +152,15 @@ class Trainer(object):
 
         try:
             self.ob_mean = np.load(
-                "./statistics/" + self.hyperparamter["env"] + "/ob_mean.npy"
+                "./statistics/" + self.hyperparameter["env"] + "/ob_mean.npy"
             )
             self.ob_std = np.load(
-                "./statistics/" + self.hyperparamter["env"] + "/ob_std.npy"
+                "./statistics/" + self.hyperparameter["env"] + "/ob_std.npy"
             )
             print("loaded environment statistics")
         except FileNotFoundError:
             print("No statistics file found. Creating new one.")
-            path_name = "./statistics/" + self.hyperparamter["env"] + "/"
+            path_name = "./statistics/" + self.hyperparameter["env"] + "/"
             os.makedirs(os.path.dirname(path_name))
             self.ob_mean, self.ob_std = random_agent_ob_mean_std(env, nsteps=10000)
             np.save(
@@ -185,7 +192,7 @@ class Trainer(object):
         print("Start interaction.")
         self.agent.start_interaction(
             self.envs,
-            nlump=self.hyperparamter["nlumps"],
+            nlump=self.hyperparameter["nlumps"],
             dynamics_list=self.dynamics_list,
         )
         print("# of timesteps: " + str(self.num_timesteps))
@@ -241,6 +248,7 @@ def make_env_all_params(rank, args):
     elif args["env_kind"] == "retro_multi":
         env = make_multi_pong()
     elif args["env_kind"] == "roboarm":
+        from real_robots.envs import REALRobotEnv
         env = REALRobotEnv(objects=3, action_type="cartesian")
         env = CartesianControlDiscrete(
             env,
@@ -353,13 +361,24 @@ if __name__ == "__main__":
 
     print("Initializing Trainer.")
 
+    if torch.cuda.is_available():
+        print("GPU detected")
+        dev_name = "cuda:0"
+        torch.set_default_tensor_type("torch.cuda.FloatTensor")
+    else:
+        print("no GPU detected, using CPU instead.")
+        dev_name = "cpu"
+    device = torch.device(dev_name)
+    print("device: " + str(device))
+
     trainer = Trainer(
         make_env=make_env,
         num_timesteps=args.num_timesteps,
-        hyperparamter=args.__dict__,
+        hyperparameter=args.__dict__,
         envs_per_process=args.envs_per_process,
         num_dyna=args.num_dynamics,
         var_output=args.no_var_output,
+        device=device,
     )
 
     # TODO: Add pytorch model loading if args["load"].

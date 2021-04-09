@@ -19,3 +19,13 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
+from garage.torch.algos.mtsac import MTSAC
+from nupic.embodied.algos.sparse_weights_sac import SparseWeightsSAC
+
+
+class SparseWeightsMTSAC(MTSAC, SparseWeightsSAC):
+    def _evaluate_policy(self, epoch):
+        self.policy.eval()
+        result = super(SparseWeightsMTSAC, self)._evaluate_policy(epoch=epoch)
+        self.policy.train()
+        return result
