@@ -124,8 +124,10 @@ class FeatureExtractor(object):
             last_features = self.policy.get_features(last_obs)
         else:
             # Get features corresponding with the observation from the feature network
-            self.features = self.get_features(obs)
-            last_features = self.get_features(last_obs)
+            self.features = self.get_features(
+                obs
+            )  # shape=[1, nsteps_per_seg, feat_dim]
+            last_features = self.get_features(last_obs)  # shape=[1, 1, feat_dim]
         # concatenate the last and current features
         self.next_features = torch.cat([self.features[:, 1:], last_features], 1)
 
@@ -148,11 +150,11 @@ class FeatureExtractor(object):
         """
         has_timesteps = len(obs.shape) == 5
         if has_timesteps:
-            sh = obs.shape
-            obs = flatten_dims(obs, len(self.ob_space.shape))
+            sh = obs.shape  # shape=[1, nsteps, H, W, C]
+            obs = flatten_dims(obs, len(self.ob_space.shape))  # shape=[nsteps, H, W, C]
         # Normalize observations
         obs = (obs - self.ob_mean) / self.ob_std
-        # Reshape observations
+        # Reshape observations, shape=[nsteps, C, H, W]
         obs = np.transpose(obs, [i for i in range(len(obs.shape) - 3)] + [-1, -3, -2])
         # Get features from the features_model
         act = self.features_model(torch.tensor(obs).to(self.device))
@@ -221,7 +223,7 @@ class InverseDynamics(FeatureExtractor):
             feat_dim=feat_dim,
             layernormalize=layernormalize,
         )
-        """Fully connected layer taking the extracted features for teh current state and
+        """Fully connected layer taking the extracted features for the current state and
         the next state as input (model specified in FeatureExtractor), applying relu for
         the hidden activations, followed by another fc layer outputting the predicted
         action."""
