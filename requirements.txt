@@ -19,11 +19,16 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
+# Install nupic.torch and nupic.tensorflow directly from github master branch
+# nupic.torch @ git+https://github.com/numenta/nupic.torch.git
+nupic.research @ git+https://github.com/numenta/nupic.research.git
 
 awscli
 boto3
+gym
 jupyter
 matplotlib
+mujoco-py<2.1,>=2.0
 numpy
 pandas
 python-dateutil
@@ -35,8 +40,8 @@ scikit-learn
 seaborn
 sigopt
 tabulate
-torch
-torchvision
+torch==1.6
+torchvision==0.7.0
 tqdm
 h5py
 pretrainedmodels
@@ -57,3 +62,11 @@ stable_baselines3
 # required for CircleCI validation
 colorama==0.4.3
 urllib3==1.25.11
+
+git+https://github.com/rlworkgroup/metaworld.git@master#egg=metaworld
+-e git+https://github.com/rlworkgroup/garage.git@5cf758d90a4bfa1bb6905b1e92e1ce849eddf22c#egg=garage
+
+# added by exploring arm project
+real-robots==0.1.21
+# stable_baselines3
+stable-baselines3
