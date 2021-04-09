@@ -331,7 +331,14 @@ class PpoOptimizer(object):
                 self.dynamics_list[0].auxiliary_task.update_features(obs, last_obs)
                 # Get the loss and variance of the feature model
                 feat_loss = torch.mean(self.dynamics_list[0].auxiliary_task.get_loss())
-                feat_var = torch.std(self.dynamics_list[0].auxiliary_task.features)
+                # Take variance over steps -> [feat_dim] vars -> average
+                # This is the average variance in a feature over time
+                feat_var = torch.mean(
+                    torch.var(self.dynamics_list[0].auxiliary_task.features, [0, 1])
+                )
+                feat_var_2 = torch.mean(
+                    torch.var(self.dynamics_list[0].auxiliary_task.features, [2])
+                )
 
                 # dyn_loss = []
                 dyn_partial_loss = []
@@ -383,7 +390,7 @@ class PpoOptimizer(object):
 
                 # Get an approximation of the kl-difference between old and new policy
                 # probabilities (mean squared difference)
-                approxkl = 0.5 * torch.mean((neglogpac - nlps) ** 2)
+                approxkl = 0.5 * torch.mean((neglogpac.squeeze() - nlps) ** 2)
                 # Get the fraction of times that the policy gradient loss was clipped
                 clipfrac = torch.mean(
                     (torch.abs(pg_losses2 - pg_loss_surr) > 1e-6).float()
@@ -397,9 +404,10 @@ class PpoOptimizer(object):
                 total_loss = pg_loss + ent_loss + vf_loss + feat_loss
                 for i in range(len(dyn_partial_loss)):
                     # add the loss of each of the dynamics networks to the total loss
-                    total_loss = total_loss + dyn_partial_loss[i] / (
-                        self.nminibatches * self.nepochs
-                    )
+                    total_loss = (
+                        total_loss + dyn_partial_loss[i]
+                    )  # / len(dyn_partial_loss)
+                # / (self.nminibatches * self.nepochs)
                 # propagate the loss back through the networks
                 total_loss.backward()
                 self.optimizer.step()
@@ -427,6 +435,9 @@ class PpoOptimizer(object):
                     self.nminibatches * self.nepochs
                 )
                 to_report["feat_var"] += feat_var.cpu().data.numpy() / (
+                    self.nminibatches * self.nepochs
+                )
+                to_report["feat_var_2"] += feat_var_2.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
                 to_report["aux"] += feat_loss.cpu().data.numpy() / (

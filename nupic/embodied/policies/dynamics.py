@@ -273,7 +273,7 @@ class dynamics_net(torch.nn.Module):
         out_feat_dim,
         hid_dim,
         device,
-        activation=torch.nn.LeakyReLU,
+        activation=torch.nn.LeakyReLU(negative_slope=0.2),
     ):
         super(dynamics_net, self).__init__()
         self.nblocks = nblocks
@@ -287,7 +287,7 @@ class dynamics_net(torch.nn.Module):
         # hid_dim activations
         model_list = [
             torch.nn.Linear(feat_dim + ac_dim, hid_dim).to(self.device),
-            activation(),
+            activation,
         ]
         # n residual blocks with two linear layers each, the first layer uses a non-
         # linear activation function.
@@ -295,7 +295,7 @@ class dynamics_net(torch.nn.Module):
             model_list.append(
                 torch.nn.Linear(hid_dim + ac_dim, hid_dim).to(self.device)
             )
-            model_list.append(activation())
+            model_list.append(activation)
             model_list.append(
                 torch.nn.Linear(hid_dim + ac_dim, hid_dim).to(self.device)
             )
@@ -332,24 +332,81 @@ class dynamics_net(torch.nn.Module):
         """
         idx = 0
         # concatenate state features with actions
+        """print("-----vars in dynamics model-------")
+        print(
+            "features: "
+            + str(features[0, :5])
+            + "var:"
+            + str(torch.var(features))
+            + " shape: "
+            + str(features.shape)
+        )"""
         x = torch.cat((features, ac), dim=-1)  # shape=[nsteps_per_seg, feat_dim +n_act]
+        """print(
+            "features + actions: "
+            + str(x[0, :5])
+            + "var:"
+            + str(torch.var(x))
+            + " shape: "
+            + str(x.shape)
+        )"""
         for _ in range(2):
             x = self.model_list[idx](x).to(
                 x.device
             )  # shape = [nsteps_per_seg, hid_dim]
+            """print(
+                str(idx)
+                + ". layer: "
+                + str(x[0, :5])
+                + "var:"
+                + str(torch.var(x))
+                + " shape: "
+                + str(x.shape)
+            )"""
             idx += 1
         for _ in range(self.nblocks):
+            # print("---")
             x0 = x
             for _ in range(3):
                 if isinstance(self.model_list[idx], torch.nn.Linear):
                     # shape = [nsteps_per_seg, feat_dim + n_act]
                     x = torch.cat((x, ac), dim=-1)
+                    """print(
+                        str(idx)
+                        + ". layer (concat): "
+                        + str(x[0, :5])
+                        + "var:"
+                        + str(torch.var(x))
+                        + " shape: "
+                        + str(x.shape)
+                    )"""
                 # shape = [nsteps_per_seg, hid_dim]
                 x = self.model_list[idx](x)
+                """print(
+                    str(idx)
+                    + ". layer: "
+                    + str(x[0, :5])
+                    + "var:"
+                    + str(torch.var(x))
+                    + " shape: "
+                    + str(x.shape)
+                )"""
                 idx += 1
             x = x + x0  # shape = [nsteps_per_seg, hid_dim]
+            """print(
+                str(idx)
+                + ". layer: "
+                + str(x[0, :5])
+                + "var:"
+                + str(torch.var(x))
+                + " shape: "
+                + str(x.shape)
+            )"""
+        # print("residual blocks done")
         x = torch.cat((x, ac), dim=-1)  # shape = [nsteps_per_seg, feat_dim + n_act]
+        # print(str(idx) + ". layer: " + str(torch.var(x)) + " shape: " + str(x.shape))
         x = self.model_list[idx](x)  # shape = [nsteps_per_seg, out_feat_dim]
+        # print(str(idx) + ". layer: " + str(torch.var(x)) + " shape: " + str(x.shape))
         assert idx == len(self.model_list) - 1
         assert x.shape[-1] == self.out_feat_dim
         return x
