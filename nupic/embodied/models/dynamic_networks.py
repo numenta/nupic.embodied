@@ -74,8 +74,8 @@ class DynamicsNet(nn.Module):
     :param nblocks: Number of residual blocks in the dynamics network.
     :param feature_dim: Number of features from the feature network.
     :param ac_dim: Action dimensionality.
-    :param out_feature_dim: Number of features from the feature network for the next state
-                        (usually same).
+    :param out_feature_dim: Number of features from the feature network for the next
+                    state (usually same).
     :param hidden_dim: Number of neurons in the hidden layers.
     :param activation_fn: Activation function factory.
     """

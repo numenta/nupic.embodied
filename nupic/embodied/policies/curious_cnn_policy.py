@@ -1,3 +1,25 @@
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
+
 # from https://github.com/qqadssp/Pytorch-Large-Scale-Curiosity/
 
 import numpy as np
@@ -123,7 +145,7 @@ class CnnPolicy(object):
             *self.features_model.parameters(),
             *self.pd_hidden.parameters(),  # pd: policy (pi)
             *self.pd_head.parameters(),  #
-            *self.vf_head.parameters()  # value function head
+            *self.vf_head.parameters(),  # value function head
         ]
 
         self.flat_features = None
@@ -162,7 +184,9 @@ class CnnPolicy(object):
         vpred = self.vf_head(hidden)
         # Set global class variables
         self.vpred = unflatten_first_dim(vpred, sh)  # [nenvs, n_steps_per_seg, v]
-        self.pd = self.ac_pdtype.pdfromflat(pdparam)   #pd: probability density   # use to calculate entropy and get KL-div
+        self.pd = self.ac_pdtype.pdfromflat(
+            pdparam
+        )  # pd: probability density   # use to calculate entropy and get KL-div
         self.ac = ac
         self.ob = ob
 

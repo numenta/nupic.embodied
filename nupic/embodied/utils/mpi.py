@@ -1,5 +1,8 @@
 import numpy as np
 
+# could also consider importing from other library like
+# https://github.com/openai/baselines/blob/master/baselines/common/mpi_moments.py
+
 
 def mpi_mean(x, axis=0, comm=None, keepdims=False):
     x = np.asarray(x)
