@@ -278,21 +278,20 @@ class PpoOptimizer(object):
         )
 
         # Initialize and update the info dict for logging
-        info = dict(
-            advantage_mean=self.buf_advs.mean(),
-            advantage_std=self.buf_advs.std(),
-            return_mean=self.buf_rets.mean(),
-            return_std=self.buf_rets.std(),
-            value_est_mean=self.rollout.buf_vpreds.mean(),
-            value_est_std=self.rollout.buf_vpreds.std(),
-            explained_variance=explained_variance(
-                self.rollout.buf_vpreds.ravel(), self.buf_rets.ravel()
-            ),
-            reward_mean=np.mean(self.rollout.buf_rews),
-            recent_best_ext_ret=self.rollout.current_max,
+        info = dict()
+        info["ppo/advantage_mean"] = self.buf_advs.mean()
+        info["ppo/advantage_std"] = self.buf_advs.std()
+        info["ppo/return_mean"] = self.buf_rets.mean()
+        info["ppo/return_std"] = self.buf_rets.std()
+        info["ppo/value_est_mean"] = self.rollout.buf_vpreds.mean()
+        info["ppo/value_est_std"] = self.rollout.buf_vpreds.std()
+        info["ppo/explained_variance"] = explained_variance(
+            self.rollout.buf_vpreds.ravel(), self.buf_rets.ravel()
         )
+        info["ppo/reward_mean"] = np.mean(self.rollout.buf_rews)
+
         if self.rollout.best_ext_ret is not None:
-            info["best_ext_return"] = self.rollout.best_ext_ret
+            info["performance/best_ext_return"] = self.rollout.best_ext_ret
 
         to_report = Counter()
 
@@ -414,40 +413,40 @@ class PpoOptimizer(object):
 
                 # Log statistics (divide by nminibatchs * nepochs because we add the
                 # loss in these two loops.)
-                to_report["total_loss"] += total_loss.cpu().data.numpy() / (
+                to_report["loss/total_loss"] += total_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["policy_gradient_loss"] += pg_loss.cpu().data.numpy() / (
+                to_report["loss/policy_gradient_loss"] += pg_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["value_loss"] += vf_loss.cpu().data.numpy() / (
+                to_report["loss/value_loss"] += vf_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["entropy_loss"] += ent_loss.cpu().data.numpy() / (
+                to_report["loss/entropy_loss"] += ent_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["approxkl"] += approxkl.cpu().data.numpy() / (
+                to_report["ppo/approx_kl_divergence"] += approxkl.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["clipfrac"] += clipfrac.cpu().data.numpy() / (
+                to_report["ppo/clipfraction"] += clipfrac.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["feat_var"] += feat_var.cpu().data.numpy() / (
+                to_report["phi/feat_var_ax01"] += feat_var.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["feat_var_2"] += feat_var_2.cpu().data.numpy() / (
+                to_report["phi/feat_var_ax2"] += feat_var_2.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["aux"] += feat_loss.cpu().data.numpy() / (
+                to_report["loss/auxiliary_task"] += feat_loss.cpu().data.numpy() / (
                     self.nminibatches * self.nepochs
                 )
-                to_report["dyn_loss"] += np.sum(
+                to_report["loss/dynamic_loss"] += np.sum(
                     [e.cpu().data.numpy() for e in dyn_partial_loss]
                 ) / (self.nminibatches * self.nepochs)
 
         info.update(to_report)
         self.n_updates += 1
-        info["n_updates"] = self.n_updates
+        info["run/n_updates"] = self.n_updates
         info.update(
             {
                 dn: (np.mean(dvs) if len(dvs) > 0 else 0)
@@ -458,9 +457,9 @@ class PpoOptimizer(object):
         if "states_visited" in info:
             info.pop("states_visited")
         tnow = time.time()
-        info["updates_per_second"] = 1.0 / (tnow - self.t_last_update)
-        info["total_secs"] = tnow - self.t_start
-        info["tps"] = self.rollout.nsteps * self.nenvs / (tnow - self.t_last_update)
+        info["run/updates_per_second"] = 1.0 / (tnow - self.t_last_update)
+        info["run/total_secs"] = tnow - self.t_start
+        info["run/tps"] = self.rollout.nsteps * self.nenvs / (tnow - self.t_last_update)
         self.t_last_update = tnow
 
         return info

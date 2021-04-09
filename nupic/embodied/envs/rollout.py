@@ -231,11 +231,11 @@ class Rollout(object):
             keys_ = all_ep_infos[0].keys()
             all_ep_infos = {k: [i[k] for i in all_ep_infos] for k in keys_}
 
-            self.statlists["eprew"].extend(all_ep_infos["r"])
-            self.stats["eprew_recent"] = np.mean(all_ep_infos["r"])
-            self.statlists["eplen"].extend(all_ep_infos["l"])
-            self.stats["epcount"] += len(all_ep_infos["l"])
-            self.stats["tcount"] += sum(all_ep_infos["l"])
+            self.statlists["performance/episode_reward"].extend(all_ep_infos["r"])
+            self.stats["performance/eprew_recent"] = np.mean(all_ep_infos["r"])
+            self.statlists["performance/episode_length"].extend(all_ep_infos["l"])
+            self.stats["run/episode_count"] += len(all_ep_infos["l"])
+            self.stats["run/num_timesteps"] += sum(all_ep_infos["l"])
 
             current_max = np.max(all_ep_infos["r"])
         else:

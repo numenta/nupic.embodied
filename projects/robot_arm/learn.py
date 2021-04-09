@@ -197,12 +197,14 @@ class Trainer(object):
         )
         print("# of timesteps: " + str(self.num_timesteps))
         while True:
-            print("Start learning")
             info = self.agent.step()
-            # print("info: " + str(info))
+            print("------------------------------------------")
+            print("Step count: " + str(self.agent.step_count))
+            print("------------------------------------------")
+            for i in info["update"]:
+                print(str(np.round(info["update"][i], 3)) + " - " + i)
             if not args.debugging:
                 wandb.log(info["update"])
-            print("Step count: " + str(self.agent.step_count))
 
             if self.agent.step_count >= self.num_timesteps:
                 print("step count > num timesteps - " + str(self.num_timesteps))
