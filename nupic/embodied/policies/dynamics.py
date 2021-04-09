@@ -1,6 +1,7 @@
 import torch
 
 from nupic.embodied.utils.model_parts import flatten_dims, unflatten_first_dim
+from nupic.embodied.models import DynamicsNet
 
 
 class Dynamics(object):
@@ -74,18 +75,15 @@ class Dynamics(object):
         self.device = device
 
         # Initialize the loss network.
-        self.dynamics_net = dynamics_net(
+        self.dynamics_net = DynamicsNet(
             nblocks=4,
             feat_dim=self.feat_dim,
             ac_dim=self.ac_space.n,
             out_feat_dim=self.feat_dim,
-            device=self.device,
             hid_dim=self.hid_dim,
         ).to(self.device)
         # Add parameters of loss net to optimized parameters
-        self.param_list = self.param_list + [
-            dict(params=self.dynamics_net.parameters())
-        ]
+        self.param_list.extend(self.dynamics_net.parameters())
 
         self.features = None
         self.next_features = None
@@ -124,7 +122,7 @@ class Dynamics(object):
         assert x.shape[:-1] == ac.shape[:-1]
 
         # forward pass of actions and features in dynamics net
-        x = self.dynamics_net(x, ac.to(self.device))  # [nsteps_per_seg, feature_dim]
+        x = self.dynamics_net(x.to(self.device), ac.to(self.device))
 
         # reshape
         x = unflatten_first_dim(x, sh)  # [1, nsteps_per_seg, feature_dim]
@@ -161,20 +159,20 @@ class Dynamics(object):
         assert x.shape[:-1] == ac.shape[:-1]
 
         # forward pass of actions and features in dynamics net
-        x = self.dynamics_net(x, ac.to(self.device))  # [nsteps_per_seg, feature_dim]
+        x = self.dynamics_net(x.to(self.device), ac.to(self.device))
 
         # reshape
         x = unflatten_first_dim(x, sh)  # [1, nsteps_per_seg, feature_dim]
         # Take the mean-squared diff between out features (input was current
         # features and action) and next features (shape=[1, nsteps_per_seg])
         next_features = self.next_features
-        loss = torch.mean((x - next_features) ** 2, -1)
+        loss = torch.mean((x - next_features) ** 2, -1)  # mean over frames
         # Apply dropout here to ensure variability between dynamics models. This is done
         # instead of bootstrapping the samples so that all samples can be used to train
         # every model.
         do = torch.nn.Dropout(p=0.2)
         do_loss = do(loss)
-        return do_loss
+        return do_loss  # vector with mse for each feature
 
     def calculate_loss(self, obs, last_obs, acs):
         """Short summary.
@@ -237,176 +235,3 @@ class Dynamics(object):
                 # concatenate the losses from the current slice
                 losses = torch.cat((losses, loss), 0)
         return losses.cpu().data.numpy()
-
-
-class dynamics_net(torch.nn.Module):
-    """Residual network to get the dynamics loss using the features from the auxiliary
-    task model.
-
-    Parameters
-    ----------
-    nblocks : int
-        Number of residual blocks in the dynamics network.
-    feat_dim : int
-        Number of features from the feature network.
-    ac_dim : int
-        Action dimensionality.
-    out_feat_dim : int
-        Number of features from the feature network for the next state (usually same).
-    hid_dim : int
-        Number of neurons in the hidden layers.
-    activation : torch.nn
-        Activation function.
-
-    Attributes
-    ----------
-    model_list : list
-        List of torch model elements.
-
-    """
-
-    def __init__(
-        self,
-        nblocks,
-        feat_dim,
-        ac_dim,
-        out_feat_dim,
-        hid_dim,
-        device,
-        activation=torch.nn.LeakyReLU(negative_slope=0.2),
-    ):
-        super(dynamics_net, self).__init__()
-        self.nblocks = nblocks
-        self.feat_dim = feat_dim
-        self.ac_dim = ac_dim
-        self.out_feat_dim = out_feat_dim
-        self.activation = activation
-        self.device = device
-
-        # First layer of the model takes state features + actions as input and outputs
-        # hid_dim activations
-        model_list = [
-            torch.nn.Linear(feat_dim + ac_dim, hid_dim).to(self.device),
-            activation,
-        ]
-        # n residual blocks with two linear layers each, the first layer uses a non-
-        # linear activation function.
-        for _ in range(self.nblocks):
-            model_list.append(
-                torch.nn.Linear(hid_dim + ac_dim, hid_dim).to(self.device)
-            )
-            model_list.append(activation)
-            model_list.append(
-                torch.nn.Linear(hid_dim + ac_dim, hid_dim).to(self.device)
-            )
-        # Last layer takes hidden activations + actions as input and outputs features of
-        # the size of the next_state features
-        model_list.append(
-            torch.nn.Linear(hid_dim + ac_dim, out_feat_dim).to(self.device)
-        )
-        self.model_list = model_list
-        # initialize the weights with xavier uniform initialization
-        self.init_weight()
-
-    def init_weight(self):
-        for m in self.model_list:
-            if isinstance(m, torch.nn.Linear):
-                torch.nn.init.xavier_uniform_(m.weight.data)  # aka glorot initializer
-                torch.nn.init.constant_(m.bias.data, 0.0)
-
-    def forward(self, features, ac):
-        """Get output of a forward pass through the dynamics network.
-
-        Parameters
-        ----------
-        features : array
-            Features from the auxiliary network corresponding with the current state.
-        ac : array
-            Current actions.
-
-        Returns
-        -------
-        array
-            Features of the residual dynamics moduel from the current states & actions
-
-        """
-        idx = 0
-        # concatenate state features with actions
-        """print("-----vars in dynamics model-------")
-        print(
-            "features: "
-            + str(features[0, :5])
-            + "var:"
-            + str(torch.var(features))
-            + " shape: "
-            + str(features.shape)
-        )"""
-        x = torch.cat((features, ac), dim=-1)  # shape=[nsteps_per_seg, feat_dim +n_act]
-        """print(
-            "features + actions: "
-            + str(x[0, :5])
-            + "var:"
-            + str(torch.var(x))
-            + " shape: "
-            + str(x.shape)
-        )"""
-        for _ in range(2):
-            x = self.model_list[idx](x).to(
-                x.device
-            )  # shape = [nsteps_per_seg, hid_dim]
-            """print(
-                str(idx)
-                + ". layer: "
-                + str(x[0, :5])
-                + "var:"
-                + str(torch.var(x))
-                + " shape: "
-                + str(x.shape)
-            )"""
-            idx += 1
-        for _ in range(self.nblocks):
-            # print("---")
-            x0 = x
-            for _ in range(3):
-                if isinstance(self.model_list[idx], torch.nn.Linear):
-                    # shape = [nsteps_per_seg, feat_dim + n_act]
-                    x = torch.cat((x, ac), dim=-1)
-                    """print(
-                        str(idx)
-                        + ". layer (concat): "
-                        + str(x[0, :5])
-                        + "var:"
-                        + str(torch.var(x))
-                        + " shape: "
-                        + str(x.shape)
-                    )"""
-                # shape = [nsteps_per_seg, hid_dim]
-                x = self.model_list[idx](x)
-                """print(
-                    str(idx)
-                    + ". layer: "
-                    + str(x[0, :5])
-                    + "var:"
-                    + str(torch.var(x))
-                    + " shape: "
-                    + str(x.shape)
-                )"""
-                idx += 1
-            x = x + x0  # shape = [nsteps_per_seg, hid_dim]
-            """print(
-                str(idx)
-                + ". layer: "
-                + str(x[0, :5])
-                + "var:"
-                + str(torch.var(x))
-                + " shape: "
-                + str(x.shape)
-            )"""
-        # print("residual blocks done")
-        x = torch.cat((x, ac), dim=-1)  # shape = [nsteps_per_seg, feat_dim + n_act]
-        # print(str(idx) + ". layer: " + str(torch.var(x)) + " shape: " + str(x.shape))
-        x = self.model_list[idx](x)  # shape = [nsteps_per_seg, out_feat_dim]
-        # print(str(idx) + ". layer: " + str(torch.var(x)) + " shape: " + str(x.shape))
-        assert idx == len(self.model_list) - 1
-        assert x.shape[-1] == self.out_feat_dim
-        return x

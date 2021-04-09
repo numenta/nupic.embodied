@@ -120,10 +120,10 @@ class CnnPolicy(object):
 
         # Define parameters to be optimized
         self.param_list = [
-            dict(params=self.features_model.parameters()),
-            dict(params=self.pd_hidden.parameters()),
-            dict(params=self.pd_head.parameters()),
-            dict(params=self.vf_head.parameters()),
+            *self.features_model.parameters(),
+            *self.pd_hidden.parameters(),  # pd: policy (pi)
+            *self.pd_head.parameters(),  #
+            *self.vf_head.parameters()  # value function head
         ]
 
         self.flat_features = None
@@ -162,7 +162,7 @@ class CnnPolicy(object):
         vpred = self.vf_head(hidden)
         # Set global class variables
         self.vpred = unflatten_first_dim(vpred, sh)  # [nenvs, n_steps_per_seg, v]
-        self.pd = self.ac_pdtype.pdfromflat(pdparam)
+        self.pd = self.ac_pdtype.pdfromflat(pdparam)   #pd: probability density   # use to calculate entropy and get KL-div
         self.ac = ac
         self.ob = ob
 

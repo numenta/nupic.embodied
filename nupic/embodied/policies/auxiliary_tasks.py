@@ -95,9 +95,7 @@ class FeatureExtractor(object):
                 device=self.device,
             ).to(self.device)
             # Add feature model to optimization parameters
-            self.param_list = self.param_list + [
-                dict(params=self.features_model.parameters())
-            ]
+            self.param_list.extend(self.features_model.parameters())
 
         self.scope = scope
 

@@ -19,5 +19,8 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-from .tanh_gaussian_dendrite_policy import TanhGaussianDendriticPolicy
-from .tanh_gaussian_sparse_mlp_policy import TanhGaussianSparseMLPPolicy
+from .dynamic_networks import DynamicsNet
+from .multiheaded_sparse_mlp import MultiHeadedSparseMLP
+from .multiheaded_dendrite_mlp import MultiHeadedDendriticMLP
+from .dendrite_mlp import DendriticMLP
+from .sparse_mlp import SparseMLP
