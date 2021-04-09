@@ -16,7 +16,7 @@ if __name__ == "__main__":
     parser.add_argument("--expID", type=str, default="000")
     parser.add_argument("--seed", help="RNG seed", type=int, default=0)
     parser.add_argument("--dyn_from_pixels", type=int, default=0)
-    parser.add_argument("--use_news", type=int, default=0)
+    parser.add_argument("--use_done", type=int, default=0)
     parser.add_argument("--ext_coeff", type=float, default=0.0)
     parser.add_argument("--int_coeff", type=float, default=1.0)
     parser.add_argument("--layernorm", type=int, default=0)
@@ -27,7 +27,7 @@ if __name__ == "__main__":
         choices=["none", "idf", "vaesph", "vaenonsph"],
     )
     parser.add_argument("--num_dynamics", type=int, default=5)
-    parser.add_argument("--var_output", action="store_true", default=True)
+    parser.add_argument("--dont_use_disagreement", action="store_false", default=True)
     parser.add_argument("--load", action="store_true", default=True)
 
     # Environment parameters:
@@ -73,8 +73,8 @@ if __name__ == "__main__":
         scope="policy",
         ob_space=env.observation_space,
         ac_space=env.action_space,
-        hid_dim=512,
-        feat_dim=512,
+        hidden_dim=512,
+        feature_dim=512,
         ob_mean=ob_mean,
         ob_std=ob_std,
         layernormalize=False,

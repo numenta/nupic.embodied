@@ -55,7 +55,7 @@ class small_convnet(torch.nn.Module):
         Observation space properties (from env.observation_space).
     nonlinear : torch.nn
         nonlinear activation function to use.
-    feat_dim : int
+    feature_dim : int
         Number of neurons in the hidden layer of the feature network.
     last_nonlinear : torch.nn or None
         nonlinear activation function to use for the last layer.
@@ -87,7 +87,7 @@ class small_convnet(torch.nn.Module):
         self,
         ob_space,
         nonlinear,
-        feat_dim,
+        feature_dim,
         last_nonlinear,
         layernormalize,
         device,
@@ -132,7 +132,7 @@ class small_convnet(torch.nn.Module):
         # Add fc layer at end for feature output
         # TODO: Here the original implementation uses normc_initializer(1.0) from
         # baselines.common.tf_util -> is this important? It changes feature_var on ax=2
-        self.fc = torch.nn.Linear(self.flatten_dim, feat_dim).to(device)
+        self.fc = torch.nn.Linear(self.flatten_dim, feature_dim).to(device)
 
         self.last_nonlinear = last_nonlinear
         self.layernormalize = layernormalize
@@ -140,7 +140,7 @@ class small_convnet(torch.nn.Module):
         self.init_weight()
 
     def init_weight(self):
-        """Initialize wieght of network."""
+        """Initialize weight of network."""
         for m in self.conv:
             if isinstance(m, torch.nn.Conv2d):
                 torch.nn.init.xavier_uniform_(m.weight.data)
@@ -165,7 +165,7 @@ class small_convnet(torch.nn.Module):
         # run x through the convolutional layers
         x = self.conv(x)
         # Get flattened version of conv output
-        # TODO: check that contiguous.view actually does what its supposed to
+        # TODO: Check is using nn.Flatten() is easier here.
         x = x.contiguous().view(
             -1, self.flatten_dim
         )  # dims is calculated manually, 84*84 -> 20*20 -> 9*9 ->7*7
@@ -180,6 +180,7 @@ class small_convnet(torch.nn.Module):
         return x
 
     def layernorm(self, x):
+        # TODO: Check if nn.LayerNorm is easier to use here
         """Normalize a layer."""
         m = torch.mean(x, -1, keepdim=True).to(self.device)
         v = torch.std(x, -1, keepdim=True).to(self.device)
@@ -187,13 +188,13 @@ class small_convnet(torch.nn.Module):
 
 
 class small_deconvnet(torch.nn.Module):
-    def __init__(self, ob_space, feat_dim, nonlinear, ch, positional_bias, device):
+    def __init__(self, ob_space, feature_dim, nonlinear, ch, positional_bias, device):
         super(small_deconvnet, self).__init__()
         self.H = ob_space.shape[0]
         self.W = ob_space.shape[1]
         self.C = ob_space.shape[2]
 
-        self.feat_dim = feat_dim
+        self.feature_dim = feature_dim
         self.nonlinear = nonlinear
         self.ch = ch
         self.positional_bias = positional_bias
@@ -201,7 +202,7 @@ class small_deconvnet(torch.nn.Module):
 
         self.sh = (64, 8, 8)
         self.fc = torch.nn.Sequential(
-            torch.nn.Linear(feat_dim, np.prod(self.sh)), nonlinear()
+            torch.nn.Linear(feature_dim, np.prod(self.sh)), nonlinear()
         ).to(self.device)
 
         # The last kernel_size is 7 not 8 compare to the origin implementation,

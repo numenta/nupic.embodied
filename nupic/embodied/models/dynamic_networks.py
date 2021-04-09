@@ -72,11 +72,11 @@ class DynamicsNet(nn.Module):
     task model.
 
     :param nblocks: Number of residual blocks in the dynamics network.
-    :param feat_dim: Number of features from the feature network.
+    :param feature_dim: Number of features from the feature network.
     :param ac_dim: Action dimensionality.
-    :param out_feat_dim: Number of features from the feature network for the next state
+    :param out_feature_dim: Number of features from the feature network for the next state
                         (usually same).
-    :param hid_dim: Number of neurons in the hidden layers.
+    :param hidden_dim: Number of neurons in the hidden layers.
     :param activation_fn: Activation function factory.
     """
 
@@ -85,27 +85,27 @@ class DynamicsNet(nn.Module):
     def __init__(
         self,
         nblocks,
-        feat_dim,
+        feature_dim,
         ac_dim,
-        out_feat_dim,
-        hid_dim,
+        out_feature_dim,
+        hidden_dim,
         activation_fn=leaky_relu,
     ):
         super().__init__()
 
         # First layer of the model takes state features + actions as input and outputs
-        # hid_dim activations
+        # hidden_dim activations
         self.input = DynamicsSequential(
-            DynamicsLinear(feat_dim + ac_dim, hid_dim),
+            DynamicsLinear(feature_dim + ac_dim, hidden_dim),
             activation_fn(),
         )
 
         # n residual blocks
         self.hidden = DynamicsSequential(
-            *[DynamicsBlock(hid_dim, ac_dim, activation_fn) for _ in range(nblocks)]
+            *[DynamicsBlock(hidden_dim, ac_dim, activation_fn) for _ in range(nblocks)]
         )
 
-        self.output = DynamicsLinear(hid_dim + ac_dim, out_feat_dim)
+        self.output = DynamicsLinear(hidden_dim + ac_dim, out_feature_dim)
 
         self.init_weight()
 

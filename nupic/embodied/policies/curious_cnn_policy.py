@@ -21,9 +21,9 @@ class CnnPolicy(object):
         observations)
     ob_std : float
         Standard deviation of observations collected by a random agent.
-    feat_dim : int
+    feature_dim : int
         Number of neurons in the hidden layer of the feature network.
-    hid_dim : int
+    hidden_dim : int
         Number of neurons in the hidden layer of the policy network.
     layernormalize : bool
         Whether to normalize last layer.
@@ -45,7 +45,7 @@ class CnnPolicy(object):
     features_model : torch.Sequential
         Small conv net to extract features from observations.
     pd_hidden : type
-        Hidden layer of the policy network of size hid_dim (2 layer, relu).
+        Hidden layer of the policy network of size hidden_dim (2 layer, relu).
     pd_head : type
         Linear FC layer following pd_hidden with policy output.
     vf_head : type
@@ -67,8 +67,8 @@ class CnnPolicy(object):
         ac_space,
         ob_mean,
         ob_std,
-        feat_dim,
-        hid_dim,
+        feature_dim,
+        hidden_dim,
         layernormalize,
         nonlinear,
         device,
@@ -90,8 +90,8 @@ class CnnPolicy(object):
         self.ac_pdtype = make_pdtype(ac_space)
 
         self.pd = self.vpred = None
-        self.hid_dim = hid_dim
-        self.feat_dim = feat_dim
+        self.hidden_dim = hidden_dim
+        self.feature_dim = feature_dim
         self.scope = scope
         self.device = device
         pdparamsize = self.ac_pdtype.param_shape()[0]
@@ -100,7 +100,7 @@ class CnnPolicy(object):
         self.features_model = small_convnet(
             self.ob_space,
             nonlinear=self.nonlinear,
-            feat_dim=self.feat_dim,
+            feature_dim=self.feature_dim,
             last_nonlinear=None,
             layernormalize=self.layernormalize,
             batchnorm=False,
@@ -109,14 +109,14 @@ class CnnPolicy(object):
 
         # Policy network following the feature extraction network (2 fc layers, relu)
         self.pd_hidden = torch.nn.Sequential(
-            torch.nn.Linear(self.feat_dim, self.hid_dim),
+            torch.nn.Linear(self.feature_dim, self.hidden_dim),
             torch.nn.ReLU(),
-            torch.nn.Linear(self.hid_dim, self.hid_dim),
+            torch.nn.Linear(self.hidden_dim, self.hidden_dim),
             torch.nn.ReLU(),
         ).to(self.device)
         # policy and value function head of the policy network.
-        self.pd_head = torch.nn.Linear(self.hid_dim, pdparamsize).to(self.device)
-        self.vf_head = torch.nn.Linear(self.hid_dim, 1).to(self.device)
+        self.pd_head = torch.nn.Linear(self.hidden_dim, pdparamsize).to(self.device)
+        self.vf_head = torch.nn.Linear(self.hidden_dim, 1).to(self.device)
 
         # Define parameters to be optimized
         self.param_list = [
@@ -151,7 +151,7 @@ class CnnPolicy(object):
         """
 
         sh = ob.shape
-        # get the corresponding features of the observations (shape = [N, feat_dim])
+        # get the corresponding features of the observations (shape = [N, feature_dim])
         flat_features = self.get_features(ob)
         self.flat_features = flat_features
         # Process the features with the policy network

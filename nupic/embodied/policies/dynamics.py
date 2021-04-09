@@ -13,18 +13,18 @@ class Dynamics(object):
     ----------
     auxiliary_task : FeatureExtractor
         Feature extractor used to get and learn features.
-    var_output : bool
+    use_disagreement : bool
         If loss should be calculated from the variance over dynamics model features.
         If false, the loss is the variance over the error of state features and next
         state features between the different dynamics models.
-    feat_dim : int
+    feature_dim : int
         Number of neurons in the feature network layers.
     scope : str
         Scope name of the dynamics model.
 
     Attributes
     ----------
-    hid_dim : int
+    hidden_dim : int
         Number of neurons in the hidden layer.
     ob_space : Space
         Observation space properties (from env.observation_space).
@@ -57,30 +57,30 @@ class Dynamics(object):
     def __init__(
         self,
         auxiliary_task,
-        var_output,
+        use_disagreement,
         device,
-        feat_dim=None,
+        feature_dim=None,
         scope="dynamics",
     ):
         self.scope = scope
         self.auxiliary_task = auxiliary_task
-        self.hid_dim = self.auxiliary_task.hid_dim
-        self.feat_dim = feat_dim
+        self.hidden_dim = self.auxiliary_task.hidden_dim
+        self.feature_dim = feature_dim
         self.ac_space = self.auxiliary_task.ac_space
         self.ob_mean = self.auxiliary_task.ob_mean
         self.ob_std = self.auxiliary_task.ob_std
         self.param_list = []
-        self.var_output = var_output
+        self.use_disagreement = use_disagreement
         self.features_model = None
         self.device = device
 
         # Initialize the loss network.
         self.dynamics_net = DynamicsNet(
             nblocks=4,
-            feat_dim=self.feat_dim,
+            feature_dim=self.feature_dim,
             ac_dim=self.ac_space.n,
-            out_feat_dim=self.feat_dim,
-            hid_dim=self.hid_dim,
+            out_feature_dim=self.feature_dim,
+            hidden_dim=self.hidden_dim,
         ).to(self.device)
         # Add parameters of loss net to optimized parameters
         self.param_list.extend(self.dynamics_net.parameters())
@@ -104,8 +104,8 @@ class Dynamics(object):
         Returns
         -------
         array
-            If var_output=True returns the output of the loss network, otherwise the
-            mean squared difference between the output and the next features.
+            If use_disagreement=True returns the output of the loss network, otherwise
+            the mean squared difference between the output and the next features.
 
         """
         ac = self.ac
@@ -126,9 +126,9 @@ class Dynamics(object):
 
         # reshape
         x = unflatten_first_dim(x, sh)  # [1, nsteps_per_seg, feature_dim]
-        if self.var_output:
+        if self.use_disagreement:
             # Return output from dynamics network
-            # (shape=[1, nsteps_per_seg, next_feat_dim])
+            # (shape=[1, nsteps_per_seg, next_feature_dim])
             return x
         else:
             # Take the mean-squared diff between out features (input was current
@@ -137,7 +137,11 @@ class Dynamics(object):
             return torch.mean((x - next_features) ** 2, -1)
 
     def get_loss_partial(self):
-        """Get the loss of the dynamics model with dropout. No var_output option..
+        """Get the loss of the dynamics model with dropout. No use_disagreement is
+        calculated here because the dynamics models are trained using the prediction
+        error. The disagreement is only used as a reward signal for the policy.
+        Dropout is added to the loss to enforce some variance between models while still
+        using all of the data.
 
         Returns
         -------
@@ -189,7 +193,7 @@ class Dynamics(object):
         Returns
         -------
         array
-            losses. shape = [n_env, nsteps_per_seg, feat_dim]
+            losses. shape = [n_env, nsteps_per_seg, feature_dim]
 
         """
         n_chunks = 8  # TODO: make this a hyperparameter?

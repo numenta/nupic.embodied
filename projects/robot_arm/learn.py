@@ -41,8 +41,8 @@ class Trainer(object):
         hyperparameter,
         num_timesteps,
         envs_per_process,
-        num_dyna,
-        var_output,
+        num_dynamics,
+        use_disagreement,
         device,
     ):
         self.make_env = make_env
@@ -58,8 +58,8 @@ class Trainer(object):
             device=self.device,
             ob_space=self.ob_space,
             ac_space=self.ac_space,
-            feat_dim=self.hyperparameter["feature_dim"],
-            hid_dim=self.hyperparameter["policy_hidden_dim"],
+            feature_dim=self.hyperparameter["feature_dim"],
+            hidden_dim=self.hyperparameter["policy_hidden_dim"],
             ob_mean=self.ob_mean,
             ob_std=self.ob_std,
             layernormalize=False,
@@ -90,7 +90,7 @@ class Trainer(object):
             policy=self.policy,
             features_shared_with_policy=False,
             device=self.device,
-            feat_dim=hyperparameter["feature_dim"],
+            feature_dim=hyperparameter["feature_dim"],
             layernormalize=hyperparameter["layernorm"],
         )
 
@@ -98,15 +98,15 @@ class Trainer(object):
 
         # Create a list of dynamics models. Their disagreement is used for learning.
         self.dynamics_list = []
-        for i in range(num_dyna):
+        for i in range(num_dynamics):
             self.dynamics_list.append(
                 self.dynamics_class(
                     auxiliary_task=self.feature_extractor,
-                    feat_dim=hyperparameter["feature_dim"],
+                    feature_dim=hyperparameter["feature_dim"],
                     device=self.device,
                     scope="dynamics_{}".format(i),
                     # whether to use the variance or the prediction error for the reward
-                    var_output=var_output,
+                    use_disagreement=use_disagreement,
                 )
             )
 
@@ -116,8 +116,8 @@ class Trainer(object):
             device=self.device,
             ob_space=self.ob_space,
             ac_space=self.ac_space,
-            stochpol=self.policy,  # change to policy
-            use_news=hyperparameter["use_news"],  # don't use the done information
+            policy=self.policy,  # change to policy
+            use_done=hyperparameter["use_done"],  # don't use the done information
             gamma=hyperparameter["gamma"],  # discount factor
             lam=hyperparameter["lambda"],  # discount factor for advantage
             nepochs=hyperparameter["nepochs"],
@@ -130,7 +130,7 @@ class Trainer(object):
             nsegs_per_env=hyperparameter[
                 "nsegs_per_env"
             ],  # how often to repeat before doing an update, 1
-            ent_coef=hyperparameter["ent_coeff"],  # entropy
+            entropy_coef=hyperparameter["entropy_coef"],  # entropy
             normrew=hyperparameter["norm_rew"],  # whether to normalize reward
             normadv=hyperparameter["norm_adv"],  # whether to normalize advantage
             ext_coeff=hyperparameter["ext_coeff"],  # weight of the environment reward
@@ -254,6 +254,7 @@ def make_env_all_params(rank, args):
         env = make_multi_pong()
     elif args["env_kind"] == "roboarm":
         from real_robots.envs import REALRobotEnv
+
         env = REALRobotEnv(objects=3, action_type="cartesian")
         env = CartesianControlDiscrete(
             env,
@@ -294,7 +295,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--expID", type=str, default="000")
     parser.add_argument("--seed", help="RNG seed", type=int, default=0)
-    parser.add_argument("--use_news", type=int, default=0)
+    parser.add_argument("--use_done", type=int, default=0)
     parser.add_argument("--ext_coeff", type=float, default=0.0)
     parser.add_argument("--int_coeff", type=float, default=1.0)
     parser.add_argument("--layernorm", type=int, default=0)
@@ -307,7 +308,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_dynamics", type=int, default=5)
     parser.add_argument("--feature_dim", type=int, default=512)
     parser.add_argument("--policy_hidden_dim", type=int, default=512)
-    parser.add_argument("--no_var_output", action="store_false", default=True)
+    parser.add_argument("--dont_use_disagreement", action="store_false", default=True)
     parser.add_argument("--load", action="store_true", default=False)
     # option to use when debugging so not every test run is logged.
     parser.add_argument("--debugging", action="store_true", default=False)
@@ -337,7 +338,7 @@ if __name__ == "__main__":
     parser.add_argument("--norm_adv", type=int, default=1)
     parser.add_argument("--norm_rew", type=int, default=1)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--ent_coeff", type=float, default=0.001)
+    parser.add_argument("--entropy_coef", type=float, default=0.001)
     parser.add_argument("--nepochs", type=int, default=3)
     parser.add_argument("--num_timesteps", type=int, default=int(64))
 
@@ -381,8 +382,8 @@ if __name__ == "__main__":
         num_timesteps=args.num_timesteps,
         hyperparameter=args.__dict__,
         envs_per_process=args.envs_per_process,
-        num_dyna=args.num_dynamics,
-        var_output=args.no_var_output,
+        num_dynamics=args.num_dynamics,
+        use_disagreement=args.dont_use_disagreement,
         device=device,
     )
 
