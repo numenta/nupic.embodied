@@ -160,14 +160,6 @@ class FeatureExtractor(object):
         if has_timesteps:
             act = unflatten_first_dim(act, sh)
 
-        """ print(
-            "features: "
-            + str(act.shape)
-            + " mean: "
-            + str(np.mean(act.data.numpy()))
-            + " var: "
-            + str(np.var(act.data.numpy()))
-        )"""
         return act
 
     def get_loss(self, *arg, **kwarg):

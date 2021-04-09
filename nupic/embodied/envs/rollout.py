@@ -132,7 +132,6 @@ class Rollout(object):
         """Steps through environment, calculates reward and update info."""
         self.ep_infos_new = []
         for t in range(self.nsteps):
-            # print("rollout step: " + str(t))
             self.rollout_step()
         self.calculate_reward()
         self.update_info()

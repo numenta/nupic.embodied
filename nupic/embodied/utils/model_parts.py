@@ -112,7 +112,7 @@ class small_convnet(torch.nn.Module):
             )
             # Apply nonlinear activation function
             if nonlinear == torch.nn.LeakyReLU:
-                print("setting leaky relu slope to 0.2")  # to make it like original
+                # setting leaky relu slope to 0.2 to make it like original
                 self.conv.add_module(
                     "nl_%i" % idx, torch.nn.LeakyReLU(negative_slope=0.2)
                 )
@@ -124,11 +124,10 @@ class small_convnet(torch.nn.Module):
             # Calculations to get flat output dimensionality of last conv layer
             oH = (oH - f[2]) / f[3][0] + 1
             oW = (oW - f[2]) / f[3][1] + 1
-            print("H: " + str(oH) + " W: " + str(oW))
 
         assert oH == int(oH)  # whether oH is a .0 float ?
         assert oW == int(oW)
-        print(self.conv)
+
         self.flatten_dim = int(oH * oW * feat_list[-1][1])
         # Add fc layer at end for feature output
         # TODO: Here the original implementation uses normc_initializer(1.0) from

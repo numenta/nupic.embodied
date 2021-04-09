@@ -24,19 +24,25 @@ from torch import nn
 
 from functools import partial
 
+
 class DynamicsLeakyRelu(nn.LeakyReLU):
     """Default activation function for Dynamic Networks"""
+
     def forward(self, x, ac):
         return super().forward(x), ac
 
+
 class DynamicsLinear(nn.Linear):
     """Default linear layer for Dynamic Networks"""
+
     def forward(self, x, ac):
         x = torch.cat((x, ac), dim=-1)
         return super().forward(x), ac
 
+
 class DynamicsSequential(nn.Sequential):
     """Sequential for Dynamic Networks that accepts action"""
+
     def forward(self, x, ac):
         for module in self:
             x, _ = module(x, ac)
@@ -53,7 +59,7 @@ class DynamicsBlock(DynamicsSequential):
         super().__init__(
             DynamicsLinear(hidden_dim + ac_dim, hidden_dim),
             activation_fn(),
-            DynamicsLinear(hidden_dim + ac_dim, hidden_dim)
+            DynamicsLinear(hidden_dim + ac_dim, hidden_dim),
         )
 
     def forward(self, x, ac):

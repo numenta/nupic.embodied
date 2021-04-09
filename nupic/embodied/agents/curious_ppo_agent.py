@@ -144,7 +144,7 @@ class PpoOptimizer(object):
         # auxiliary task params is the same for all dynamic models
         param_list = [
             *self.stochpol.param_list,
-            *self.dynamics_list[0].auxiliary_task.param_list
+            *self.dynamics_list[0].auxiliary_task.param_list,
         ]
         for dynamic in self.dynamics_list:
             param_list.extend(dynamic.param_list)
@@ -313,7 +313,9 @@ class PpoOptimizer(object):
                 # Get rollout experiences for current minibatch
                 acs = self.rollout.buf_acs[mbenvinds]
                 rews = self.rollout.buf_rews[mbenvinds]
-                nlps = self.rollout.buf_nlps[mbenvinds]  # negative log probabilities (action probabilities from pi)
+                nlps = self.rollout.buf_nlps[
+                    mbenvinds
+                ]  # negative log probabilities (action probabilities from pi)
                 obs = self.rollout.buf_obs[mbenvinds]
                 rets = self.buf_rets[mbenvinds]
                 advs = self.buf_advs[mbenvinds]

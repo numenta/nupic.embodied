@@ -119,13 +119,17 @@ class Trainer(object):
             stochpol=self.policy,  # change to policy
             use_news=hyperparameter["use_news"],  # don't use the done information
             gamma=hyperparameter["gamma"],  # discount factor
-            lam=hyperparameter["lambda"],   # discount factor for advantage
+            lam=hyperparameter["lambda"],  # discount factor for advantage
             nepochs=hyperparameter["nepochs"],
             nminibatches=hyperparameter["nminibatches"],
             lr=hyperparameter["lr"],
             cliprange=0.1,  # clipping policy gradient
-            nsteps_per_seg=hyperparameter["nsteps_per_seg"],  # number of steps in each environment before taking a learning step
-            nsegs_per_env=hyperparameter["nsegs_per_env"],  # how often to repeat before doing an update, 1
+            nsteps_per_seg=hyperparameter[
+                "nsteps_per_seg"
+            ],  # number of steps in each environment before taking a learning step
+            nsegs_per_env=hyperparameter[
+                "nsegs_per_env"
+            ],  # how often to repeat before doing an update, 1
             ent_coef=hyperparameter["ent_coeff"],  # entropy
             normrew=hyperparameter["norm_rew"],  # whether to normalize reward
             normadv=hyperparameter["norm_adv"],  # whether to normalize advantage
@@ -189,7 +193,6 @@ class Trainer(object):
         Keeps learning until num_timesteps is reached.
 
         """
-        print("Start interaction.")
         self.agent.start_interaction(
             self.envs,
             nlump=self.hyperparameter["nlumps"],
