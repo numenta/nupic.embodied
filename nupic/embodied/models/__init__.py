@@ -19,6 +19,7 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
+from .dynamic_networks import DynamicsNet
 from .multiheaded_sparse_mlp import MultiHeadedSparseMLP
 from .multiheaded_dendrite_mlp import MultiHeadedDendriticMLP
 from .dendrite_mlp import DendriticMLP
