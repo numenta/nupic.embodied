@@ -24,19 +24,25 @@ from torch import nn
 
 from functools import partial
 
+
 class DynamicsLeakyRelu(nn.LeakyReLU):
     """Default activation function for Dynamic Networks"""
+
     def forward(self, x, ac):
         return super().forward(x), ac
 
+
 class DynamicsLinear(nn.Linear):
     """Default linear layer for Dynamic Networks"""
+
     def forward(self, x, ac):
         x = torch.cat((x, ac), dim=-1)
         return super().forward(x), ac
 
+
 class DynamicsSequential(nn.Sequential):
     """Sequential for Dynamic Networks that accepts action"""
+
     def forward(self, x, ac):
         for module in self:
             x, _ = module(x, ac)
@@ -53,7 +59,7 @@ class DynamicsBlock(DynamicsSequential):
         super().__init__(
             DynamicsLinear(hidden_dim + ac_dim, hidden_dim),
             activation_fn(),
-            DynamicsLinear(hidden_dim + ac_dim, hidden_dim)
+            DynamicsLinear(hidden_dim + ac_dim, hidden_dim),
         )
 
     def forward(self, x, ac):
@@ -66,11 +72,11 @@ class DynamicsNet(nn.Module):
     task model.
 
     :param nblocks: Number of residual blocks in the dynamics network.
-    :param feat_dim: Number of features from the feature network.
+    :param feature_dim: Number of features from the feature network.
     :param ac_dim: Action dimensionality.
-    :param out_feat_dim: Number of features from the feature network for the next state
-                        (usually same).
-    :param hid_dim: Number of neurons in the hidden layers.
+    :param out_feature_dim: Number of features from the feature network for the next
+                    state (usually same).
+    :param hidden_dim: Number of neurons in the hidden layers.
     :param activation_fn: Activation function factory.
     """
 
@@ -79,27 +85,27 @@ class DynamicsNet(nn.Module):
     def __init__(
         self,
         nblocks,
-        feat_dim,
+        feature_dim,
         ac_dim,
-        out_feat_dim,
-        hid_dim,
+        out_feature_dim,
+        hidden_dim,
         activation_fn=leaky_relu,
     ):
         super().__init__()
 
         # First layer of the model takes state features + actions as input and outputs
-        # hid_dim activations
+        # hidden_dim activations
         self.input = DynamicsSequential(
-            DynamicsLinear(feat_dim + ac_dim, hid_dim),
+            DynamicsLinear(feature_dim + ac_dim, hidden_dim),
             activation_fn(),
         )
 
         # n residual blocks
         self.hidden = DynamicsSequential(
-            *[DynamicsBlock(hid_dim, ac_dim, activation_fn) for _ in range(nblocks)]
+            *[DynamicsBlock(hidden_dim, ac_dim, activation_fn) for _ in range(nblocks)]
         )
 
-        self.output = DynamicsLinear(hid_dim + ac_dim, out_feat_dim)
+        self.output = DynamicsLinear(hidden_dim + ac_dim, out_feature_dim)
 
         self.init_weight()
 

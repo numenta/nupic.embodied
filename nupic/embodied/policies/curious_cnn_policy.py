@@ -1,3 +1,25 @@
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
+
 # from https://github.com/qqadssp/Pytorch-Large-Scale-Curiosity/
 
 import numpy as np
@@ -21,9 +43,9 @@ class CnnPolicy(object):
         observations)
     ob_std : float
         Standard deviation of observations collected by a random agent.
-    feat_dim : int
+    feature_dim : int
         Number of neurons in the hidden layer of the feature network.
-    hid_dim : int
+    hidden_dim : int
         Number of neurons in the hidden layer of the policy network.
     layernormalize : bool
         Whether to normalize last layer.
@@ -45,7 +67,7 @@ class CnnPolicy(object):
     features_model : torch.Sequential
         Small conv net to extract features from observations.
     pd_hidden : type
-        Hidden layer of the policy network of size hid_dim (2 layer, relu).
+        Hidden layer of the policy network of size hidden_dim (2 layer, relu).
     pd_head : type
         Linear FC layer following pd_hidden with policy output.
     vf_head : type
@@ -67,8 +89,8 @@ class CnnPolicy(object):
         ac_space,
         ob_mean,
         ob_std,
-        feat_dim,
-        hid_dim,
+        feature_dim,
+        hidden_dim,
         layernormalize,
         nonlinear,
         device,
@@ -90,8 +112,8 @@ class CnnPolicy(object):
         self.ac_pdtype = make_pdtype(ac_space)
 
         self.pd = self.vpred = None
-        self.hid_dim = hid_dim
-        self.feat_dim = feat_dim
+        self.hidden_dim = hidden_dim
+        self.feature_dim = feature_dim
         self.scope = scope
         self.device = device
         pdparamsize = self.ac_pdtype.param_shape()[0]
@@ -100,7 +122,7 @@ class CnnPolicy(object):
         self.features_model = small_convnet(
             self.ob_space,
             nonlinear=self.nonlinear,
-            feat_dim=self.feat_dim,
+            feature_dim=self.feature_dim,
             last_nonlinear=None,
             layernormalize=self.layernormalize,
             batchnorm=False,
@@ -109,21 +131,21 @@ class CnnPolicy(object):
 
         # Policy network following the feature extraction network (2 fc layers, relu)
         self.pd_hidden = torch.nn.Sequential(
-            torch.nn.Linear(self.feat_dim, self.hid_dim),
+            torch.nn.Linear(self.feature_dim, self.hidden_dim),
             torch.nn.ReLU(),
-            torch.nn.Linear(self.hid_dim, self.hid_dim),
+            torch.nn.Linear(self.hidden_dim, self.hidden_dim),
             torch.nn.ReLU(),
         ).to(self.device)
         # policy and value function head of the policy network.
-        self.pd_head = torch.nn.Linear(self.hid_dim, pdparamsize).to(self.device)
-        self.vf_head = torch.nn.Linear(self.hid_dim, 1).to(self.device)
+        self.pd_head = torch.nn.Linear(self.hidden_dim, pdparamsize).to(self.device)
+        self.vf_head = torch.nn.Linear(self.hidden_dim, 1).to(self.device)
 
         # Define parameters to be optimized
         self.param_list = [
             *self.features_model.parameters(),
             *self.pd_hidden.parameters(),  # pd: policy (pi)
             *self.pd_head.parameters(),  #
-            *self.vf_head.parameters()  # value function head
+            *self.vf_head.parameters(),  # value function head
         ]
 
         self.flat_features = None
@@ -151,7 +173,7 @@ class CnnPolicy(object):
         """
 
         sh = ob.shape
-        # get the corresponding features of the observations (shape = [N, feat_dim])
+        # get the corresponding features of the observations (shape = [N, feature_dim])
         flat_features = self.get_features(ob)
         self.flat_features = flat_features
         # Process the features with the policy network
@@ -162,7 +184,9 @@ class CnnPolicy(object):
         vpred = self.vf_head(hidden)
         # Set global class variables
         self.vpred = unflatten_first_dim(vpred, sh)  # [nenvs, n_steps_per_seg, v]
-        self.pd = self.ac_pdtype.pdfromflat(pdparam)   #pd: probability density   # use to calculate entropy and get KL-div
+        self.pd = self.ac_pdtype.pdfromflat(
+            pdparam
+        )  # pd: probability density   # use to calculate entropy and get KL-div
         self.ac = ac
         self.ob = ob
 

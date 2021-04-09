@@ -1,3 +1,25 @@
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
+
 from collections import deque, defaultdict
 
 import numpy as np
@@ -24,7 +46,7 @@ class Rollout(object):
         List of VecEnvs to use for experience collection.
     policy : object
         CnnPolicy used for action selection.
-    int_rew_coeff : float
+    internal_reward_coeff : float
         Coefficient for the internal reward (disagreement).
     ext_rew_coeff : float
         Coefficient for the external reward from the environment.
@@ -37,15 +59,15 @@ class Rollout(object):
         nsteps_per_seg * nsegs_per_env.
     lump_stride : int
         TODO.
-    reward_fun : lambda
+    reward_function : lambda
         reward function specifying how to combine internal and external rewards.
     buf_vpreds : array
         Buffer of value estimates.
-    buf_nlps : array
+    buf_neglogprobs : array
         Buffer of negative log probabilities.
-    buf_rews : array
+    buf_rewards : array
         Buffer of rewards.
-    buf_ext_rews : array
+    buf_ext_rewards : array
         Buffer of external rewards.
     buf_acs : array
         Buffer of actions.
@@ -53,15 +75,15 @@ class Rollout(object):
         Buffer of observations.
     buf_obs_last : array
         Buffer of last observations.
-    buf_news : array
+    buf_dones : array
         Buffer of 'dones'.
-    buf_new_last : array
+    buf_done_last : array
         Buffer of last 'dones'.
     buf_vpred_last : array
         Buffer of last value estimates.
     env_results : List
         Outputs from the environment (observations, rewards, done, info).
-    int_rew : array
+    internal_reward : array
         Internal rewards.
     statlists : dict
         Dictionary with run statistics.
@@ -96,16 +118,16 @@ class Rollout(object):
 
         # Define the reward function as a weighted combination of internal and (clipped)
         # external rewards.
-        self.reward_fun = (
-            lambda ext_rew, int_rew: ext_rew_coeff * np.clip(ext_rew, -1.0, 1.0)
-            + int_rew_coeff * int_rew
+        self.reward_function = (
+            lambda ext_rew, internal_reward: ext_rew_coeff * np.clip(ext_rew, -1.0, 1.0)
+            + int_rew_coeff * internal_reward
         )
 
         # Initialize buffer
         self.buf_vpreds = np.empty((nenvs, self.nsteps), np.float32)
-        self.buf_nlps = np.empty((nenvs, self.nsteps), np.float32)
-        self.buf_rews = np.empty((nenvs, self.nsteps), np.float32)
-        self.buf_ext_rews = np.empty((nenvs, self.nsteps), np.float32)
+        self.buf_neglogprobs = np.empty((nenvs, self.nsteps), np.float32)
+        self.buf_rewards = np.empty((nenvs, self.nsteps), np.float32)
+        self.buf_ext_rewards = np.empty((nenvs, self.nsteps), np.float32)
         self.buf_acs = np.empty(
             (nenvs, self.nsteps, *self.ac_space.shape), self.ac_space.dtype
         )
@@ -115,16 +137,16 @@ class Rollout(object):
         self.buf_obs_last = np.empty(
             (nenvs, self.nsegs_per_env, *self.ob_space.shape), np.float32
         )
-        self.buf_news = np.zeros((nenvs, self.nsteps), np.float32)
-        self.buf_new_last = self.buf_news[:, 0, ...].copy()
+        self.buf_dones = np.zeros((nenvs, self.nsteps), np.float32)
+        self.buf_done_last = self.buf_dones[:, 0, ...].copy()
         self.buf_vpred_last = self.buf_vpreds[:, 0, ...].copy()
 
         self.env_results = [None] * self.nlumps
-        self.int_rew = np.zeros((nenvs,), np.float32)
+        self.internal_reward = np.zeros((nenvs,), np.float32)
 
         self.statlists = defaultdict(lambda: deque([], maxlen=100))
         self.stats = defaultdict(float)
-        self.best_ext_ret = None
+        self.best_ext_return = None
 
         self.step_count = 0
 
@@ -132,7 +154,6 @@ class Rollout(object):
         """Steps through environment, calculates reward and update info."""
         self.ep_infos_new = []
         for t in range(self.nsteps):
-            # print("rollout step: " + str(t))
             self.rollout_step()
         self.calculate_reward()
         self.update_info()
@@ -143,9 +164,9 @@ class Rollout(object):
 
         """
         net_output = []
-        if self.dynamics_list[0].var_output:
+        if self.dynamics_list[0].use_disagreement:
             # Get output from all dynamics models (featurewise)
-            # shape=[num_dynamics, num_envs, n_steps_per_seg, feat_dim]
+            # shape=[num_dynamics, num_envs, n_steps_per_seg, feature_dim]
 
             for dynamics in self.dynamics_list:
                 net_output.append(
@@ -154,11 +175,11 @@ class Rollout(object):
                     )
                 )
             # Get variance over dynamics models
-            # shape=[n_envs, n_steps_per_seg, feat_dim]
-            var_output = np.var(net_output, axis=0)
+            # shape=[n_envs, n_steps_per_seg, feature_dim]
+            disagreement = np.var(net_output, axis=0)
             # Get reward by mean along features
             # shape=[n_envs, n_steps_per_seg]
-            var_rew = np.mean(var_output, axis=-1)
+            disagreement_reward = np.mean(disagreement, axis=-1)
         else:
             # Get loss from all dynamics models (difference between dynamics output and
             # the features of the next state)
@@ -171,9 +192,11 @@ class Rollout(object):
                 )
             # Get the variance of the dynamics loss over dynamic models
             # shape=[n_envs, n_steps_per_seg]
-            var_rew = np.var(net_output, axis=0)
+            disagreement_reward = np.var(net_output, axis=0)
         # Fill reward buffer with the new rewards
-        self.buf_rews[:] = self.reward_fun(int_rew=var_rew, ext_rew=self.buf_ext_rews)
+        self.buf_rewards[:] = self.reward_function(
+            internal_reward=disagreement_reward, ext_rew=self.buf_ext_rewards
+        )
 
     def rollout_step(self):
         """Take a step in the environment and fill the buffer with all infos."""
@@ -202,12 +225,12 @@ class Rollout(object):
             # Fill the buffer
             sli = slice(lump * self.lump_stride, (lump + 1) * self.lump_stride)
             self.buf_obs[sli, t] = obs
-            self.buf_news[sli, t] = news
+            self.buf_dones[sli, t] = news
             self.buf_vpreds[sli, t] = vpreds
-            self.buf_nlps[sli, t] = nlps
+            self.buf_neglogprobs[sli, t] = nlps
             self.buf_acs[sli, t] = acs
             if t > 0:
-                self.buf_ext_rews[sli, t - 1] = prevrews
+                self.buf_ext_rewards[sli, t - 1] = prevrews
 
         self.step_count += 1
         if s == self.nsteps_per_seg - 1:
@@ -217,8 +240,8 @@ class Rollout(object):
                 nextobs, ext_rews, nextnews, _ = self.env_get(lump)
                 self.buf_obs_last[sli, t // self.nsteps_per_seg] = nextobs
                 if t == self.nsteps - 1:
-                    self.buf_new_last[sli] = nextnews
-                    self.buf_ext_rews[sli, t] = ext_rews
+                    self.buf_done_last[sli] = nextnews
+                    self.buf_ext_rewards[sli, t] = ext_rews
                     _, self.buf_vpred_last[sli], _ = self.policy.get_ac_value_nlp(
                         nextobs
                     )
@@ -231,11 +254,11 @@ class Rollout(object):
             keys_ = all_ep_infos[0].keys()
             all_ep_infos = {k: [i[k] for i in all_ep_infos] for k in keys_}
 
-            self.statlists["eprew"].extend(all_ep_infos["r"])
-            self.stats["eprew_recent"] = np.mean(all_ep_infos["r"])
-            self.statlists["eplen"].extend(all_ep_infos["l"])
-            self.stats["epcount"] += len(all_ep_infos["l"])
-            self.stats["tcount"] += sum(all_ep_infos["l"])
+            self.statlists["performance/episode_reward"].extend(all_ep_infos["r"])
+            self.stats["performance/eprew_recent"] = np.mean(all_ep_infos["r"])
+            self.statlists["performance/episode_length"].extend(all_ep_infos["l"])
+            self.stats["run/episode_count"] += len(all_ep_infos["l"])
+            self.stats["run/num_timesteps"] += sum(all_ep_infos["l"])
 
             current_max = np.max(all_ep_infos["r"])
         else:
@@ -243,8 +266,8 @@ class Rollout(object):
         self.ep_infos_new = []
 
         if current_max is not None:
-            if (self.best_ext_ret is None) or (current_max > self.best_ext_ret):
-                self.best_ext_ret = current_max
+            if (self.best_ext_return is None) or (current_max > self.best_ext_return):
+                self.best_ext_return = current_max
         self.current_max = current_max
 
     def env_step(self, lump, acs):

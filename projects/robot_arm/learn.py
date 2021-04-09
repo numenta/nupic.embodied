@@ -1,3 +1,26 @@
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
+
+
 # Code from https://github.com/qqadssp/Pytorch-Large-Scale-Curiosity
 # and https://github.com/pathak22/exploration-by-disagreement
 
@@ -41,8 +64,8 @@ class Trainer(object):
         hyperparameter,
         num_timesteps,
         envs_per_process,
-        num_dyna,
-        var_output,
+        num_dynamics,
+        use_disagreement,
         device,
     ):
         self.make_env = make_env
@@ -58,8 +81,8 @@ class Trainer(object):
             device=self.device,
             ob_space=self.ob_space,
             ac_space=self.ac_space,
-            feat_dim=self.hyperparameter["feature_dim"],
-            hid_dim=self.hyperparameter["policy_hidden_dim"],
+            feature_dim=self.hyperparameter["feature_dim"],
+            hidden_dim=self.hyperparameter["policy_hidden_dim"],
             ob_mean=self.ob_mean,
             ob_std=self.ob_std,
             layernormalize=False,
@@ -90,7 +113,7 @@ class Trainer(object):
             policy=self.policy,
             features_shared_with_policy=False,
             device=self.device,
-            feat_dim=hyperparameter["feature_dim"],
+            feature_dim=hyperparameter["feature_dim"],
             layernormalize=hyperparameter["layernorm"],
         )
 
@@ -98,15 +121,15 @@ class Trainer(object):
 
         # Create a list of dynamics models. Their disagreement is used for learning.
         self.dynamics_list = []
-        for i in range(num_dyna):
+        for i in range(num_dynamics):
             self.dynamics_list.append(
                 self.dynamics_class(
                     auxiliary_task=self.feature_extractor,
-                    feat_dim=hyperparameter["feature_dim"],
+                    feature_dim=hyperparameter["feature_dim"],
                     device=self.device,
                     scope="dynamics_{}".format(i),
                     # whether to use the variance or the prediction error for the reward
-                    var_output=var_output,
+                    use_disagreement=use_disagreement,
                 )
             )
 
@@ -116,17 +139,21 @@ class Trainer(object):
             device=self.device,
             ob_space=self.ob_space,
             ac_space=self.ac_space,
-            stochpol=self.policy,  # change to policy
-            use_news=hyperparameter["use_news"],  # don't use the done information
+            policy=self.policy,  # change to policy
+            use_done=hyperparameter["use_done"],  # don't use the done information
             gamma=hyperparameter["gamma"],  # discount factor
-            lam=hyperparameter["lambda"],   # discount factor for advantage
+            lam=hyperparameter["lambda"],  # discount factor for advantage
             nepochs=hyperparameter["nepochs"],
             nminibatches=hyperparameter["nminibatches"],
             lr=hyperparameter["lr"],
             cliprange=0.1,  # clipping policy gradient
-            nsteps_per_seg=hyperparameter["nsteps_per_seg"],  # number of steps in each environment before taking a learning step
-            nsegs_per_env=hyperparameter["nsegs_per_env"],  # how often to repeat before doing an update, 1
-            ent_coef=hyperparameter["ent_coeff"],  # entropy
+            nsteps_per_seg=hyperparameter[
+                "nsteps_per_seg"
+            ],  # number of steps in each environment before taking a learning step
+            nsegs_per_env=hyperparameter[
+                "nsegs_per_env"
+            ],  # how often to repeat before doing an update, 1
+            entropy_coef=hyperparameter["entropy_coef"],  # entropy
             normrew=hyperparameter["norm_rew"],  # whether to normalize reward
             normadv=hyperparameter["norm_adv"],  # whether to normalize advantage
             ext_coeff=hyperparameter["ext_coeff"],  # weight of the environment reward
@@ -189,7 +216,6 @@ class Trainer(object):
         Keeps learning until num_timesteps is reached.
 
         """
-        print("Start interaction.")
         self.agent.start_interaction(
             self.envs,
             nlump=self.hyperparameter["nlumps"],
@@ -197,12 +223,14 @@ class Trainer(object):
         )
         print("# of timesteps: " + str(self.num_timesteps))
         while True:
-            print("Start learning")
             info = self.agent.step()
-            # print("info: " + str(info))
+            print("------------------------------------------")
+            print("Step count: " + str(self.agent.step_count))
+            print("------------------------------------------")
+            for i in info["update"]:
+                print(str(np.round(info["update"][i], 3)) + " - " + i)
             if not args.debugging:
                 wandb.log(info["update"])
-            print("Step count: " + str(self.agent.step_count))
 
             if self.agent.step_count >= self.num_timesteps:
                 print("step count > num timesteps - " + str(self.num_timesteps))
@@ -249,6 +277,7 @@ def make_env_all_params(rank, args):
         env = make_multi_pong()
     elif args["env_kind"] == "roboarm":
         from real_robots.envs import REALRobotEnv
+
         env = REALRobotEnv(objects=3, action_type="cartesian")
         env = CartesianControlDiscrete(
             env,
@@ -289,7 +318,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--expID", type=str, default="000")
     parser.add_argument("--seed", help="RNG seed", type=int, default=0)
-    parser.add_argument("--use_news", type=int, default=0)
+    parser.add_argument("--use_done", type=int, default=0)
     parser.add_argument("--ext_coeff", type=float, default=0.0)
     parser.add_argument("--int_coeff", type=float, default=1.0)
     parser.add_argument("--layernorm", type=int, default=0)
@@ -302,7 +331,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_dynamics", type=int, default=5)
     parser.add_argument("--feature_dim", type=int, default=512)
     parser.add_argument("--policy_hidden_dim", type=int, default=512)
-    parser.add_argument("--no_var_output", action="store_false", default=True)
+    parser.add_argument("--dont_use_disagreement", action="store_false", default=True)
     parser.add_argument("--load", action="store_true", default=False)
     # option to use when debugging so not every test run is logged.
     parser.add_argument("--debugging", action="store_true", default=False)
@@ -332,7 +361,7 @@ if __name__ == "__main__":
     parser.add_argument("--norm_adv", type=int, default=1)
     parser.add_argument("--norm_rew", type=int, default=1)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--ent_coeff", type=float, default=0.001)
+    parser.add_argument("--entropy_coef", type=float, default=0.001)
     parser.add_argument("--nepochs", type=int, default=3)
     parser.add_argument("--num_timesteps", type=int, default=int(64))
 
@@ -376,8 +405,8 @@ if __name__ == "__main__":
         num_timesteps=args.num_timesteps,
         hyperparameter=args.__dict__,
         envs_per_process=args.envs_per_process,
-        num_dyna=args.num_dynamics,
-        var_output=args.no_var_output,
+        num_dynamics=args.num_dynamics,
+        use_disagreement=args.dont_use_disagreement,
         device=device,
     )
 
