@@ -35,7 +35,7 @@ class DynamicsLinear(nn.Linear):
         x = torch.cat((x, ac), dim=-1)
         return super().forward(x), ac
 
-class DynamicsSequential(torch.nn.Sequential):
+class DynamicsSequential(nn.Sequential):
     """Sequential for Dynamic Networks that accepts action"""
     def forward(self, x, ac):
         for module in self:
@@ -61,7 +61,7 @@ class DynamicsBlock(DynamicsSequential):
         return out + x, ac
 
 
-class DynamicsNet(torch.nn.Module):
+class DynamicsNet(nn.Module):
     """Residual network to get the dynamics loss using the features from the auxiliary
     task model.
 
@@ -106,9 +106,9 @@ class DynamicsNet(torch.nn.Module):
     def init_weight(self):
         """Initialize the weights with xavier (glorot) uniform initialization"""
         for module in self.modules():
-            if isinstance(module, torch.nn.Linear):
-                torch.nn.init.xavier_uniform_(module.weight.data)
-                torch.nn.init.constant_(module.bias.data, 0.0)
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight.data)
+                nn.init.constant_(module.bias.data, 0.0)
 
     def forward(self, x, ac):
         """Get output of a forward pass through the dynamics network.
