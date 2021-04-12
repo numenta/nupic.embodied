@@ -210,6 +210,45 @@ class Trainer(object):
         print("done.")
         self.envs = [partial(self.make_env, i) for i in range(self.envs_per_process)]
 
+    def save_models(self):
+        state_dicts = {
+            "feature_extractor": self.feature_extractor.features_model.state_dict(),
+            "policy_features": self.policy.features_model.state_dict(),
+            "policy_hidden": self.policy.pd_hidden.state_dict(),
+            "policy_pd_head": self.policy.pd_head.state_dict(),
+            "policy_vf_head": self.policy.vf_head.state_dict(),
+            "optimizer": self.agent.optimizer.state_dict(),
+        }
+
+        for i in range(args.num_dynamics):
+            state_dicts["dynamics_model_" + str(i)] = self.dynamics_list[
+                i
+            ].dynamics_net.state_dict()
+        # TODO: Add state dict of auxiliary task parts
+        model_path = "./models/" + self.hyperparameter["exp_name"]
+        torch.save(state_dicts, model_path + "/model.pt")
+        print("Saved model at " + model_path + "/model.pt")
+
+    def load_models(self):
+        model_path = "./models/" + self.hyperparameter["exp_name"]
+        print("Loading model from " + str(model_path + "/model.pt"))
+        checkpoint = torch.load(model_path + "/model.pt")
+
+        self.feature_extractor.features_model.load_state_dict(
+            checkpoint["feature_extractor"]
+        )
+        self.policy.features_model.load_state_dict(checkpoint["policy_features"])
+        self.policy.pd_hidden.load_state_dict(checkpoint["policy_hidden"])
+        self.policy.pd_head.load_state_dict(checkpoint["policy_pd_head"])
+        self.policy.vf_head.load_state_dict(checkpoint["policy_vf_head"])
+        self.agent.optimizer.load_state_dict(checkpoint["optimizer"])
+        for i in range(args.num_dynamics):
+            self.dynamics_list[i].dynamics_net.load_state_dict(
+                checkpoint["dynamics_model_" + str(i)]
+            )
+        print("Model successfully loaded.")
+        # TODO: add setting of run info like step cout and total time
+
     def train(self):
         """Training loop for the agent.
 
@@ -221,6 +260,10 @@ class Trainer(object):
             nlump=self.hyperparameter["nlumps"],
             dynamics_list=self.dynamics_list,
         )
+
+        if self.hyperparameter["load"]:
+            self.load_models()
+
         print("# of timesteps: " + str(self.num_timesteps))
         while True:
             info = self.agent.step()
@@ -234,6 +277,7 @@ class Trainer(object):
 
             if self.agent.step_count >= self.num_timesteps:
                 print("step count > num timesteps - " + str(self.num_timesteps))
+                self.save_models()
                 break
         print("Stopped interaction")
         self.agent.stop_interaction()
@@ -410,12 +454,15 @@ if __name__ == "__main__":
         device=device,
     )
 
-    # TODO: Add pytorch model loading if args["load"].
+    model_path = "./models/" + args.exp_name
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+
     try:
         trainer.train()
         print("Model finished training.")
     except KeyboardInterrupt:
         print("Training interrupted.")
+        trainer.save_models()
         if not args.debugging:
             run.finish()
-        # TODO: Add model saving here.
