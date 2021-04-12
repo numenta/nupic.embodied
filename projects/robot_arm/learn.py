@@ -218,6 +218,9 @@ class Trainer(object):
             "policy_pd_head": self.policy.pd_head.state_dict(),
             "policy_vf_head": self.policy.vf_head.state_dict(),
             "optimizer": self.agent.optimizer.state_dict(),
+            "step_count": self.agent.step_count,
+            "n_updates": self.agent.n_updates,
+            "total_secs": self.agent.total_secs,
         }
 
         for i in range(args.num_dynamics):
@@ -246,8 +249,11 @@ class Trainer(object):
             self.dynamics_list[i].dynamics_net.load_state_dict(
                 checkpoint["dynamics_model_" + str(i)]
             )
+        print("starting at step " + str(checkpoint["step_count"]))
+        self.agent.start_step = checkpoint["step_count"]
+        self.agent.n_updates = checkpoint["n_updates"]
+        self.agent.time_trained_so_far = checkpoint["total_secs"]
         print("Model successfully loaded.")
-        # TODO: add setting of run info like step cout and total time
 
     def train(self):
         """Training loop for the agent.

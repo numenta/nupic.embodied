@@ -147,6 +147,7 @@ class PpoOptimizer(object):
         self.ext_coeff = ext_coeff
         self.int_coeff = int_coeff
         self.vLogFreq = vLogFreq
+        self.time_trained_so_far = 0
         # TODO: Add saving with expName & vLog Freq video saving
 
     def start_interaction(self, env_fns, dynamics_list, nlump=1):
@@ -217,6 +218,7 @@ class PpoOptimizer(object):
             self.reward_stats = RunningMeanStd()
 
         self.step_count = 0
+        self.start_step = 0
         self.t_last_update = time.time()
         self.t_start = time.time()
 
@@ -504,7 +506,8 @@ class PpoOptimizer(object):
             info.pop("states_visited")
         tnow = time.time()
         info["run/updates_per_second"] = 1.0 / (tnow - self.t_last_update)
-        info["run/total_secs"] = tnow - self.t_start
+        self.total_secs = tnow - self.t_start + self.time_trained_so_far
+        info["run/total_secs"] = self.total_secs
         info["run/tps"] = self.rollout.nsteps * self.nenvs / (tnow - self.t_last_update)
         self.t_last_update = tnow
 
@@ -524,7 +527,7 @@ class PpoOptimizer(object):
         # Calculate losses and backpropagate them through the networks
         update_info = self.update()
         # Update stepcount
-        self.step_count = self.rollout.step_count
+        self.step_count = self.start_step + self.rollout.step_count
         # Return the update statistics for logging
         return {"update": update_info}
 
