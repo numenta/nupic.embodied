@@ -245,7 +245,8 @@ class InverseDynamics(FeatureExtractor):
             torch.nn.Linear(self.policy.hidden_dim, self.ac_space.n),
         ).to(self.device)
         # Add auxiliary task output layers to list of optimized parameters
-        self.param_list = self.param_list + [dict(params=self.fc.parameters())]
+        # self.param_list = self.param_list + [dict(params=self.fc.parameters())]
+        self.param_list.extend(self.fc.parameters())
         # Initialize weights with xavier_uniform and constant biases
         self.init_weight()
 
@@ -355,9 +356,13 @@ class VAE(FeatureExtractor):
             device=self.device,
         ).to(self.device)
         # Add encoder and decoder to optimized parameters.
-        self.param_list = [
+        """self.param_list = [
             dict(params=self.features_model.parameters()),
             dict(params=self.decoder_model.parameters()),
+        ]"""
+        self.param_list = [
+            self.features_model.parameters(),
+            self.decoder_model.parameters(),
         ]
 
         self.features_std = None
@@ -365,7 +370,8 @@ class VAE(FeatureExtractor):
         if self.spherical_obs:
             # Initialize a scale paramtere and add it to optimized parameters.
             self.scale = torch.nn.Parameter(torch.tensor(1.0), requires_grad=True)
-            self.param_list = self.param_list + [dict(params=[self.scale])]
+            # self.param_list = self.param_list + [dict(params=[self.scale])]
+            self.param_list.extend(self.scale)
 
     def update_features(self, obs, last_obs):
         """Get the features corresponding to observations from the model and update.
