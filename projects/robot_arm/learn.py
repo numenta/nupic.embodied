@@ -73,6 +73,7 @@ class Trainer(object):
         self.envs_per_process = envs_per_process
         self.num_timesteps = num_timesteps
         self.device = device
+        self.wandb_id = None
         self._set_env_vars()
 
         # Initialize the PPO policy for action selection
@@ -163,6 +164,15 @@ class Trainer(object):
             dynamics_list=self.dynamics_list,
         )
 
+        self.agent.start_interaction(
+            self.envs,
+            nlump=self.hyperparameter["nlumps"],
+            dynamics_list=self.dynamics_list,
+        )
+
+        if self.hyperparameter["load"]:
+            self.load_models()
+
     def _set_env_vars(self):
         """Set environment variables.
 
@@ -221,6 +231,7 @@ class Trainer(object):
             "step_count": self.agent.step_count,
             "n_updates": self.agent.n_updates,
             "total_secs": self.agent.total_secs,
+            "wandb_id": wandb.run.id,
         }
 
         for i in range(args.num_dynamics):
@@ -253,6 +264,7 @@ class Trainer(object):
         self.agent.start_step = checkpoint["step_count"]
         self.agent.n_updates = checkpoint["n_updates"]
         self.agent.time_trained_so_far = checkpoint["total_secs"]
+        self.wandb_id = checkpoint["wandb_id"]
         print("Model successfully loaded.")
 
     def train(self):
@@ -261,14 +273,6 @@ class Trainer(object):
         Keeps learning until num_timesteps is reached.
 
         """
-        self.agent.start_interaction(
-            self.envs,
-            nlump=self.hyperparameter["nlumps"],
-            dynamics_list=self.dynamics_list,
-        )
-
-        if self.hyperparameter["load"]:
-            self.load_models()
 
         print("# of timesteps: " + str(self.num_timesteps))
         while True:
@@ -424,16 +428,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Initialize wandb for logging (if not debugging)
-    if not args.debugging:
-        run = wandb.init(
-            project="embodiedAI",
-            name=args.exp_name,
-            group=args.group,
-            notes=args.notes,
-            config=args,
-        )
-
     print("Setting up Environment.")
 
     make_env = partial(make_env_all_params, args=args.__dict__)
@@ -460,6 +454,25 @@ if __name__ == "__main__":
         device=device,
     )
 
+    # Initialize wandb for logging (if not debugging)
+    if not args.debugging:
+        run = wandb.init(
+            project="embodiedAI",
+            name=args.exp_name,
+            id=trainer.wandb_id,
+            group=args.group,
+            notes=args.notes,
+            config=args,
+            resume="allow",
+        )
+    if wandb.run.resumed:
+        print(
+            "resuming wandb logging at step "
+            + str(wandb.run.step)
+            + " with run id "
+            + str(wandb.run.id)
+        )
+
     model_path = "./models/" + args.exp_name
     if not os.path.exists(model_path):
         os.makedirs(model_path)
@@ -470,5 +483,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("Training interrupted.")
         trainer.save_models()
+        print(wandb.run.step)
         if not args.debugging:
             run.finish()
