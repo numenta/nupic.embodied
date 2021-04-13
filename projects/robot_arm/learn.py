@@ -231,7 +231,14 @@ class Trainer(object):
             "step_count": self.agent.step_count,
             "n_updates": self.agent.n_updates,
             "total_secs": self.agent.total_secs,
+            "best_ext_ret": self.agent.rollout.best_ext_return,
         }
+        if self.hyperparameter["norm_rew"]:
+            state_dicts["tracked_reward"] = self.agent.reward_forward_filter.rewems
+            state_dicts["reward_stats_mean"] = self.agent.reward_stats.mean
+            state_dicts["reward_stats_var"] = self.agent.reward_stats.var
+            state_dicts["reward_stats_count"] = self.agent.reward_stats.count
+
         if not self.hyperparameter["debugging"]:
             state_dicts["wandb_id"] = wandb.run.id
 
@@ -265,6 +272,14 @@ class Trainer(object):
         self.agent.start_step = checkpoint["step_count"]
         self.agent.n_updates = checkpoint["n_updates"]
         self.agent.time_trained_so_far = checkpoint["total_secs"]
+        self.agent.rollout.best_ext_return = checkpoint["best_ext_ret"]
+
+        if self.hyperparameter["norm_rew"]:
+            self.agent.reward_forward_filter.rewems = checkpoint["tracked_reward"]
+            self.agent.reward_stats.mean = checkpoint["reward_stats_mean"]
+            self.agent.reward_stats.var = checkpoint["reward_stats_var"]
+            self.agent.reward_stats.count = checkpoint["reward_stats_count"]
+
         if not self.hyperparameter["debugging"]:
             self.wandb_id = checkpoint["wandb_id"]
         print("Model successfully loaded.")
