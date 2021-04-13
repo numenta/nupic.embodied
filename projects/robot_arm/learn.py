@@ -231,8 +231,9 @@ class Trainer(object):
             "step_count": self.agent.step_count,
             "n_updates": self.agent.n_updates,
             "total_secs": self.agent.total_secs,
-            "wandb_id": wandb.run.id,
         }
+        if not self.hyperparameter["debugging"]:
+            state_dicts["wandb_id"] = wandb.run.id
 
         for i in range(args.num_dynamics):
             state_dicts["dynamics_model_" + str(i)] = self.dynamics_list[
@@ -264,7 +265,8 @@ class Trainer(object):
         self.agent.start_step = checkpoint["step_count"]
         self.agent.n_updates = checkpoint["n_updates"]
         self.agent.time_trained_so_far = checkpoint["total_secs"]
-        self.wandb_id = checkpoint["wandb_id"]
+        if not self.hyperparameter["debugging"]:
+            self.wandb_id = checkpoint["wandb_id"]
         print("Model successfully loaded.")
 
     def train(self):
@@ -465,13 +467,13 @@ if __name__ == "__main__":
             config=args,
             resume="allow",
         )
-    if wandb.run.resumed:
-        print(
-            "resuming wandb logging at step "
-            + str(wandb.run.step)
-            + " with run id "
-            + str(wandb.run.id)
-        )
+        if wandb.run.resumed:
+            print(
+                "resuming wandb logging at step "
+                + str(wandb.run.step)
+                + " with run id "
+                + str(wandb.run.id)
+            )
 
     model_path = "./models/" + args.exp_name
     if not os.path.exists(model_path):
@@ -483,6 +485,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("Training interrupted.")
         trainer.save_models()
-        print(wandb.run.step)
         if not args.debugging:
             run.finish()
