@@ -20,6 +20,9 @@
 #
 # ------------------------------------------------------------------------------
 
+# Example Usage:
+# python enjoy.py --exp_name=Name --num_timesteps=1024
+
 if __name__ == "__main__":
     import argparse
 
@@ -37,25 +40,12 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name", type=str, default="")
     parser.add_argument("--expID", type=str, default="000")
     parser.add_argument("--seed", help="RNG seed", type=int, default=0)
-    parser.add_argument("--dyn_from_pixels", type=int, default=0)
-    parser.add_argument("--use_done", type=int, default=0)
-    parser.add_argument("--ext_coeff", type=float, default=0.0)
-    parser.add_argument("--int_coeff", type=float, default=1.0)
-    parser.add_argument("--layernorm", type=int, default=0)
-    parser.add_argument(
-        "--feat_learning",
-        type=str,
-        default="none",
-        choices=["none", "idf", "vaesph", "vaenonsph"],
-    )
-    parser.add_argument("--num_dynamics", type=int, default=5)
-    parser.add_argument("--dont_use_disagreement", action="store_false", default=True)
-    parser.add_argument("--load", action="store_true", default=True)
 
     # Environment parameters:
     parser.add_argument(
         "--env", help="environment ID", default="BreakoutNoFrameskip-v4", type=str
     )
+    parser.add_argument("--num_timesteps", type=int, default=int(1024))
     parser.add_argument(
         "--max-episode-steps",
         help="maximum number of timesteps for episode",
@@ -91,8 +81,19 @@ if __name__ == "__main__":
 
     env = make_env_all_params(0, args.__dict__)
 
+    if torch.cuda.is_available():
+        print("GPU detected")
+        dev_name = "cuda:0"
+        torch.set_default_tensor_type("torch.cuda.FloatTensor")
+    else:
+        print("no GPU detected, using CPU instead.")
+        dev_name = "cpu"
+    device = torch.device(dev_name)
+    print("device: " + str(device))
+
     policy = CnnPolicy(
         scope="policy",
+        device=device,
         ob_space=env.observation_space,
         ac_space=env.action_space,
         hidden_dim=512,
@@ -103,13 +104,22 @@ if __name__ == "__main__":
         nonlinear=torch.nn.LeakyReLU,
     )
 
-    # TODO: Add pytorch model loading.
+    # Load the trained policy from ./models/exp_name/model.pt
+    model_path = "./models/" + args.exp_name
+    print("Loading model from " + str(model_path + "/model.pt"))
+    checkpoint = torch.load(model_path + "/model.pt")
+
+    policy.features_model.load_state_dict(checkpoint["policy_features"])
+    policy.pd_hidden.load_state_dict(checkpoint["policy_hidden"])
+    policy.pd_head.load_state_dict(checkpoint["policy_pd_head"])
+    policy.vf_head.load_state_dict(checkpoint["policy_vf_head"])
 
     observation = env.reset()
     observation = np.array(observation)
 
     reward, done = 0, False
-    for action in range(50):
+    last_done = 0
+    for s in range(args.num_timesteps):
         # Quick fix right now for shape error concatenate twice the same obs
         acs, vpreds, nlps = policy.get_ac_value_nlp(
             np.array([[observation, observation]])
@@ -121,5 +131,9 @@ if __name__ == "__main__":
         # action = env.action_space.sample()
         env.render()
         observation, reward, done, info = env.step(acs[0])
+        if done:
+            print("episode length: " + str(s - last_done))
+            last_done = s
+            observation = env.reset()
         observation = np.array(observation)
     env.close()
