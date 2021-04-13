@@ -74,6 +74,7 @@ class Trainer(object):
         self.num_timesteps = num_timesteps
         self.device = device
         self.wandb_id = None
+        self.wandb_run = None
         self._set_env_vars()
 
         # Initialize the PPO policy for action selection
@@ -170,9 +171,6 @@ class Trainer(object):
             dynamics_list=self.dynamics_list,
         )
 
-        if self.hyperparameter["load"]:
-            self.load_models()
-
     def _set_env_vars(self):
         """Set environment variables.
 
@@ -251,8 +249,21 @@ class Trainer(object):
         torch.save(state_dicts, model_path + "/model.pt")
         print("Saved model at " + model_path + "/model.pt")
 
+        if not self.hyperparameter["debugging"]:
+            artifact = wandb.Artifact(self.hyperparameter["exp_name"], type="model")
+            artifact.add_file(model_path + "/model.pt")
+            self.wandb_run.log_artifact(artifact)
+            self.wandb_run.join()
+            print("model saved as artifact to wandb")
+
     def load_models(self):
-        model_path = "./models/" + self.hyperparameter["exp_name"]
+        if self.hyperparameter["download_model_from"] != "":
+            artifact = self.wandb_run.use_artifact(
+                self.hyperparameter["download_model_from"], type="model"
+            )
+            model_path = artifact.download()
+        else:
+            model_path = "./models/" + self.hyperparameter["exp_name"]
         print("Loading model from " + str(model_path + "/model.pt"))
         checkpoint = torch.load(model_path + "/model.pt")
 
@@ -301,6 +312,8 @@ class Trainer(object):
                 print(str(np.round(info["update"][i], 3)) + " - " + i)
             if not args.debugging:
                 wandb.log(info["update"])
+
+            # TODO: Add savefreq hyperparameter and save intermediate models?
 
             if self.agent.step_count >= self.num_timesteps:
                 print("step count > num timesteps - " + str(self.num_timesteps))
@@ -373,8 +386,15 @@ if __name__ == "__main__":
 
         run an experiment with random features and with logging:
         python learn.py -- env=BreakoutNoFrameskip-v4 --envs_per_process=8
-        --num_timesteps=10000 --feat_learning=None --exp_name=BOTests
+        --num_timesteps=10000 --feat_learning=None --exp_name=ExperimentName
         --group=Implementation --notes="Some notes about this run"
+
+        load a model locally and continue training:
+        python learn.py --num_timesteps=10000 --exp_name=ExperimentName --load
+
+        load a model from wandb artifact:
+        python learn.py --num_timesteps=10000 --exp_name=ExperimentName --load
+        --download_model_from=vclay/embodiedAI/ExperimentName:v0
     """
 
     parser = argparse.ArgumentParser(
@@ -404,6 +424,7 @@ if __name__ == "__main__":
     parser.add_argument("--policy_hidden_dim", type=int, default=512)
     parser.add_argument("--dont_use_disagreement", action="store_false", default=True)
     parser.add_argument("--load", action="store_true", default=False)
+    parser.add_argument("--download_model_from", type=str, default="")
     # option to use when debugging so not every test run is logged.
     parser.add_argument("--debugging", action="store_true", default=False)
 
@@ -489,6 +510,10 @@ if __name__ == "__main__":
                 + " with run id "
                 + str(wandb.run.id)
             )
+        trainer.wandb_run = run
+
+    if args.load:
+        trainer.load_models()
 
     model_path = "./models/" + args.exp_name
     if not os.path.exists(model_path):
