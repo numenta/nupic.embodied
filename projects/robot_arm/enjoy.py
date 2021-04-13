@@ -40,6 +40,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name", type=str, default="")
     parser.add_argument("--expID", type=str, default="000")
     parser.add_argument("--seed", help="RNG seed", type=int, default=0)
+    parser.add_argument("--download_model_from", type=str, default="")
 
     # Environment parameters:
     parser.add_argument(
@@ -104,8 +105,20 @@ if __name__ == "__main__":
         nonlinear=torch.nn.LeakyReLU,
     )
 
+    if args.download_model_from != "":
+        import wandb
+
+        # TODO: This creates a new run. Find a way to download artifact without starting
+        # to log to wandb
+        run = wandb.init(
+            project="embodiedAI",
+            name=args.exp_name,
+        )
+        artifact = run.use_artifact(args.download_model_from, type="model")
+        model_path = artifact.download()
+    else:
+        model_path = "./models/" + args.exp_name
     # Load the trained policy from ./models/exp_name/model.pt
-    model_path = "./models/" + args.exp_name
     print("Loading model from " + str(model_path + "/model.pt"))
     checkpoint = torch.load(model_path + "/model.pt")
 
