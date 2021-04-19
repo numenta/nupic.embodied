@@ -512,6 +512,34 @@ if __name__ == "__main__":
             )
         trainer.wandb_run = run
 
+        model_stats_log_freq = 10
+        wandb.watch(
+            trainer.policy.features_model, log="all", log_freq=model_stats_log_freq
+        )
+        wandb.watch(trainer.policy.pd_hidden, log="all", log_freq=model_stats_log_freq)
+        wandb.watch(trainer.policy.pd_head, log="all", log_freq=model_stats_log_freq)
+        wandb.watch(trainer.policy.vf_head, log="all", log_freq=model_stats_log_freq)
+        # Just log parameter & gradients of one dynamics net to avoid clutter.
+        wandb.watch(
+            trainer.dynamics_list[0].dynamics_net,
+            log="all",
+            log_freq=model_stats_log_freq,
+        )
+
+        # Uncomment for detailed logging (maybe make hyperparameter?)
+        """wandb.watch(
+            trainer.feature_extractor.features_model,
+            log="all",
+            log_freq=model_stats_log_freq,
+        )
+
+        for i in range(args.num_dynamics):
+            wandb.watch(
+                trainer.dynamics_list[i].dynamics_net,
+                log="all",
+                log_freq=model_stats_log_freq,
+            )"""
+
     if args.load:
         trainer.load_models()
 
