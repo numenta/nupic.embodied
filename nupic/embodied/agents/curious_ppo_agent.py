@@ -22,6 +22,7 @@
 
 
 import time
+import wandb
 from nupic.embodied.utils.model_parts import flatten_dims
 import torch
 import numpy as np
@@ -326,6 +327,15 @@ class PpoOptimizer(object):
         if self.rollout.best_ext_return is not None:
             info["performance/best_ext_return"] = self.rollout.best_ext_return
 
+        feature_stats = self.get_activation_stats(
+            self.rollout.buf_acts_features, "activations_features/"
+        )
+        hidden_stats = self.get_activation_stats(
+            self.rollout.buf_acts_pi, "activations_hidden/"
+        )
+        info.update(feature_stats)
+        info.update(hidden_stats)
+
         to_report = Counter()
 
         if self.normadv:  # defaults to True
@@ -530,6 +540,31 @@ class PpoOptimizer(object):
         self.step_count = self.start_step + self.rollout.step_count
         # Return the update statistics for logging
         return {"update": update_info}
+
+    def get_activation_stats(self, act, name):
+        stacked_act = np.reshape(act, (act.shape[0] * act.shape[1], act.shape[2]))
+        num_active = np.sum(stacked_act > 0, axis=0)
+
+        def gini(array):
+            array = array.flatten()
+            array += 0.0000001
+            array = np.sort(array)
+            index = np.arange(1, array.shape[0] + 1)
+            n = array.shape[0]
+            return (np.sum((2 * index - n - 1) * array)) / (n * np.sum(array))
+
+        stats = dict()
+        stats[name + "percentage_active_per_frame"] = (
+            np.mean(np.sum(stacked_act > 0, axis=1) / act.shape[2]) * 100
+        )
+        stats[name + "percentage_dead"] = (
+            np.sum(num_active == 0) / stacked_act.shape[1] * 100
+        )
+        # TODO: Are we okay with using absolute values here? Should we do this for other
+        # stats as well?
+        wandb.log({name + "raw_act_distribution": wandb.Histogram(stacked_act)})
+        stats[name + "gini_index"] = gini(np.abs(act))
+        return stats
 
 
 class RewardForwardFilter(object):
