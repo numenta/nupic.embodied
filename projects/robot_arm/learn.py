@@ -454,30 +454,40 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    # TODO: Add help info to all parameters
     # Experiment Parameters:
     parser.add_argument("--exp_name", type=str, default="")
     # Extra specification for wandb logging
     parser.add_argument("--group", type=str, default="")
     parser.add_argument("--notes", type=str, default="")
 
-    parser.add_argument("--expID", type=str, default="000")
+    # Trainer parameters
     parser.add_argument("--seed", help="RNG seed", type=int, default=0)
+    # Normalize layer activations of the feature extractor
+    parser.add_argument("--layernorm", type=int, default=0)
+    # Whether to use the information of a state being terminal.
     parser.add_argument("--use_done", type=int, default=0)
+    # Coefficients with which the internal and external rewards are multiplied
     parser.add_argument("--ext_coeff", type=float, default=0.0)
     parser.add_argument("--int_coeff", type=float, default=1.0)
-    parser.add_argument("--layernorm", type=int, default=0)
+    # Auxiliary task for feature encoding phi
     parser.add_argument(
         "--feat_learning",
         type=str,
         default="none",
         choices=["none", "idf", "vaesph", "vaenonsph"],
     )
+    # Number of dynamics models
     parser.add_argument("--num_dynamics", type=int, default=5)
+    # Network parameters
     parser.add_argument("--feature_dim", type=int, default=512)
     parser.add_argument("--policy_hidden_dim", type=int, default=512)
+    # Whether to use the disagreement between dynamics models as internal reward
     parser.add_argument("--dont_use_disagreement", action="store_false", default=True)
+
+    # Run options
+    # Specify --load to load an existing model (needs to have same exp_name)
     parser.add_argument("--load", action="store_true", default=False)
+    # Download a model from a wandb artifact (specify path)
     parser.add_argument("--download_model_from", type=str, default="")
     # option to use when debugging so not every test run is logged.
     parser.add_argument("--debugging", action="store_true", default=False)
@@ -489,12 +499,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--env", help="environment ID", default="BreakoutNoFrameskip-v4", type=str
     )
-    parser.add_argument(
-        "--max-episode-steps",
-        help="maximum number of timesteps for episode",
-        default=4500,
-        type=int,
-    )
+    parser.add_argument("--max-episode-steps", default=4500, type=int)
     parser.add_argument("--env_kind", type=str, default="atari")
     parser.add_argument("--noop_max", type=int, default=30)
     parser.add_argument("--act_repeat", type=int, default=10)
@@ -507,12 +512,12 @@ if __name__ == "__main__":
     parser.add_argument("--lambda", type=float, default=0.95)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--nminibatches", type=int, default=8)
-    parser.add_argument("--norm_adv", type=int, default=1)
-    parser.add_argument("--norm_rew", type=int, default=1)
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--norm_adv", type=int, default=1)  # normalize advantages
+    parser.add_argument("--norm_rew", type=int, default=1)  # normalize rewards
+    parser.add_argument("--lr", type=float, default=1e-4)  # learning rate
     parser.add_argument("--entropy_coef", type=float, default=0.001)
     parser.add_argument("--nepochs", type=int, default=3)
-    parser.add_argument("--num_timesteps", type=int, default=int(64))
+    parser.add_argument("--num_timesteps", type=int, default=int(1024))
 
     # Rollout parameters:
     parser.add_argument("--nsteps_per_seg", type=int, default=128)
