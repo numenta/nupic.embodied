@@ -219,7 +219,7 @@ class Trainer(object):
         print("done.")
         self.envs = [partial(self.make_env, i) for i in range(self.envs_per_process)]
 
-    def save_models(self):
+    def save_models(self, final=False):
         state_dicts = {
             "feature_extractor": self.feature_extractor.features_model.state_dict(),
             "policy_features": self.policy.features_model.state_dict(),
@@ -246,16 +246,28 @@ class Trainer(object):
                 i
             ].dynamics_net.state_dict()
         # TODO: Add state dict of auxiliary task parts
-        model_path = "./models/" + self.hyperparameter["exp_name"]
-        torch.save(state_dicts, model_path + "/model.pt")
-        print("Saved model at " + model_path + "/model.pt")
-
-        if not self.hyperparameter["debugging"]:
-            artifact = wandb.Artifact(self.hyperparameter["exp_name"], type="model")
-            artifact.add_file(model_path + "/model.pt")
-            self.wandb_run.log_artifact(artifact)
-            self.wandb_run.join()
-            print("model saved as artifact to wandb")
+        if final:
+            model_path = "./models/" + self.hyperparameter["exp_name"]
+            torch.save(state_dicts, model_path + "/model.pt")
+            print("Saved final model at " + model_path + "/model.pt")
+            if not self.hyperparameter["debugging"]:
+                artifact = wandb.Artifact(self.hyperparameter["exp_name"], type="model")
+                artifact.add_file(model_path + "/model.pt")
+                self.wandb_run.log_artifact(artifact)
+                # self.wandb_run.join()
+                print("Model saved as artifact to wandb. Wait until sync is finished.")
+        else:
+            model_path = "./models/" + self.hyperparameter["exp_name"] + "/checkpoints"
+            torch.save(
+                state_dicts, model_path + "/model" + str(self.agent.step_count) + ".pt"
+            )
+            print(
+                "Saved intermediate model at "
+                + model_path
+                + "/model"
+                + str(self.agent.step_count)
+                + ".pt"
+            )
 
     def load_models(self):
         if self.hyperparameter["download_model_from"] != "":
@@ -307,7 +319,12 @@ class Trainer(object):
         while True:
             info = self.agent.step()
             print("------------------------------------------")
-            print("Step count: " + str(self.agent.step_count))
+            print(
+                "Step count: "
+                + str(self.agent.step_count)
+                + " # Updates: "
+                + str(self.agent.n_updates)
+            )
             print("------------------------------------------")
             for i in info["update"]:
                 try:
@@ -317,11 +334,20 @@ class Trainer(object):
             if not args.debugging:
                 wandb.log(info["update"])
 
-            # TODO: Add savefreq hyperparameter and save intermediate models?
+            # Save intermediate model at specified save frequency
+            if (
+                self.hyperparameter["model_save_freq"] >= 0
+                and self.agent.n_updates % self.hyperparameter["model_save_freq"] == 0
+            ):
+                print(
+                    str(self.agent.n_updates) + " updates - saving intermediate model."
+                )
+                self.save_models()
 
+            # Check if num_timesteps have been executed and end run.
             if self.agent.step_count >= self.num_timesteps:
                 print("step count > num timesteps - " + str(self.num_timesteps))
-                self.save_models()
+                self.save_models(final=True)
                 break
         print("Stopped interaction")
         self.agent.stop_interaction()
@@ -433,6 +459,7 @@ if __name__ == "__main__":
     parser.add_argument("--debugging", action="store_true", default=False)
     # frequencies in num_updates (not time_steps)
     parser.add_argument("--video_log_freq", type=int, default=-1)
+    parser.add_argument("--model_save_freq", type=int, default=-1)
 
     # Environment parameters:
     parser.add_argument(
@@ -549,6 +576,8 @@ if __name__ == "__main__":
         trainer.load_models()
 
     model_path = "./models/" + args.exp_name
+    if args.model_save_freq >= 0:
+        model_path = model_path + "/checkpoints"
     if not os.path.exists(model_path):
         os.makedirs(model_path)
 
@@ -557,6 +586,6 @@ if __name__ == "__main__":
         print("Model finished training.")
     except KeyboardInterrupt:
         print("Training interrupted.")
-        trainer.save_models()
+        trainer.save_models(final=True)
         if not args.debugging:
             run.finish()
