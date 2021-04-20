@@ -232,6 +232,18 @@ class Trainer(object):
             "total_secs": self.agent.total_secs,
             "best_ext_ret": self.agent.rollout.best_ext_return,
         }
+        if self.hyperparameter["feat_learning"] == "idf":
+            state_dicts["idf_fc"] = self.feature_extractor.fc.state_dict()
+        elif self.hyperparameter["feat_learning"] == "vaesph":
+            state_dicts[
+                "decoder_model"
+            ] = self.feature_extractor.decoder_model.state_dict()
+            state_dicts["scale"] = self.feature_extractor.scale
+        elif self.hyperparameter["feat_learning"] == "vaenonsph":
+            state_dicts[
+                "decoder_model"
+            ] = self.feature_extractor.decoder_model.state_dict()
+
         if self.hyperparameter["norm_rew"]:
             state_dicts["tracked_reward"] = self.agent.reward_forward_filter.rewems
             state_dicts["reward_stats_mean"] = self.agent.reward_stats.mean
@@ -245,7 +257,7 @@ class Trainer(object):
             state_dicts["dynamics_model_" + str(i)] = self.dynamics_list[
                 i
             ].dynamics_net.state_dict()
-        # TODO: Add state dict of auxiliary task parts
+
         if final:
             model_path = "./models/" + self.hyperparameter["exp_name"]
             torch.save(state_dicts, model_path + "/model.pt")
@@ -297,6 +309,18 @@ class Trainer(object):
         self.agent.n_updates = checkpoint["n_updates"]
         self.agent.time_trained_so_far = checkpoint["total_secs"]
         self.agent.rollout.best_ext_return = checkpoint["best_ext_ret"]
+
+        if self.hyperparameter["feat_learning"] == "idf":
+            self.feature_extractor.fc.load_state_dict(checkpoint["idf_fc"])
+        elif self.hyperparameter["feat_learning"] == "vaesph":
+            self.feature_extractor.decoder_model.load_state_dict(
+                checkpoint["decoder_model"]
+            )
+            self.feature_extractor.scale = checkpoint["scale"]
+        elif self.hyperparameter["feat_learning"] == "vaenonsph":
+            self.feature_extractor.decoder_model.load_state_dict(
+                checkpoint["decoder_model"]
+            )
 
         if self.hyperparameter["norm_rew"]:
             self.agent.reward_forward_filter.rewems = checkpoint["tracked_reward"]

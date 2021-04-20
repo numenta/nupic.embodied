@@ -118,7 +118,6 @@ class FeatureExtractor(object):
             ).to(self.device)
             # Add feature model to optimization parameters
             self.param_list.extend(self.features_model.parameters())
-
         self.scope = scope
 
         self.features = None
@@ -354,18 +353,18 @@ class VAE(FeatureExtractor):
             positional_bias=True,
             device=self.device,
         ).to(self.device)
+
         # Add encoder and decoder to optimized parameters.
-        self.param_list = [
-            self.features_model.parameters(),
-            self.decoder_model.parameters(),
-        ]
+        self.param_list = []  # remove smaller feature model that was replaced
+        self.param_list.extend(self.features_model.parameters())
+        self.param_list.extend(self.decoder_model.parameters())
 
         self.features_std = None
         self.spherical_obs = spherical_obs
         if self.spherical_obs:
             # Initialize a scale paramtere and add it to optimized parameters.
             self.scale = torch.nn.Parameter(torch.tensor(1.0), requires_grad=True)
-            self.param_list.extend(self.scale)
+            self.param_list.extend([self.scale])
 
     def update_features(self, obs, last_obs):
         """Get the features corresponding to observations from the model and update.
