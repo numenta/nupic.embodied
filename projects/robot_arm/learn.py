@@ -161,7 +161,8 @@ class Trainer(object):
             ext_coeff=hyperparameter["ext_coeff"],  # weight of the environment reward
             int_coeff=hyperparameter["int_coeff"],  # weight of the disagreement reward
             expName=hyperparameter["exp_name"],
-            vLogFreq=hyperparameter["video_log_freq"],  # not used yet
+            vLogFreq=hyperparameter["video_log_freq"],
+            debugging=hyperparameter["debugging"],
             dynamics_list=self.dynamics_list,
         )
 
@@ -309,7 +310,10 @@ class Trainer(object):
             print("Step count: " + str(self.agent.step_count))
             print("------------------------------------------")
             for i in info["update"]:
-                print(str(np.round(info["update"][i], 3)) + " - " + i)
+                try:
+                    print(str(np.round(info["update"][i], 3)) + " - " + i)
+                except TypeError:  # skip wandb elements (Histogram and Video)
+                    pass
             if not args.debugging:
                 wandb.log(info["update"])
 
@@ -427,6 +431,8 @@ if __name__ == "__main__":
     parser.add_argument("--download_model_from", type=str, default="")
     # option to use when debugging so not every test run is logged.
     parser.add_argument("--debugging", action="store_true", default=False)
+    # frequencies in num_updates (not time_steps)
+    parser.add_argument("--video_log_freq", type=int, default=-1)
 
     # Environment parameters:
     parser.add_argument(
@@ -462,7 +468,6 @@ if __name__ == "__main__":
     parser.add_argument("--nsegs_per_env", type=int, default=1)
     parser.add_argument("--envs_per_process", type=int, default=128)
     parser.add_argument("--nlumps", type=int, default=1)
-    parser.add_argument("--video_log_freq", type=int, default=-1)
 
     args = parser.parse_args()
 
