@@ -1,3 +1,25 @@
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
+
 import torch
 import numpy as np
 
@@ -55,7 +77,7 @@ class small_convnet(torch.nn.Module):
         Observation space properties (from env.observation_space).
     nonlinear : torch.nn
         nonlinear activation function to use.
-    feat_dim : int
+    feature_dim : int
         Number of neurons in the hidden layer of the feature network.
     last_nonlinear : torch.nn or None
         nonlinear activation function to use for the last layer.
@@ -87,7 +109,7 @@ class small_convnet(torch.nn.Module):
         self,
         ob_space,
         nonlinear,
-        feat_dim,
+        feature_dim,
         last_nonlinear,
         layernormalize,
         device,
@@ -112,7 +134,7 @@ class small_convnet(torch.nn.Module):
             )
             # Apply nonlinear activation function
             if nonlinear == torch.nn.LeakyReLU:
-                print("setting leaky relu slope to 0.2")  # to make it like original
+                # setting leaky relu slope to 0.2 to make it like original
                 self.conv.add_module(
                     "nl_%i" % idx, torch.nn.LeakyReLU(negative_slope=0.2)
                 )
@@ -124,16 +146,13 @@ class small_convnet(torch.nn.Module):
             # Calculations to get flat output dimensionality of last conv layer
             oH = (oH - f[2]) / f[3][0] + 1
             oW = (oW - f[2]) / f[3][1] + 1
-            print("H: " + str(oH) + " W: " + str(oW))
 
         assert oH == int(oH)  # whether oH is a .0 float ?
         assert oW == int(oW)
-        print(self.conv)
+
         self.flatten_dim = int(oH * oW * feat_list[-1][1])
         # Add fc layer at end for feature output
-        # TODO: Here the original implementation uses normc_initializer(1.0) from
-        # baselines.common.tf_util -> is this important? It changes feature_var on ax=2
-        self.fc = torch.nn.Linear(self.flatten_dim, feat_dim).to(device)
+        self.fc = torch.nn.Linear(self.flatten_dim, feature_dim).to(device)
 
         self.last_nonlinear = last_nonlinear
         self.layernormalize = layernormalize
@@ -141,7 +160,7 @@ class small_convnet(torch.nn.Module):
         self.init_weight()
 
     def init_weight(self):
-        """Initialize wieght of network."""
+        """Initialize weight of network."""
         for m in self.conv:
             if isinstance(m, torch.nn.Conv2d):
                 torch.nn.init.xavier_uniform_(m.weight.data)
@@ -166,7 +185,7 @@ class small_convnet(torch.nn.Module):
         # run x through the convolutional layers
         x = self.conv(x)
         # Get flattened version of conv output
-        # TODO: check that contiguous.view actually does what its supposed to
+        # TODO: Check is using nn.Flatten() is easier here.
         x = x.contiguous().view(
             -1, self.flatten_dim
         )  # dims is calculated manually, 84*84 -> 20*20 -> 9*9 ->7*7
@@ -181,6 +200,7 @@ class small_convnet(torch.nn.Module):
         return x
 
     def layernorm(self, x):
+        # TODO: Check if nn.LayerNorm is easier to use here
         """Normalize a layer."""
         m = torch.mean(x, -1, keepdim=True).to(self.device)
         v = torch.std(x, -1, keepdim=True).to(self.device)
@@ -188,13 +208,13 @@ class small_convnet(torch.nn.Module):
 
 
 class small_deconvnet(torch.nn.Module):
-    def __init__(self, ob_space, feat_dim, nonlinear, ch, positional_bias, device):
+    def __init__(self, ob_space, feature_dim, nonlinear, ch, positional_bias, device):
         super(small_deconvnet, self).__init__()
         self.H = ob_space.shape[0]
         self.W = ob_space.shape[1]
         self.C = ob_space.shape[2]
 
-        self.feat_dim = feat_dim
+        self.feature_dim = feature_dim
         self.nonlinear = nonlinear
         self.ch = ch
         self.positional_bias = positional_bias
@@ -202,7 +222,7 @@ class small_deconvnet(torch.nn.Module):
 
         self.sh = (64, 8, 8)
         self.fc = torch.nn.Sequential(
-            torch.nn.Linear(feat_dim, np.prod(self.sh)), nonlinear()
+            torch.nn.Linear(feature_dim, np.prod(self.sh)), nonlinear()
         ).to(self.device)
 
         # The last kernel_size is 7 not 8 compare to the origin implementation,
@@ -222,7 +242,14 @@ class small_deconvnet(torch.nn.Module):
             )
             if i != len(feat_list) - 1:
                 # TODO: Set negative slope like in smallconvnet
-                self.deconv.add_module("nl_%i" % i, nonlinear())
+                # self.deconv.add_module("nl_%i" % i, nonlinear())
+                if nonlinear == torch.nn.LeakyReLU:
+                    # setting leaky relu slope to 0.2 to make it like original
+                    self.deconv.add_module(
+                        "nl_%i" % i, torch.nn.LeakyReLU(negative_slope=0.2)
+                    )
+                else:
+                    self.deconv.add_module("nl_%i" % i, nonlinear())
 
         self.bias = (
             torch.nn.Parameter(torch.zeros(self.ch, self.H, self.W), requires_grad=True)

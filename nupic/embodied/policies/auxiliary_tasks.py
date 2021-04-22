@@ -1,3 +1,25 @@
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
+
 import numpy as np
 import torch
 from nupic.embodied.utils.model_parts import (
@@ -20,7 +42,7 @@ class FeatureExtractor(object):
         The policy of the ppo agent.
     features_shared_with_policy : bool
         Whether to use the policy features for the disagreement module.
-    feat_dim : int
+    feature_dim : int
         Number of neurons in the last layer of the feature network (or middle of VAE).
     layernormalize : bool
         Whether to normalize output of the last layer.
@@ -31,7 +53,7 @@ class FeatureExtractor(object):
 
     Attributes
     ----------
-    hid_dim : int
+    hidden_dim : int
         Number of neurons in the hidden layer.
     ob_space : Space
         Observation space properties (from env.observation_space).
@@ -62,16 +84,16 @@ class FeatureExtractor(object):
         policy,
         features_shared_with_policy,
         device,
-        feat_dim=None,
+        feature_dim=None,
         layernormalize=None,
         scope="feature_extractor",
     ):
         self.scope = scope
         self.features_shared_with_policy = features_shared_with_policy
-        self.feat_dim = feat_dim
+        self.feature_dim = feature_dim
         self.layernormalize = layernormalize
         self.policy = policy
-        self.hid_dim = policy.hid_dim
+        self.hidden_dim = policy.hidden_dim
         self.ob_space = policy.ob_space
         self.ac_space = policy.ac_space
         self.ob_mean = self.policy.ob_mean
@@ -89,14 +111,13 @@ class FeatureExtractor(object):
             self.features_model = small_convnet(
                 self.ob_space,
                 nonlinear=torch.nn.LeakyReLU,
-                feat_dim=self.feat_dim,
+                feature_dim=self.feature_dim,
                 last_nonlinear=None,
                 layernormalize=self.layernormalize,
                 device=self.device,
             ).to(self.device)
             # Add feature model to optimization parameters
             self.param_list.extend(self.features_model.parameters())
-
         self.scope = scope
 
         self.features = None
@@ -122,8 +143,10 @@ class FeatureExtractor(object):
             last_features = self.policy.get_features(last_obs)
         else:
             # Get features corresponding with the observation from the feature network
-            self.features = self.get_features(obs)
-            last_features = self.get_features(last_obs)
+            self.features = self.get_features(
+                obs
+            )  # shape=[1, nsteps_per_seg, feature_dim]
+            last_features = self.get_features(last_obs)  # shape=[1, 1, feature_dim]
         # concatenate the last and current features
         self.next_features = torch.cat([self.features[:, 1:], last_features], 1)
 
@@ -146,11 +169,11 @@ class FeatureExtractor(object):
         """
         has_timesteps = len(obs.shape) == 5
         if has_timesteps:
-            sh = obs.shape
-            obs = flatten_dims(obs, len(self.ob_space.shape))
+            sh = obs.shape  # shape=[1, nsteps, H, W, C]
+            obs = flatten_dims(obs, len(self.ob_space.shape))  # shape=[nsteps, H, W, C]
         # Normalize observations
         obs = (obs - self.ob_mean) / self.ob_std
-        # Reshape observations
+        # Reshape observations, shape=[nsteps, C, H, W]
         obs = np.transpose(obs, [i for i in range(len(obs.shape) - 3)] + [-1, -3, -2])
         # Get features from the features_model
         act = self.features_model(torch.tensor(obs).to(self.device))
@@ -158,14 +181,6 @@ class FeatureExtractor(object):
         if has_timesteps:
             act = unflatten_first_dim(act, sh)
 
-        """ print(
-            "features: "
-            + str(act.shape)
-            + " mean: "
-            + str(np.mean(act.data.numpy()))
-            + " var: "
-            + str(np.var(act.data.numpy()))
-        )"""
         return act
 
     def get_loss(self, *arg, **kwarg):
@@ -184,7 +199,7 @@ class InverseDynamics(FeatureExtractor):
         The policy of the ppo agent.
     features_shared_with_policy : bool
         Whether to use the policy features for the disagreement module.
-    feat_dim : int
+    feature_dim : int
         Number of neurons in the last layer of the feature network (or middle of VAE).
     layernormalize : bool
         Whether to normalize output of the last layer.
@@ -208,7 +223,7 @@ class InverseDynamics(FeatureExtractor):
         policy,
         features_shared_with_policy,
         device,
-        feat_dim=None,
+        feature_dim=None,
         layernormalize=None,
     ):
         super(InverseDynamics, self).__init__(
@@ -216,21 +231,21 @@ class InverseDynamics(FeatureExtractor):
             policy=policy,
             features_shared_with_policy=features_shared_with_policy,
             device=device,
-            feat_dim=feat_dim,
+            feature_dim=feature_dim,
             layernormalize=layernormalize,
         )
-        """Fully connected layer taking the extracted features for teh current state and
+        """Fully connected layer taking the extracted features for the current state and
         the next state as input (model specified in FeatureExtractor), applying relu for
         the hidden activations, followed by another fc layer outputting the predicted
         action."""
         self.fc = torch.nn.Sequential(
-            torch.nn.Linear(self.feat_dim * 2, self.policy.hid_dim),
+            torch.nn.Linear(self.feature_dim * 2, self.policy.hidden_dim),
             torch.nn.ReLU(),
-            torch.nn.Linear(self.policy.hid_dim, self.ac_space.n),
+            torch.nn.Linear(self.policy.hidden_dim, self.ac_space.n),
         ).to(self.device)
         # Add auxiliary task output layers to list of optimized parameters
-        self.param_list = self.param_list + [dict(params=self.fc.parameters())]
-        # Initialite weights with xavier_uniform and constant biases
+        self.param_list.extend(self.fc.parameters())
+        # Initialize weights with xavier_uniform and constant biases
         self.init_weight()
 
     def init_weight(self):
@@ -273,7 +288,7 @@ class VAE(FeatureExtractor):
         The policy of the ppo agent.
     features_shared_with_policy : bool
         Whether to use the policy features for the disagreement module.
-    feat_dim : int
+    feature_dim : int
         Number of neurons in the last layer of the feature network (or middle of VAE).
     layernormalize : bool
         Whether to normalize output of the last layer.
@@ -305,7 +320,7 @@ class VAE(FeatureExtractor):
         policy,
         features_shared_with_policy,
         device,
-        feat_dim=None,
+        feature_dim=None,
         layernormalize=False,
         spherical_obs=False,
     ):
@@ -317,14 +332,14 @@ class VAE(FeatureExtractor):
             policy=policy,
             features_shared_with_policy=features_shared_with_policy,
             device=device,
-            feat_dim=feat_dim,
+            feature_dim=feature_dim,
             layernormalize=False,
         )
         # Initialize the feature model. Note that the feature dim is twice as big.
         self.features_model = small_convnet(
             self.ob_space,
             nonlinear=torch.nn.LeakyReLU,
-            feat_dim=2 * self.feat_dim,
+            feature_dim=2 * self.feature_dim,
             last_nonlinear=None,
             layernormalize=False,
             device=self.device,
@@ -332,24 +347,24 @@ class VAE(FeatureExtractor):
         # Initialize the decoder model.
         self.decoder_model = small_deconvnet(
             self.ob_space,
-            feat_dim=self.feat_dim,
+            feature_dim=self.feature_dim,
             nonlinear=torch.nn.LeakyReLU,
             ch=4 if spherical_obs else 8,
             positional_bias=True,
             device=self.device,
         ).to(self.device)
+
         # Add encoder and decoder to optimized parameters.
-        self.param_list = [
-            dict(params=self.features_model.parameters()),
-            dict(params=self.decoder_model.parameters()),
-        ]
+        self.param_list = []  # remove smaller feature model that was replaced
+        self.param_list.extend(self.features_model.parameters())
+        self.param_list.extend(self.decoder_model.parameters())
 
         self.features_std = None
         self.spherical_obs = spherical_obs
         if self.spherical_obs:
             # Initialize a scale paramtere and add it to optimized parameters.
             self.scale = torch.nn.Parameter(torch.tensor(1.0), requires_grad=True)
-            self.param_list = self.param_list + [dict(params=[self.scale])]
+            self.param_list.extend([self.scale])
 
     def update_features(self, obs, last_obs):
         """Get the features corresponding to observations from the model and update.
@@ -367,13 +382,13 @@ class VAE(FeatureExtractor):
         last_features = self.get_features(last_obs)
         # concatenate last and current features
         next_features = torch.cat([features[:, 1:], last_features], 1)
-        # Split the features in two (remember, it was 2* feat_dim). the second part is
-        # only used for the posterior scale calculation -> not needed from next features
+        # Split the features in two (remember, it was 2* feature_dim). The second part
+        # is just used for the posterior scale calculation -> not needed for next feats
         self.features, self.features_std = torch.split(
-            features, [self.feat_dim, self.feat_dim], -1
+            features, [self.feature_dim, self.feature_dim], -1
         )  # use means only for features exposed to dynamics
         self.next_features, _ = torch.split(
-            next_features, [self.feat_dim, self.feat_dim], -1
+            next_features, [self.feature_dim, self.feature_dim], -1
         )
         # get current actions and observations
         self.ac = self.policy.ac
