@@ -73,6 +73,8 @@ class Trainer(object):
         self.envs_per_process = envs_per_process
         self.num_timesteps = num_timesteps
         self.device = device
+        self.wandb_id = None
+        self.wandb_run = None
         self._set_env_vars()
 
         # Initialize the PPO policy for action selection
@@ -159,7 +161,14 @@ class Trainer(object):
             ext_coeff=hyperparameter["ext_coeff"],  # weight of the environment reward
             int_coeff=hyperparameter["int_coeff"],  # weight of the disagreement reward
             expName=hyperparameter["exp_name"],
-            vLogFreq=hyperparameter["video_log_freq"],  # not used yet
+            vLogFreq=hyperparameter["video_log_freq"],
+            debugging=hyperparameter["debugging"],
+            dynamics_list=self.dynamics_list,
+        )
+
+        self.agent.start_interaction(
+            self.envs,
+            nlump=self.hyperparameter["nlumps"],
             dynamics_list=self.dynamics_list,
         )
 
@@ -210,30 +219,159 @@ class Trainer(object):
         print("done.")
         self.envs = [partial(self.make_env, i) for i in range(self.envs_per_process)]
 
+    def save_models(self, final=False):
+        state_dicts = {
+            "feature_extractor": self.feature_extractor.features_model.state_dict(),
+            "policy_features": self.policy.features_model.state_dict(),
+            "policy_hidden": self.policy.pd_hidden.state_dict(),
+            "policy_pd_head": self.policy.pd_head.state_dict(),
+            "policy_vf_head": self.policy.vf_head.state_dict(),
+            "optimizer": self.agent.optimizer.state_dict(),
+            "step_count": self.agent.step_count,
+            "n_updates": self.agent.n_updates,
+            "total_secs": self.agent.total_secs,
+            "best_ext_ret": self.agent.rollout.best_ext_return,
+        }
+        if self.hyperparameter["feat_learning"] == "idf":
+            state_dicts["idf_fc"] = self.feature_extractor.fc.state_dict()
+        elif self.hyperparameter["feat_learning"] == "vaesph":
+            state_dicts[
+                "decoder_model"
+            ] = self.feature_extractor.decoder_model.state_dict()
+            state_dicts["scale"] = self.feature_extractor.scale
+        elif self.hyperparameter["feat_learning"] == "vaenonsph":
+            state_dicts[
+                "decoder_model"
+            ] = self.feature_extractor.decoder_model.state_dict()
+
+        if self.hyperparameter["norm_rew"]:
+            state_dicts["tracked_reward"] = self.agent.reward_forward_filter.rewems
+            state_dicts["reward_stats_mean"] = self.agent.reward_stats.mean
+            state_dicts["reward_stats_var"] = self.agent.reward_stats.var
+            state_dicts["reward_stats_count"] = self.agent.reward_stats.count
+
+        if not self.hyperparameter["debugging"]:
+            state_dicts["wandb_id"] = wandb.run.id
+
+        for i in range(args.num_dynamics):
+            state_dicts["dynamics_model_" + str(i)] = self.dynamics_list[
+                i
+            ].dynamics_net.state_dict()
+
+        if final:
+            model_path = "./models/" + self.hyperparameter["exp_name"]
+            torch.save(state_dicts, model_path + "/model.pt")
+            print("Saved final model at " + model_path + "/model.pt")
+            if not self.hyperparameter["debugging"]:
+                artifact = wandb.Artifact(self.hyperparameter["exp_name"], type="model")
+                artifact.add_file(model_path + "/model.pt")
+                self.wandb_run.log_artifact(artifact)
+                # self.wandb_run.join()
+                print("Model saved as artifact to wandb. Wait until sync is finished.")
+        else:
+            model_path = "./models/" + self.hyperparameter["exp_name"] + "/checkpoints"
+            torch.save(
+                state_dicts, model_path + "/model" + str(self.agent.step_count) + ".pt"
+            )
+            print(
+                "Saved intermediate model at "
+                + model_path
+                + "/model"
+                + str(self.agent.step_count)
+                + ".pt"
+            )
+
+    def load_models(self):
+        if self.hyperparameter["download_model_from"] != "":
+            artifact = self.wandb_run.use_artifact(
+                self.hyperparameter["download_model_from"], type="model"
+            )
+            model_path = artifact.download()
+        else:
+            model_path = "./models/" + self.hyperparameter["exp_name"]
+        print("Loading model from " + str(model_path + "/model.pt"))
+        checkpoint = torch.load(model_path + "/model.pt")
+
+        self.feature_extractor.features_model.load_state_dict(
+            checkpoint["feature_extractor"]
+        )
+        self.policy.features_model.load_state_dict(checkpoint["policy_features"])
+        self.policy.pd_hidden.load_state_dict(checkpoint["policy_hidden"])
+        self.policy.pd_head.load_state_dict(checkpoint["policy_pd_head"])
+        self.policy.vf_head.load_state_dict(checkpoint["policy_vf_head"])
+        self.agent.optimizer.load_state_dict(checkpoint["optimizer"])
+        for i in range(args.num_dynamics):
+            self.dynamics_list[i].dynamics_net.load_state_dict(
+                checkpoint["dynamics_model_" + str(i)]
+            )
+        print("starting at step " + str(checkpoint["step_count"]))
+        self.agent.start_step = checkpoint["step_count"]
+        self.agent.n_updates = checkpoint["n_updates"]
+        self.agent.time_trained_so_far = checkpoint["total_secs"]
+        self.agent.rollout.best_ext_return = checkpoint["best_ext_ret"]
+
+        if self.hyperparameter["feat_learning"] == "idf":
+            self.feature_extractor.fc.load_state_dict(checkpoint["idf_fc"])
+        elif self.hyperparameter["feat_learning"] == "vaesph":
+            self.feature_extractor.decoder_model.load_state_dict(
+                checkpoint["decoder_model"]
+            )
+            self.feature_extractor.scale = checkpoint["scale"]
+        elif self.hyperparameter["feat_learning"] == "vaenonsph":
+            self.feature_extractor.decoder_model.load_state_dict(
+                checkpoint["decoder_model"]
+            )
+
+        if self.hyperparameter["norm_rew"]:
+            self.agent.reward_forward_filter.rewems = checkpoint["tracked_reward"]
+            self.agent.reward_stats.mean = checkpoint["reward_stats_mean"]
+            self.agent.reward_stats.var = checkpoint["reward_stats_var"]
+            self.agent.reward_stats.count = checkpoint["reward_stats_count"]
+
+        if not self.hyperparameter["debugging"]:
+            self.wandb_id = checkpoint["wandb_id"]
+        print("Model successfully loaded.")
+
     def train(self):
         """Training loop for the agent.
 
         Keeps learning until num_timesteps is reached.
 
         """
-        self.agent.start_interaction(
-            self.envs,
-            nlump=self.hyperparameter["nlumps"],
-            dynamics_list=self.dynamics_list,
-        )
+
         print("# of timesteps: " + str(self.num_timesteps))
         while True:
             info = self.agent.step()
             print("------------------------------------------")
-            print("Step count: " + str(self.agent.step_count))
+            print(
+                "Step count: "
+                + str(self.agent.step_count)
+                + " # Updates: "
+                + str(self.agent.n_updates)
+            )
             print("------------------------------------------")
             for i in info["update"]:
-                print(str(np.round(info["update"][i], 3)) + " - " + i)
+                try:
+                    print(str(np.round(info["update"][i], 3)) + " - " + i)
+                except TypeError:  # skip wandb elements (Histogram and Video)
+                    pass
             if not args.debugging:
                 wandb.log(info["update"])
 
+            # Save intermediate model at specified save frequency
+            if (
+                self.hyperparameter["model_save_freq"] >= 0
+                and self.agent.n_updates % self.hyperparameter["model_save_freq"] == 0
+            ):
+                print(
+                    str(self.agent.n_updates) + " updates - saving intermediate model."
+                )
+                self.save_models()
+
+            # Check if num_timesteps have been executed and end run.
             if self.agent.step_count >= self.num_timesteps:
                 print("step count > num timesteps - " + str(self.num_timesteps))
+                self.save_models(final=True)
                 break
         print("Stopped interaction")
         self.agent.stop_interaction()
@@ -302,50 +440,66 @@ if __name__ == "__main__":
 
         run an experiment with random features and with logging:
         python learn.py -- env=BreakoutNoFrameskip-v4 --envs_per_process=8
-        --num_timesteps=10000 --feat_learning=None --exp_name=BOTests
+        --num_timesteps=10000 --feat_learning=None --exp_name=ExperimentName
         --group=Implementation --notes="Some notes about this run"
+
+        load a model locally and continue training:
+        python learn.py --num_timesteps=10000 --exp_name=ExperimentName --load
+
+        load a model from wandb artifact:
+        python learn.py --num_timesteps=10000 --exp_name=ExperimentName --load
+        --download_model_from=vclay/embodiedAI/ExperimentName:v0
     """
 
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    # TODO: Add help info to all parameters
     # Experiment Parameters:
     parser.add_argument("--exp_name", type=str, default="")
     # Extra specification for wandb logging
     parser.add_argument("--group", type=str, default="")
     parser.add_argument("--notes", type=str, default="")
 
-    parser.add_argument("--expID", type=str, default="000")
+    # Trainer parameters
     parser.add_argument("--seed", help="RNG seed", type=int, default=0)
+    # Normalize layer activations of the feature extractor
+    parser.add_argument("--layernorm", type=int, default=0)
+    # Whether to use the information of a state being terminal.
     parser.add_argument("--use_done", type=int, default=0)
+    # Coefficients with which the internal and external rewards are multiplied
     parser.add_argument("--ext_coeff", type=float, default=0.0)
     parser.add_argument("--int_coeff", type=float, default=1.0)
-    parser.add_argument("--layernorm", type=int, default=0)
+    # Auxiliary task for feature encoding phi
     parser.add_argument(
         "--feat_learning",
         type=str,
         default="none",
         choices=["none", "idf", "vaesph", "vaenonsph"],
     )
+    # Number of dynamics models
     parser.add_argument("--num_dynamics", type=int, default=5)
+    # Network parameters
     parser.add_argument("--feature_dim", type=int, default=512)
     parser.add_argument("--policy_hidden_dim", type=int, default=512)
+    # Whether to use the disagreement between dynamics models as internal reward
     parser.add_argument("--dont_use_disagreement", action="store_false", default=True)
+
+    # Run options
+    # Specify --load to load an existing model (needs to have same exp_name)
     parser.add_argument("--load", action="store_true", default=False)
+    # Download a model from a wandb artifact (specify path)
+    parser.add_argument("--download_model_from", type=str, default="")
     # option to use when debugging so not every test run is logged.
     parser.add_argument("--debugging", action="store_true", default=False)
+    # frequencies in num_updates (not time_steps)
+    parser.add_argument("--video_log_freq", type=int, default=-1)
+    parser.add_argument("--model_save_freq", type=int, default=-1)
 
     # Environment parameters:
     parser.add_argument(
         "--env", help="environment ID", default="BreakoutNoFrameskip-v4", type=str
     )
-    parser.add_argument(
-        "--max-episode-steps",
-        help="maximum number of timesteps for episode",
-        default=4500,
-        type=int,
-    )
+    parser.add_argument("--max-episode-steps", default=4500, type=int)
     parser.add_argument("--env_kind", type=str, default="atari")
     parser.add_argument("--noop_max", type=int, default=30)
     parser.add_argument("--act_repeat", type=int, default=10)
@@ -358,31 +512,20 @@ if __name__ == "__main__":
     parser.add_argument("--lambda", type=float, default=0.95)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--nminibatches", type=int, default=8)
-    parser.add_argument("--norm_adv", type=int, default=1)
-    parser.add_argument("--norm_rew", type=int, default=1)
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--norm_adv", type=int, default=1)  # normalize advantages
+    parser.add_argument("--norm_rew", type=int, default=1)  # normalize rewards
+    parser.add_argument("--lr", type=float, default=1e-4)  # learning rate
     parser.add_argument("--entropy_coef", type=float, default=0.001)
     parser.add_argument("--nepochs", type=int, default=3)
-    parser.add_argument("--num_timesteps", type=int, default=int(64))
+    parser.add_argument("--num_timesteps", type=int, default=int(1024))
 
     # Rollout parameters:
     parser.add_argument("--nsteps_per_seg", type=int, default=128)
     parser.add_argument("--nsegs_per_env", type=int, default=1)
     parser.add_argument("--envs_per_process", type=int, default=128)
     parser.add_argument("--nlumps", type=int, default=1)
-    parser.add_argument("--video_log_freq", type=int, default=-1)
 
     args = parser.parse_args()
-
-    # Initialize wandb for logging (if not debugging)
-    if not args.debugging:
-        run = wandb.init(
-            project="embodiedAI",
-            name=args.exp_name,
-            group=args.group,
-            notes=args.notes,
-            config=args,
-        )
 
     print("Setting up Environment.")
 
@@ -410,12 +553,68 @@ if __name__ == "__main__":
         device=device,
     )
 
-    # TODO: Add pytorch model loading if args["load"].
+    # Initialize wandb for logging (if not debugging)
+    if not args.debugging:
+        run = wandb.init(
+            project="embodiedAI",
+            name=args.exp_name,
+            id=trainer.wandb_id,
+            group=args.group,
+            notes=args.notes,
+            config=args,
+            resume="allow",
+        )
+        if wandb.run.resumed:
+            print(
+                "resuming wandb logging at step "
+                + str(wandb.run.step)
+                + " with run id "
+                + str(wandb.run.id)
+            )
+        trainer.wandb_run = run
+
+        model_stats_log_freq = 10
+        wandb.watch(
+            trainer.policy.features_model, log="all", log_freq=model_stats_log_freq
+        )
+        wandb.watch(trainer.policy.pd_hidden, log="all", log_freq=model_stats_log_freq)
+        wandb.watch(trainer.policy.pd_head, log="all", log_freq=model_stats_log_freq)
+        wandb.watch(trainer.policy.vf_head, log="all", log_freq=model_stats_log_freq)
+        # Just log parameter & gradients of one dynamics net to avoid clutter.
+        wandb.watch(
+            trainer.dynamics_list[0].dynamics_net,
+            log="all",
+            log_freq=model_stats_log_freq,
+        )
+
+        # Uncomment for detailed logging (maybe make hyperparameter?)
+        """wandb.watch(
+            trainer.feature_extractor.features_model,
+            log="all",
+            log_freq=model_stats_log_freq,
+        )
+
+        for i in range(args.num_dynamics):
+            wandb.watch(
+                trainer.dynamics_list[i].dynamics_net,
+                log="all",
+                log_freq=model_stats_log_freq,
+            )"""
+
+    if args.load:
+        trainer.load_models()
+
+    model_path = "./models/" + args.exp_name
+    if args.model_save_freq >= 0:
+        model_path = model_path + "/checkpoints"
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+
     try:
         trainer.train()
         print("Model finished training.")
     except KeyboardInterrupt:
         print("Training interrupted.")
+        trainer.save_models(final=True)
         if not args.debugging:
             run.finish()
-        # TODO: Add model saving here.

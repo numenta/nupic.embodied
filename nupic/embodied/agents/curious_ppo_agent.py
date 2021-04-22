@@ -22,6 +22,7 @@
 
 
 import time
+import wandb
 from nupic.embodied.utils.model_parts import flatten_dims
 import torch
 import numpy as np
@@ -123,6 +124,7 @@ class PpoOptimizer(object):
         nsegs_per_env,
         expName,
         vLogFreq,
+        debugging,
         dynamics_list,
     ):
         self.dynamics_list = dynamics_list
@@ -147,7 +149,8 @@ class PpoOptimizer(object):
         self.ext_coeff = ext_coeff
         self.int_coeff = int_coeff
         self.vLogFreq = vLogFreq
-        # TODO: Add saving with expName & vLog Freq video saving
+        self.debugging = debugging
+        self.time_trained_so_far = 0
 
     def start_interaction(self, env_fns, dynamics_list, nlump=1):
         """Set up environments and initialize everything.
@@ -217,6 +220,7 @@ class PpoOptimizer(object):
             self.reward_stats = RunningMeanStd()
 
         self.step_count = 0
+        self.start_step = 0
         self.t_last_update = time.time()
         self.t_start = time.time()
 
@@ -323,6 +327,34 @@ class PpoOptimizer(object):
 
         if self.rollout.best_ext_return is not None:
             info["performance/best_ext_return"] = self.rollout.best_ext_return
+
+        if not self.debugging:
+            feature_stats, stacked_act_feat = self.get_activation_stats(
+                self.rollout.buf_acts_features, "activations_features/"
+            )
+            hidden_stats, stacked_act_pi = self.get_activation_stats(
+                self.rollout.buf_acts_pi, "activations_hidden/"
+            )
+            info.update(feature_stats)
+            info.update(hidden_stats)
+
+            info["activations_features/raw_act_distribution"] = wandb.Histogram(
+                stacked_act_feat
+            )
+            info["activations_hidden/raw_act_distribution"] = wandb.Histogram(
+                stacked_act_pi
+            )
+
+            info["ppo/action_distribution"] = wandb.Histogram(
+                self.rollout.buf_acs.flatten()
+            )
+
+            if self.vLogFreq >= 0 and self.n_updates % self.vLogFreq == 0:
+                print(str(self.n_updates) + " updates - logging video.")
+                # Reshape images such that they have shape [time,channels,width,height]
+                sample_video = np.moveaxis(self.rollout.buf_obs[0], 3, 1)
+                # Log buffer video from first env
+                info["observations"] = wandb.Video(sample_video, fps=12, format="gif")
 
         to_report = Counter()
 
@@ -504,7 +536,8 @@ class PpoOptimizer(object):
             info.pop("states_visited")
         tnow = time.time()
         info["run/updates_per_second"] = 1.0 / (tnow - self.t_last_update)
-        info["run/total_secs"] = tnow - self.t_start
+        self.total_secs = tnow - self.t_start + self.time_trained_so_far
+        info["run/total_secs"] = self.total_secs
         info["run/tps"] = self.rollout.nsteps * self.nenvs / (tnow - self.t_last_update)
         self.t_last_update = tnow
 
@@ -524,9 +557,40 @@ class PpoOptimizer(object):
         # Calculate losses and backpropagate them through the networks
         update_info = self.update()
         # Update stepcount
-        self.step_count = self.rollout.step_count
+        self.step_count = self.start_step + self.rollout.step_count
         # Return the update statistics for logging
         return {"update": update_info}
+
+    def get_activation_stats(self, act, name):
+        stacked_act = np.reshape(act, (act.shape[0] * act.shape[1], act.shape[2]))
+        num_active = np.sum(stacked_act > 0, axis=0)
+
+        def gini(array):
+            """
+            Gini index is a measure of sparsity (https://arxiv.org/abs/0811.4706) where
+            an index close to 1 is very sparse and close to 0 has little sparsity.
+            """
+            array = array.flatten()
+            array += 0.0000001  # we want all values to be > 0
+            array = np.sort(array)
+            index = np.arange(1, array.shape[0] + 1)
+            n = array.shape[0]
+            return (np.sum((2 * index - n - 1) * array)) / (n * np.sum(array))
+
+        stats = dict()
+        stats[name + "percentage_active_per_frame"] = (
+            np.mean(np.sum(stacked_act > 0, axis=1) / act.shape[2]) * 100
+        )
+        stats[name + "percentage_dead"] = (
+            np.sum(num_active == 0) / stacked_act.shape[1] * 100
+        )
+        # Classically the gini index is defined for positive values (if negative values
+        # are included is can be > 1) so we take the abs of activations. For the agent
+        # activation this doesn't make a difference since all output of the ReLu is > 0
+        # The features are distributed around 0 so here taking the abs has an effect.
+        stats[name + "gini_index"] = gini(np.abs(act))
+
+        return stats, stacked_act
 
 
 class RewardForwardFilter(object):

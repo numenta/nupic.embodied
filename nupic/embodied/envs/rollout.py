@@ -141,6 +141,13 @@ class Rollout(object):
         self.buf_done_last = self.buf_dones[:, 0, ...].copy()
         self.buf_vpred_last = self.buf_vpreds[:, 0, ...].copy()
 
+        self.buf_acts_features = np.empty(
+            (nenvs, self.nsteps_per_seg, self.policy.feature_dim)
+        )
+        self.buf_acts_pi = np.empty(
+            (nenvs, self.nsteps_per_seg, self.policy.feature_dim)
+        )
+
         self.env_results = [None] * self.nlumps
         self.internal_reward = np.zeros((nenvs,), np.float32)
 
@@ -220,6 +227,7 @@ class Rollout(object):
 
             # Get actions, value estimates and nedlogprobs for obs from policy
             acs, vpreds, nlps = self.policy.get_ac_value_nlp(obs)
+
             # Execute the policies actions in the environments
             self.env_step(lump, acs)
             # Fill the buffer
@@ -231,6 +239,12 @@ class Rollout(object):
             self.buf_acs[sli, t] = acs
             if t > 0:
                 self.buf_ext_rewards[sli, t - 1] = prevrews
+
+            # Fill buffer with hidden activations (used for stats logging)
+            self.buf_acts_features[
+                sli, t
+            ] = self.policy.flat_features.cpu().data.numpy()
+            self.buf_acts_pi[sli, t] = self.policy.hidden_pi.cpu().data.numpy()
 
         self.step_count += 1
         if s == self.nsteps_per_seg - 1:

@@ -178,6 +178,7 @@ class CnnPolicy(object):
         self.flat_features = flat_features
         # Process the features with the policy network
         hidden = self.pd_hidden(flat_features)
+        self.hidden_pi = hidden
         # get policy parameters from the hidden activations
         pdparam = self.pd_head(hidden)
         # Get value estimate from the hidden activations
