@@ -553,6 +553,11 @@ if __name__ == "__main__":
         device=device,
     )
 
+    if args.load and len(args.download_model_from) == 0:
+        # If the model is not downloaded from wandb we want to load the checkpoint first
+        # to get the previous wandb_id to resume logging with that.
+        trainer.load_models()
+
     # Initialize wandb for logging (if not debugging)
     if not args.debugging:
         run = wandb.init(
@@ -601,7 +606,8 @@ if __name__ == "__main__":
                 log_freq=model_stats_log_freq,
             )"""
 
-    if args.load:
+    if args.load and len(args.download_model_from) > 0:
+        # TODO: Figure out how to continue logging when loading an artifact
         trainer.load_models()
 
     model_path = "./models/" + args.exp_name

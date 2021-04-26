@@ -327,7 +327,7 @@ class PpoOptimizer(object):
 
         if self.rollout.best_ext_return is not None:
             info["performance/best_ext_return"] = self.rollout.best_ext_return
-
+        # TODO: maybe add extra flag for detailed logging so runs are not slowed down
         if not self.debugging:
             feature_stats, stacked_act_feat = self.get_activation_stats(
                 self.rollout.buf_acts_features, "activations_features/"
@@ -524,6 +524,17 @@ class PpoOptimizer(object):
 
         info.update(to_report)
         self.n_updates += 1
+        info["performance/buffer_external_rewards"] = np.sum(
+            self.rollout.buf_ext_rewards
+        )
+        # This is especially for the robot_arm environment because the touch sensor
+        # magnitude can vary a lot.
+        info["performance/buffer_external_rewards_mean"] = np.mean(
+            self.rollout.buf_ext_rewards
+        )
+        info["performance/buffer_external_rewards_present"] = np.mean(
+            self.rollout.buf_ext_rewards > 0
+        )
         info["run/n_updates"] = self.n_updates
         info.update(
             {

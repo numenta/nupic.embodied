@@ -543,7 +543,7 @@ class CartesianControlDiscrete(object):
             if reward > 0:
                 print("touch! - " + str(reward))
             loc = self._env.robot.parts["lbr_iiwa_link_7"].get_position()
-            reward = reward + (0.5 - loc[2])  # *0.01
+            # reward = reward + (0.5 - loc[2])  # *0.01 # distance to table reward
             # print('reward: '+str(reward))
 
         if self.crop_obs:
