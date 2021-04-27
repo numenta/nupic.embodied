@@ -26,7 +26,7 @@ from nupic.research.frameworks.dendrites import (
     AbsoluteMaxGatingDendriticLayer,
     DendriticAbsoluteMaxGate1d,
     DendriticGate1d,
-    OneSegmentDendriticLayer
+    OneSegmentDendriticLayer,
 )
 from nupic.torch.modules import KWinners
 
@@ -62,7 +62,7 @@ class MultiHeadedDendriticMLP(nn.Module):
                  weight_sparsity=0.5,
                  k_winners=True,
                  relu=False,
-                 k_winners_percent_on=0.1,
+                 k_winners_percent_on=0.25,
                  output_nonlinearities=(None, None, ),
                  dendritic_layer_class=AbsoluteMaxGatingDendriticLayer):
 
@@ -84,7 +84,6 @@ class MultiHeadedDendriticMLP(nn.Module):
         self.output_dims = output_dims
         self.dim_context = dim_context
         self.k_winners = k_winners
-        self.relu = relu
 
         self._layers = nn.ModuleList()
         self._activations = nn.ModuleList()
@@ -95,7 +94,7 @@ class MultiHeadedDendriticMLP(nn.Module):
                 num_segments=num_segments[i],
                 dim_context=dim_context,
                 module_sparsity=weight_sparsity,
-                dendrite_sparsity=weight_sparsity
+                dendrite_sparsity=weight_sparsity,
             )
             if k_winners:
                 curr_activation = KWinners(n=hidden_sizes[i],

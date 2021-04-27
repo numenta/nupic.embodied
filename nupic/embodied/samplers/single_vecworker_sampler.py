@@ -25,7 +25,7 @@ from garage.experiment.deterministic import get_seed
 from garage.sampler import FragmentWorker, LocalSampler
 from garage.sampler.worker_factory import WorkerFactory
 
-SEED = get_seed()
+seed = get_seed()
 
 
 class SingleVecWorkSampler(LocalSampler):
@@ -68,7 +68,7 @@ class SingleVecWorkSampler(LocalSampler):
             worker_factory=None,
             max_episode_length=None,
             is_tf_worker=False,
-            seed=SEED,
+            seed=seed,
             worker_class=FragmentWorker,
             worker_args=None):
 
