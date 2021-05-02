@@ -1,7 +1,6 @@
 from garage.torch.algos import PPO
-from nupic.embodied.utils.utils import log_multitask_performance
+from nupic.embodied.utils.utils import log_performance, log_multitask_performance
 import torch
-import copy
 from dowel import tabular
 from garage.torch._functions import np_to_torch
 from garage.torch import filter_valids
@@ -54,7 +53,6 @@ class CustomMTPPO(PPO):
                  policy,
                  value_function,
                  sampler,
-                 test_sampler,
                  num_eval_eps=3,
                  policy_lr=2.5e-4,
                  vf_lr=2.5e-4,
@@ -71,7 +69,11 @@ class CustomMTPPO(PPO):
                  stop_entropy_gradient=False,
                  entropy_method='no_entropy',
                  wandb_logging=True,
-                 eval_freq=1):
+                 eval_freq=1,
+                 multitask=True,
+                 num_tasks=None,
+                 task_update_frequency=1,
+                 train_task_sampler=None):
 
         policy_optimizer = OptimizerWrapper(
             (torch.optim.Adam, dict(lr=vf_lr)),
@@ -103,7 +105,10 @@ class CustomMTPPO(PPO):
             stop_entropy_gradient=stop_entropy_gradient,
             entropy_method=entropy_method
         )
-        self._test_sampler = test_sampler
+        self._task_update_frequency = task_update_frequency
+        self._multitask = multitask
+        self._num_tasks = num_tasks
+        self._train_task_sampler = train_task_sampler
         self._num_evaluation_episodes = num_eval_eps
         self._wandb_logging = wandb_logging
         self._eval_freq = eval_freq
@@ -122,20 +127,23 @@ class CustomMTPPO(PPO):
         """
         last_return = None
 
-        for epoch in trainer.step_epochs():
-            for _ in range(self._n_samples):
-                eps = trainer.obtain_episodes(trainer.step_itr)
-                train_stats = self._train_once(trainer.step_itr, eps)
+        for i, _ in enumerate(trainer.step_epochs()):
+            if not self._multitask:
+                trainer.step_path = trainer.obtain_episodes(trainer.step_itr)
+            else:
+                env_updates = None
+                assert self._train_task_sampler is not None
+                if (not i % self._task_update_frequency) or (self._task_update_frequency == 1):
+                    env_updates = self._train_task_sampler.sample(self._num_tasks)
+                trainer.step_path = self.obtain_exact_trajectories(trainer, env_update=env_updates)
 
-                if self._wandb_logging:
-                    assert train_stats is not None
-                    train_stats['total_env_steps'] = trainer.total_env_steps
-                    wandb.log(train_stats)
+            log_dict, last_return = self._train_once(trainer.step_itr, trainer.step_path)
 
-                if epoch % self._eval_freq == 0:
-                    last_return = self._evaluate_policy(trainer.step_itr, trainer.total_env_steps)
-
-                trainer.step_itr += 1
+            if self._wandb_logging:
+                # log dict should be a dict, not None
+                log_dict['total_env_steps'] = trainer.total_env_steps
+                wandb.log(log_dict)
+            trainer.step_itr += 1
 
         return last_return
 
@@ -160,6 +168,11 @@ class CustomMTPPO(PPO):
         valids = eps.lengths
         with torch.no_grad():
             baselines = self._value_function(obs)
+
+        if self._multitask:
+            log_dict, undiscounted_returns = log_multitask_performance(itr, eps, discount=self._discount)
+        else:
+            log_dict, undiscounted_returns = log_performance(itr, eps, discount=self._discount)
 
         if self._maximum_entropy:
             policy_entropies = self._compute_policy_entropy(obs)
@@ -189,9 +202,8 @@ class CustomMTPPO(PPO):
             kl_after = self._compute_kl_constraint(obs)
             policy_entropy = self._compute_policy_entropy(obs)
 
-        log_dict = None
         if self._wandb_logging:
-            log_dict = {}
+            # log_dict should not be None
             log_dict['Train/Policy/LossBefore'] = policy_loss_before.item()
             log_dict['Train/Policy/LossAfter'] = policy_loss_before.item()
             log_dict['Train/Policy/dLoss'] = policy_loss_before.item()
@@ -219,7 +231,7 @@ class CustomMTPPO(PPO):
                            vf_loss_before.item() - vf_loss_after.item())
 
         self._old_policy.load_state_dict(self.policy.state_dict())
-        return log_dict
+        return log_dict, np.mean(undiscounted_returns)
 
     def _train(self, obs, actions, rewards, returns, advs):
         r"""Train the policy and value function with minibatch.
@@ -243,27 +255,22 @@ class CustomMTPPO(PPO):
             self._train_value_function(*dataset)
             self._value_function.apply(rezero_weights)
 
-    def _evaluate_policy(self, epoch, env_steps):
-        """Evaluate the performance of the policy via deterministic sampling.
-
-            Statistics such as (average) discounted return and success rate are
-            recorded.
-
+    def obtain_exact_trajectories(self, trainer, env_update=None):
+        """Obtain an exact amount of trajs from each env being sampled from.
         Args:
-            epoch (int): The current training epoch.
-
+            trainer (Trainer): Experiment trainer, which provides services
+                such as snapshotting and sampler control.
+            env_updates: updates to the env (i.e. rotate task)
         Returns:
-            float: The average return across self._num_evaluation_episodes
-                episodes
-
+            episodes (EpisodeBatch): Batch of episodes.
         """
-        with torch.no_grad():
-            agent_update = copy.deepcopy(self.policy).to("cpu")
-        eval_batch = self._test_sampler.obtain_exact_episodes(
-            n_eps_per_worker=self._num_evaluation_episodes,
-            agent_update=agent_update)
-        last_return = log_multitask_performance(epoch, eval_batch, env_steps,
-                                                self._discount, use_wandb=self._wandb_logging)
-        return last_return
-
+        episodes_per_trajectory = trainer._train_args.batch_size
+        agent_update = self.policy.get_param_values()
+        sampler = trainer._sampler
+        episodes = sampler.obtain_exact_episodes(
+                              episodes_per_trajectory,
+                              agent_update,
+                              env_update=env_update)
+        trainer._stats.total_env_steps += sum(episodes.lengths)
+        return episodes
 
