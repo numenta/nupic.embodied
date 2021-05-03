@@ -27,7 +27,7 @@ from torch.distributions import Normal
 from torch.distributions.independent import Independent
 
 from garage.torch.distributions import TanhNormal
-from garage.torch.modules.multi_headed_mlp_module import MultiHeadedMLPModule
+from garage.torch.modules import MultiHeadedMLPModule, MLPModule
 
 
 class GaussianMLPBaseModule(nn.Module):
