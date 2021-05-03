@@ -3,7 +3,7 @@ import numpy as np
 from torch import nn
 
 from torch.distributions import Normal
-from garage.torch.modules import GaussianMLPTwoHeadedModule
+from nupic.embodied.modules.gaussian_mlp_module import GaussianMLPTwoHeadedModule
 from garage.torch.policies.stochastic_policy import StochasticPolicy
 
 
