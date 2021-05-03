@@ -1,10 +1,12 @@
 {
     "net":{
         "net_type": "MLP",
-        "policy_hidden_sizes": [64, 64],
+        "policy_hidden_sizes": [256, 256],
         "policy_hidden_nonlinearity": "tanh",
         "policy_output_nonlinearity": null,
-        "vf_hidden_sizes": [32, 32],
+        "policy_min_std": 0.5,
+        "policy_max_std": 1.5,
+        "vf_hidden_sizes": [256, 256],
         "vf_hidden_nonlinearity": "tanh",
         "vf_output_nonlinearity": null
     },
@@ -14,14 +16,15 @@
         "eval_freq": 1
     },
     "training": {
-        "epochs" : 2000,
-        "batch_size" : 5000,
-        "minibatch_size" : 64,
-        "ppo_epochs": 10,
+        "task_update_frequency": 50,
+        "epochs" : 10000,
+        "batch_episodes_per_task" : 2,
+        "minibatch_size" : 32,
+        "ppo_epochs": 16,
         "num_train_per_epoch" : 1,
 
-        "policy_lr" : 3e-4,
-        "vf_lr" : 3e-4,
+        "policy_lr" : 5e-4,
+        "vf_lr" : 5e-4,
 
         "ppo_eps": 0.2,
         "gae_lambda": 0.95
