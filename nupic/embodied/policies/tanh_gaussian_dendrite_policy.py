@@ -24,8 +24,8 @@ import numpy as np
 
 from garage.torch.distributions import TanhNormal
 from garage.torch.policies.stochastic_policy import StochasticPolicy
-from nupic.embodied.modules.gaussian_dendrite_module import (
-    GaussianDendriteTwoHeadedModule,
+from nupic.embodied.modules import (
+    GaussianTwoHeadedDendriticMLPModule,
 )
 from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer
 

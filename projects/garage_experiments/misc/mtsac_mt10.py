@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """MTSAC implementation based on Metaworld. Benchmarked on MT10.
 https://arxiv.org/pdf/1910.10897.pdf
-Adapted from https://github.com/rlworkgroup/garage/blob/master/src/garage/examples/torch/mtsac_metaworld_mt10.py.
 """
 import click
 import metaworld
@@ -14,12 +13,14 @@ from garage.envs import normalize
 from garage.experiment import deterministic
 from garage.experiment.task_sampler import MetaWorldTaskSampler
 from garage.replay_buffer import PathBuffer
-from garage.sampler import FragmentWorker, LocalSampler, RaySampler
+from garage.sampler import FragmentWorker, LocalSampler, RaySampler, VecWorker, MultiprocessingSampler, WorkerFactory
+from nupic.embodied.samplers.single_vecworker_sampler import SingleVecWorkSampler
 from garage.torch import set_gpu_mode
 from garage.torch.algos import MTSAC
 from garage.torch.policies import TanhGaussianMLPPolicy
 from garage.torch.q_functions import ContinuousMLPQFunction
 from garage.trainer import Trainer
+import ray
 
 @click.command()
 @click.option('--seed', 'seed', type=int, default=1)
@@ -80,12 +81,13 @@ def mtsac_metaworld_mt10(ctxt=None, *, seed, _gpu, n_tasks, timesteps):
     replay_buffer = PathBuffer(capacity_in_transitions=int(1e6), )
     meta_batch_size = 10
 
-    sampler = LocalSampler(
+    # ray.init(local_mode=True, log_to_driver=False, ignore_reinit_error=True)
+    sampler = SingleVecWorkSampler(
         agents=policy,
         envs=mt10_train_envs,
+        n_workers=meta_batch_size,
         max_episode_length=env.spec.max_episode_length,
         # 1 sampler worker for each environment
-        n_workers=meta_batch_size,
         worker_class=FragmentWorker,
         # increasing n_envs increases the vectorization of a sampler worker
         # which improves runtime performance, but you will need to adjust this
@@ -94,8 +96,9 @@ def mtsac_metaworld_mt10(ctxt=None, *, seed, _gpu, n_tasks, timesteps):
         # so creating 50 envs with 8 copies comes out to 20gb of memory. Many
         # users want to be able to run multiple seeds on 1 machine, so I have
         # reduced this to n_envs = 2 for 2 copies in the meantime.
-        worker_args=dict(n_envs=2))
+        worker_args=dict(n_envs=10))
 
+    # one episode for each task between gradient steps
     batch_size = int(env.spec.max_episode_length * meta_batch_size)
     num_evaluation_points = 500
     epochs = timesteps // batch_size
@@ -117,14 +120,40 @@ def mtsac_metaworld_mt10(ctxt=None, *, seed, _gpu, n_tasks, timesteps):
                   buffer_batch_size=1280)
     if _gpu is not None:
         set_gpu_mode(True, _gpu)
-    mtsac.to()
     trainer.setup(algo=mtsac, env=mt10_train_envs)
-    trainer.train(n_epochs=epochs, batch_size=batch_size)
+    import time
+    s = time.time()
+    mtsac.to()
+    print(time.time() - s)
+
+    s = time.time()
+    # trainer.step_episode = trainer.obtain_samples(0, 1500, None, None)
+    trainer.step_episode = trainer.obtain_samples(0, 2000, None, None)
+    print((time.time() - s))
+    a = 2
+
+    from garage import StepType
+    path_returns = []
+    for path in trainer.step_episode:
+        mtsac.replay_buffer.add_path(
+            dict(observation=path['observations'],
+                 action=path['actions'],
+                 reward=path['rewards'].reshape(-1, 1),
+                 next_observation=path['next_observations'],
+                 terminal=np.array([
+                     step_type == StepType.TERMINAL
+                     for step_type in path['step_types']
+                 ]).reshape(-1, 1)))
+        path_returns.append(sum(path['rewards']))
+
+    s = time.time()
+    for _ in range(10):
+        trainer._algo.train_once()
+    print((time.time() - s) / 10)
+
+    # trainer.train(n_epochs=epochs, batch_size=batch_size)
 
 
-
-
-
+# pylint: disable=missing-kwoa
 if __name__ == '__main__':
-    # pylint: disable=missing-kwoa
     mtsac_metaworld_mt10()
