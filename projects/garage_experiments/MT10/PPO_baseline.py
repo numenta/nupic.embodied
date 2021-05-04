@@ -12,7 +12,7 @@ from garage.experiment.deterministic import set_seed
 from garage.sampler import RaySampler, DefaultWorker
 from nupic.embodied.algos.custom_mt_ppo import CustomMTPPO
 from garage.trainer import Trainer
-from nupic.embodied.utils.utils import get_params, create_policy_net, create_vf_net
+from nupic.embodied.utils.garage_utils import get_params, create_policy_net, create_vf_net
 
 
 @click.command()
