@@ -20,8 +20,11 @@
 #
 # ------------------------------------------------------------------------------
 import numpy as np
-from real_robots.policy import BasePolicy
 
+try:
+    from real_robots.policy import BasePolicy
+except ModuleNotFoundError:
+    pass
 
 """
 TODO::

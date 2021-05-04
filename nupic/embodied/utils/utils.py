@@ -1,232 +1,102 @@
-from dowel import tabular
-from garage.np import discount_cumsum
-from garage import EpisodeBatch, StepType
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
+
 import numpy as np
-from collections import defaultdict
-import json
-from nupic.embodied.policies import GaussianMLPPolicy
-from nupic.embodied.value_functions import GaussianMLPValueFunction
-import torch
-
-def create_policy_net(env_spec, net_params):
-    net_type = net_params["net_type"]
-    assert net_type in {"MLP", "Dendrite_MLP"}
-    if net_type == "MLP":
-        net = GaussianMLPPolicy(
-            env_spec=env_spec,
-            hidden_sizes=net_params["policy_hidden_sizes"],
-            hidden_nonlinearity=create_nonlinearity(net_params["policy_hidden_nonlinearity"]),
-            output_nonlinearity=create_nonlinearity(net_params["policy_output_nonlinearity"])
-        )
-    elif net_type == "Dendrite_MLP":
-        raise NotImplementedError
-    else:
-        raise NotImplementedError
-    return net
 
 
-def create_vf_net(env_spec, net_params):
-    net_type = net_params["net_type"]
-    assert net_type in {"MLP", "Dendrite_MLP"}
-    if net_type == "MLP":
-        net = GaussianMLPValueFunction(
-            env_spec=env_spec,
-            hidden_sizes=net_params["vf_hidden_sizes"],
-            hidden_nonlinearity=create_nonlinearity(net_params["vf_hidden_nonlinearity"]),
-            output_nonlinearity=create_nonlinearity(net_params["vf_output_nonlinearity"]),
-        )
-    elif net_type == "Dendrite_MLP":
-        raise NotImplementedError
-    else:
-        raise NotImplementedError
-    return net
+def random_agent_ob_mean_std(env, nsteps=10000):
+    ob = np.asarray(env.reset())
+    obs = [ob]
+    for _ in range(nsteps):
+        ac = env.action_space.sample()
+        ob, _, done, _ = env.step(ac)
+        if done:
+            ob = env.reset()
+        obs.append(np.asarray(ob))
+    mean = np.mean(obs, 0).astype(np.float32)
+    std = np.std(obs, 0).mean().astype(np.float32)
 
-def create_nonlinearity(nonlinearity):
-    if nonlinearity == "tanh":
-        return torch.tanh
-    elif nonlinearity == "relu":
-        return torch.relu
-    elif nonlinearity == None:
-        return None
-    else:
-        raise NotImplementedError
+    return mean, std
 
-def get_params(file_name):
-    with open(file_name) as f:
-        params = json.load(f)
-    return params
 
-def log_multitask_performance(itr, batch, discount, name_map=None, use_wandb=True):
-    r"""Log performance of episodes from multiple tasks.
+def get_mean_and_std(array):
+    mean = np.array(np.mean(array))  # local_mean
 
-    Args:
-        itr (int): Iteration number to be logged.
-        batch (EpisodeBatch): Batch of episodes. The episodes should have
-            either the "task_name" or "task_id" `env_infos`. If the "task_name"
-            is not present, then `name_map` is required, and should map from
-            task id's to task names.
-        discount (float): Discount used in computing returns.
-        name_map (dict[int, str] or None): Mapping from task id's to task
-            names. Optional if the "task_name" environment info is present.
-            Note that if provided, all tasks listed in this map will be logged,
-            even if there are no episodes present for them.
+    n_array = array - mean
+    sqs = n_array ** 2
+    var = np.array(np.mean(sqs))  # local_mean
+    std = var ** 0.5
+    return mean, std
 
-    Returns:
-        numpy.ndarray: Undiscounted returns averaged across all tasks. Has
-            shape :math:`(N \bullet [T])`.
+
+def explained_variance(ypred, y):
+    """
+    from baselines.common.math_util.py
+    Computes fraction of variance that ypred explains about y.
+    Returns 1 - Var[y-ypred] / Var[y]
+
+    interpretation:
+        ev=0  =>  might as well have predicted zero
+        ev=1  =>  perfect prediction
+        ev<0  =>  worse than just predicting zero
 
     """
-    eps_by_name = defaultdict(list)
-    for eps in batch.split():
-        task_name = '__unnamed_task__'
-        if 'task_name' in eps.env_infos:
-            task_name = eps.env_infos['task_name'][0]
-        elif 'task_id' in eps.env_infos:
-            name_map = {} if name_map is None else name_map
-            task_id = eps.env_infos['task_id'][0]
-            task_name = name_map.get(task_id, 'Task #{}'.format(task_id))
-        eps_by_name[task_name].append(eps)
-    if name_map is None:
-        task_names = eps_by_name.keys()
-    else:
-        task_names = name_map.values()
-    for task_name in task_names:
-        if task_name in eps_by_name:
-            episodes = eps_by_name[task_name]
-            log_performance(itr,
-                            EpisodeBatch.concatenate(*episodes),
-                            discount,
-                            prefix=task_name,
-                            use_wandb=use_wandb)
-        else:
-            with tabular.prefix(task_name + '/'):
-                tabular.record('Iteration', itr)
-                tabular.record('NumEpisodes', 0)
-                tabular.record('AverageDiscountedReturn', np.nan)
-                tabular.record('AverageReturn', np.nan)
-                tabular.record('StdReturn', np.nan)
-                tabular.record('MaxReturn', np.nan)
-                tabular.record('MinReturn', np.nan)
-                tabular.record('TerminationRate', np.nan)
-                tabular.record('SuccessRate', np.nan)
-
-    return log_performance(itr, batch, discount=discount, prefix='Average', use_wandb=use_wandb)
+    assert y.ndim == 1 and ypred.ndim == 1
+    vary = np.var(y)
+    return np.nan if vary == 0 else 1 - np.var(y - ypred) / vary
 
 
-def log_performance(itr, batch, discount, prefix='Evaluation', use_wandb=True):
-    """Evaluate the performance of an algorithm on a batch of episodes.
+class RunningMeanStd(object):
+    # from baselines.common.running_mean_std
+    # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
+    def __init__(self, epsilon=1e-4, shape=()):
+        self.mean = np.zeros(shape, "float64")
+        self.var = np.ones(shape, "float64")
+        self.count = epsilon
 
-    Args:
-        itr (int): Iteration number.
-        batch (EpisodeBatch): The episodes to evaluate with.
-        discount (float): Discount value, from algorithm's property.
-        prefix (str): Prefix to add to all logged keys.
+    def update(self, x):
+        batch_mean = np.mean(x, axis=0)
+        batch_var = np.var(x, axis=0)
+        batch_count = x.shape[0]
+        self.update_from_moments(batch_mean, batch_var, batch_count)
 
-    Returns:
-        numpy.ndarray: Undiscounted returns.
+    def update_from_moments(self, batch_mean, batch_var, batch_count):
+        self.mean, self.var, self.count = update_mean_var_count_from_moments(
+            self.mean, self.var, self.count, batch_mean, batch_var, batch_count
+        )
 
-    """
-    returns = []
-    undiscounted_returns = []
-    termination = []
-    success = []
-    rewards = []
-    grasp_success = []
-    near_object = []
-    episode_mean_grasp_reward = []
-    episode_max_grasp_reward = []
-    episode_min_grasp_reward = []
-    episode_mean_in_place_reward = []
-    episode_max_in_place_reward = []
-    episode_min_in_place_reward = []
-    for eps in batch.split():
-        rewards.append(eps.rewards)
-        returns.append(discount_cumsum(eps.rewards, discount))
-        undiscounted_returns.append(sum(eps.rewards))
-        termination.append(
-            float(
-                any(step_type == StepType.TERMINAL
-                    for step_type in eps.step_types)))
-        if 'success' in eps.env_infos:
-            success.append(float(eps.env_infos['success'].any()))
-        if 'grasp_success' in eps.env_infos:
-            grasp_success.append(float(eps.env_infos['grasp_success'].any()))
-        if 'near_object' in eps.env_infos:
-            near_object.append(float(eps.env_infos['near_object'].any()))
-        if 'grasp_reward' in eps.env_infos:
-            episode_mean_grasp_reward.append(
-                np.mean(eps.env_infos['grasp_reward']))
-            episode_max_grasp_reward.append(max(eps.env_infos['grasp_reward']))
-            episode_min_grasp_reward.append(min(eps.env_infos['grasp_reward']))
-        if 'in_place_reward' in eps.env_infos:
-            episode_mean_in_place_reward.append(
-                np.mean(eps.env_infos['in_place_reward']))
-            episode_max_in_place_reward.append(
-                max(eps.env_infos['in_place_reward']))
-            episode_min_in_place_reward.append(
-                min(eps.env_infos['in_place_reward']))
 
-    average_discounted_return = np.mean([rtn[0] for rtn in returns])
+def update_mean_var_count_from_moments(
+    mean, var, count, batch_mean, batch_var, batch_count
+):
+    # baselines.common.running_mean_std
+    delta = batch_mean - mean
+    tot_count = count + batch_count
 
-    with tabular.prefix(prefix + '/'):
-        tabular.record('Iteration', itr)
-        tabular.record('NumEpisodes', len(returns))
-        tabular.record('MinReward', np.min(rewards))
-        tabular.record('MaxReward', np.max(rewards))
-        tabular.record('AverageDiscountedReturn', average_discounted_return)
-        tabular.record('AverageReturn', np.mean(undiscounted_returns))
-        tabular.record('StdReturn', np.std(undiscounted_returns))
-        tabular.record('MaxReturn', np.max(undiscounted_returns))
-        tabular.record('MinReturn', np.min(undiscounted_returns))
-        tabular.record('TerminationRate', np.mean(termination))
-        if success:
-            tabular.record('SuccessRate', np.mean(success))
-        if grasp_success:
-            tabular.record('GraspSuccessRate', np.mean(grasp_success))
-        if near_object:
-            tabular.record('NearObject', np.mean(near_object))
-        if episode_mean_grasp_reward:
-            tabular.record('EpisodeMeanGraspReward',
-                           np.mean(episode_mean_grasp_reward))
-            tabular.record('EpisodeMeanMaxGraspReward',
-                           np.mean(episode_max_grasp_reward))
-            tabular.record('EpisodeMeanMinGraspReward',
-                           np.mean(episode_min_grasp_reward))
-        if episode_mean_in_place_reward:
-            tabular.record('EpisodeMeanInPlaceReward',
-                           np.mean(episode_mean_in_place_reward))
-            tabular.record('EpisodeMeanMaxInPlaceReward',
-                           np.mean(episode_max_in_place_reward))
-            tabular.record('EpisodeMeanMinInPlaceReward',
-                           np.mean(episode_min_in_place_reward))
+    new_mean = mean + delta * batch_count / tot_count
+    m_a = var * count
+    m_b = batch_var * batch_count
+    M2 = m_a + m_b + np.square(delta) * count * batch_count / tot_count
+    new_var = M2 / tot_count
+    new_count = tot_count
 
-    log_dict = None
-    if use_wandb:
-        log_dict = {}
-        log_dict[prefix + '/Iteration'] = itr
-        log_dict[prefix + '/NumEpisodes'] = len(returns)
-        log_dict[prefix + '/MinReward'] = np.min(rewards)
-        log_dict[prefix + '/MaxReward'] = np.max(rewards)
-        log_dict[prefix + '/AverageDiscountedReturn'] = average_discounted_return
-        log_dict[prefix + 'AverageReturn'] = np.mean(undiscounted_returns)
-        log_dict[prefix + '/StdReturn'] = np.std(undiscounted_returns)
-        log_dict[prefix + '/MaxReturn'] = np.max(undiscounted_returns)
-        log_dict[prefix + '/MinReturn'] = np.min(undiscounted_returns)
-        log_dict[prefix + '/TerminationRate'] = np.mean(termination)
-
-        if success:
-            log_dict[prefix + '/SuccessRate'] = np.mean(success)
-        if grasp_success:
-            log_dict[prefix + 'Misc/GraspSuccessRate'] = np.mean(grasp_success)
-        if near_object:
-            log_dict[prefix + 'Misc/NearObject'] = np.mean(near_object)
-        if episode_mean_grasp_reward:
-            log_dict[prefix + 'Misc/EpisodeMeanGraspReward'] = np.mean(episode_mean_grasp_reward)
-            log_dict[prefix + 'Misc/EpisodeMeanMaxGraspReward'] = np.mean(episode_max_grasp_reward)
-            log_dict[prefix + 'Misc/EpisodeMeanMinGraspReward'] = np.mean(episode_min_grasp_reward)
-        if episode_mean_in_place_reward:
-            log_dict[prefix + 'Misc/EpisodeMeanInPlaceReward'] = np.mean(episode_mean_grasp_reward)
-            log_dict[prefix + 'Misc/EpisodeMeanMaxInPlaceReward'] = np.mean(episode_max_in_place_reward)
-            log_dict[prefix + 'Misc/EpisodeMeanMinInPlaceReward'] = np.mean(episode_min_in_place_reward)
-
-    return undiscounted_returns, log_dict
+    return new_mean, new_var, new_count
