@@ -28,6 +28,7 @@ from torch.distributions.independent import Independent
 
 from garage.torch.distributions import TanhNormal
 from garage.torch.modules import MultiHeadedMLPModule, MLPModule
+from nupic.research.frameworks.dendrites import DendriticMLP, AbsoluteMaxGatingDendriticLayer
 
 
 class GaussianMLPBaseModule(nn.Module):
@@ -88,7 +89,7 @@ class GaussianMLPBaseModule(nn.Module):
             to be constructed and returned by a call to forward. By default, is
             `torch.distributions.Normal`.
     """
-
+    # TODO: comment the ones that are probably not relevant
     def __init__(self,
                  input_dim,
                  output_dim,
@@ -141,7 +142,7 @@ class GaussianMLPBaseModule(nn.Module):
 
         self._init_std = torch.Tensor([init_std]).log()
         # removed the .log() in the commented out line compared to the implementation in the above link
-        #log_std = torch.Tensor([init_std] * output_dim).log()
+        # log_std = torch.Tensor([init_std] * output_dim).log()
         log_std = torch.Tensor([init_std] * output_dim)
         if self._learn_std:
             self._log_std = torch.nn.Parameter(log_std)
@@ -415,3 +416,193 @@ class GaussianMLPTwoHeadedModule(GaussianMLPBaseModule):
             torch.Tensor: The variance of Gaussian distribution.
         """
         return self._shared_mean_log_std_network(*inputs)
+
+
+class GaussianDendriticMLPModule(GaussianMLPBaseModule):
+    def __init__(self,
+                 input_dim,
+                 output_dim,
+                 dim_context,
+                 num_tasks,
+                 kw,
+                 hidden_sizes=(32, 32),
+                 num_segments=1,
+                 kw_percent_on=0.05,
+                 context_percent_on=1.0,
+                 weight_sparsity=0.50,
+                 weight_init="modified",
+                 dendrite_init="modified",
+                 dendritic_layer_class=AbsoluteMaxGatingDendriticLayer,
+                 output_nonlinearity=None,
+                 preprocess_module_type=None,
+                 preprocess_output_dim=128,
+                 preprocess_kw_percent_on=0.1,
+                 representation_module_type=None,
+                 representation_module_dims=(128, 128),
+                 learn_std=True,
+                 init_std=1.0,
+                 min_std=1e-6,
+                 max_std=None,
+                 std_parameterization='exp',
+                 normal_distribution_cls=Normal
+                 ):
+        super().__init__(input_dim=input_dim,
+                         output_dim=output_dim,
+                         hidden_sizes=hidden_sizes,
+                         hidden_nonlinearity=None,
+                         hidden_w_init=None,
+                         hidden_b_init=None,
+                         output_nonlinearity=output_nonlinearity,
+                         output_w_init=None,
+                         output_b_init=None,
+                         learn_std=learn_std,
+                         init_std=init_std,
+                         min_std=min_std,
+                         max_std=max_std,
+                         std_hidden_sizes=None,
+                         std_hidden_nonlinearity=None,
+                         std_hidden_w_init=None,
+                         std_hidden_b_init=None,
+                         std_output_nonlinearity=None,
+                         std_output_w_init=None,
+                         std_parameterization=std_parameterization,
+                         layer_normalization=False,
+                         normal_distribution_cls=normal_distribution_cls)
+        self._n_tasks = num_tasks
+        self._mean_module = DendriticMLP(
+            input_size=input_dim,
+            output_sizes=(output_dim,),
+            hidden_sizes=hidden_sizes,
+            num_segments=num_segments,
+            dim_context=dim_context,
+            kw=kw,
+            kw_percent_on=kw_percent_on,
+            context_percent_on=context_percent_on,
+            weight_sparsity=weight_sparsity,
+            weight_init=weight_init,
+            dendrite_init=dendrite_init,
+            dendritic_layer_class=dendritic_layer_class,
+            output_nonlinearity=output_nonlinearity,
+            preprocess_module_type=preprocess_module_type,
+            preprocess_output_dim=preprocess_output_dim,
+            preprocess_kw_percent_on=preprocess_kw_percent_on,
+            representation_module_type=representation_module_type,
+            representation_module_dims=representation_module_dims,
+            single_head=True
+        )
+
+    # pylint: disable=arguments-differ
+    def _get_mean_and_log_std(self, x):
+        """Get mean and std of Gaussian distribution given inputs.
+        Args:
+            x: Input to the module.
+        Returns:
+            torch.Tensor: The mean of Gaussian distribution.
+            torch.Tensor: The variance of Gaussian distribution.
+        """
+        if len(x.shape) == 1:
+            x, task_onehot = x[:-self._n_tasks], x[-self._n_tasks:]
+        elif len(x.shape) == 2:
+            x, task_onehot = x[:, :-self._n_tasks], x[:, -self._n_tasks:]
+        elif len(x.shape) == 3:
+            x, task_onehot = x[:, :, :-self._n_tasks], x[:, :, -self._n_tasks:]
+        else:
+            raise Exception
+
+        mean = self._mean_module(x, task_onehot)
+
+        return mean, self._log_std
+
+
+class GaussianTwoHeadedDendriticMLPModule(GaussianMLPBaseModule):
+    def __init__(self,
+                 input_dim,
+                 output_dim,
+                 dim_context,
+                 num_tasks,
+                 kw,
+                 hidden_sizes=(32, 32),
+                 num_segments=1,
+                 kw_percent_on=0.05,
+                 context_percent_on=1.0,
+                 weight_sparsity=0.50,
+                 weight_init="modified",
+                 dendrite_init="modified",
+                 dendritic_layer_class=AbsoluteMaxGatingDendriticLayer,
+                 output_nonlinearity=None,
+                 preprocess_module_type=None,
+                 preprocess_output_dim=128,
+                 preprocess_kw_percent_on=0.1,
+                 representation_module_type=None,
+                 representation_module_dims=(128, 128),
+                 learn_std=True,
+                 init_std=1.0,
+                 min_std=1e-6,
+                 max_std=None,
+                 std_parameterization='exp',
+                 normal_distribution_cls=Normal
+                 ):
+        # set all the irelevant parameters to None
+        super().__init__(input_dim=input_dim,
+                         output_dim=output_dim,
+                         hidden_sizes=hidden_sizes,
+                         hidden_nonlinearity=None,
+                         hidden_w_init=None,
+                         hidden_b_init=None,
+                         output_nonlinearity=output_nonlinearity,
+                         output_w_init=None,
+                         output_b_init=None,
+                         learn_std=learn_std,
+                         init_std=init_std,
+                         min_std=min_std,
+                         max_std=max_std,
+                         std_hidden_sizes=None,
+                         std_hidden_nonlinearity=None,
+                         std_hidden_w_init=None,
+                         std_hidden_b_init=None,
+                         std_output_nonlinearity=None,
+                         std_output_w_init=None,
+                         std_parameterization=std_parameterization,
+                         layer_normalization=False,
+                         normal_distribution_cls=normal_distribution_cls)
+        self._n_tasks = num_tasks
+        self._shared_mean_log_std_network = DendriticMLP(
+            input_size=input_dim,
+            output_sizes=(output_dim, output_dim),
+            hidden_sizes=hidden_sizes,
+            num_segments=num_segments,
+            dim_context=dim_context,
+            kw=kw,
+            kw_percent_on=kw_percent_on,
+            context_percent_on=context_percent_on,
+            weight_sparsity=weight_sparsity,
+            weight_init=weight_init,
+            dendrite_init=dendrite_init,
+            dendritic_layer_class=dendritic_layer_class,
+            output_nonlinearity=output_nonlinearity,
+            preprocess_module_type=preprocess_module_type,
+            preprocess_output_dim=preprocess_output_dim,
+            preprocess_kw_percent_on=preprocess_kw_percent_on,
+            representation_module_type=representation_module_type,
+            representation_module_dims=representation_module_dims,
+            single_head=False
+        )
+
+    def _get_mean_and_log_std(self, x):
+        """Get mean and std of Gaussian distribution given inputs.
+        Args:
+            *inputs: Input to the module.
+        Returns:
+            torch.Tensor: The mean of Gaussian distribution.
+            torch.Tensor: The variance of Gaussian distribution.
+        """
+        if len(x.shape) == 1:
+            x, task_onehot = x[:-self._n_tasks], x[-self._n_tasks:]
+        elif len(x.shape) == 2:
+            x, task_onehot = x[:, :-self._n_tasks], x[:, -self._n_tasks:]
+        elif len(x.shape) == 3:
+            x, task_onehot = x[:, :, :-self._n_tasks], x[:, :, -self._n_tasks:]
+        else:
+            raise Exception
+
+        return self._shared_mean_log_std_network(x, task_onehot)
