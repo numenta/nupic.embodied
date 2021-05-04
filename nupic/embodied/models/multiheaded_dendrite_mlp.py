@@ -26,6 +26,7 @@ from nupic.research.frameworks.dendrites import (
     AbsoluteMaxGatingDendriticLayer,
     DendriticAbsoluteMaxGate1d,
     DendriticGate1d,
+    OneSegmentDendriticLayer,
 )
 from nupic.torch.modules import KWinners
 
@@ -58,16 +59,17 @@ class MultiHeadedDendriticMLP(nn.Module):
                  dim_context,
                  hidden_sizes=(32, 32),
                  num_segments=(5, 5),
-                 sparsity=0.5,
-                 k_winners=False,
+                 weight_sparsity=0.5,
+                 k_winners=True,
                  relu=False,
-                 k_winners_percent_on=0.1,
+                 k_winners_percent_on=0.25,
                  output_nonlinearities=(None, None, ),
                  dendritic_layer_class=AbsoluteMaxGatingDendriticLayer):
 
         assert dendritic_layer_class in {AbsoluteMaxGatingDendriticLayer,
                                          DendriticAbsoluteMaxGate1d,
-                                         DendriticGate1d}
+                                         DendriticGate1d,
+                                         OneSegmentDendriticLayer}
 
         # The nonlinearity can either be k-Winners or ReLU, but not both
         assert not (k_winners and relu)
@@ -82,18 +84,17 @@ class MultiHeadedDendriticMLP(nn.Module):
         self.output_dims = output_dims
         self.dim_context = dim_context
         self.k_winners = k_winners
-        self.relu = relu
 
-        self._layers = []
-        self._activations = []
+        self._layers = nn.ModuleList()
+        self._activations = nn.ModuleList()
         prev_dim = input_size
         for i in range(len(hidden_sizes)):
             curr_dend = dendritic_layer_class(
                 module=nn.Linear(prev_dim, hidden_sizes[i]),
                 num_segments=num_segments[i],
                 dim_context=dim_context,
-                module_sparsity=sparsity,
-                dendrite_sparsity=sparsity
+                module_sparsity=weight_sparsity,
+                dendrite_sparsity=weight_sparsity,
             )
             if k_winners:
                 curr_activation = KWinners(n=hidden_sizes[i],

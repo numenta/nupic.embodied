@@ -63,7 +63,7 @@ stable_baselines3
 colorama==0.4.3
 urllib3==1.25.11
 
-git+https://github.com/rlworkgroup/metaworld.git@master#egg=metaworld
+git+https://github.com/rlworkgroup/metaworld.git@d9a75c451a15b0ba39d8b7a8b6d18d883b8655d8#egg=metaworld
 -e git+https://github.com/rlworkgroup/garage.git@5cf758d90a4bfa1bb6905b1e92e1ce849eddf22c#egg=garage
 
 # added by exploring arm project
