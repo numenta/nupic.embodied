@@ -1,5 +1,5 @@
 from garage.torch.algos import PPO
-from nupic.embodied.utils.utils import log_performance, log_multitask_performance
+from nupic.embodied.utils.garage_utils import log_performance, log_multitask_performance
 import torch
 from dowel import tabular
 from garage.torch._functions import np_to_torch
