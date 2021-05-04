@@ -170,9 +170,9 @@ class CustomMTPPO(PPO):
             baselines = self._value_function(obs)
 
         if self._multitask:
-            log_dict, undiscounted_returns = log_multitask_performance(itr, eps, discount=self._discount)
+            undiscounted_returns, log_dict = log_multitask_performance(itr, eps, discount=self._discount)
         else:
-            log_dict, undiscounted_returns = log_performance(itr, eps, discount=self._discount)
+            undiscounted_returns, log_dict = log_performance(itr, eps, discount=self._discount)
 
         if self._maximum_entropy:
             policy_entropies = self._compute_policy_entropy(obs)
@@ -251,9 +251,11 @@ class CustomMTPPO(PPO):
                 obs, actions, rewards, advs):
             self._train_policy(*dataset)
             self.policy.apply(rezero_weights)
+
         for dataset in self._vf_optimizer.get_minibatch(obs, returns):
             self._train_value_function(*dataset)
             self._value_function.apply(rezero_weights)
+
 
     def obtain_exact_trajectories(self, trainer, env_update=None):
         """Obtain an exact amount of trajs from each env being sampled from.
