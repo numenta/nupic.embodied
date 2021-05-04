@@ -19,5 +19,6 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-from .gaussian_dendrite_module import GaussianDendriteTwoHeadedModule
-from .gaussian_sparse_mlp_module import GaussianSparseMLPTwoHeadedModule
+# from .gaussian_sparse_mlp_module import GaussianSparseMLPTwoHeadedModule
+from .gaussian_mlp_module import GaussianMLPModule, GaussianMLPTwoHeadedModule, GaussianDendriticMLPModule, \
+    GaussianTwoHeadedDendriticMLPModule
