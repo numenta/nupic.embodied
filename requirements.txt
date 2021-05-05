@@ -21,7 +21,10 @@
 # ------------------------------------------------------------------------------
 # Install nupic.torch and nupic.tensorflow directly from github master branch
 # nupic.torch @ git+https://github.com/numenta/nupic.torch.git
-nupic.research @ git+https://github.com/numenta/nupic.research.git
+# nupic.research @ git+https://github.com/numenta/nupic.research.git
+
+metaworld @ git+https://github.com/rlworkgroup/metaworld.git@cfd837e31d65c9d2b62b7240c68a26b04a9166d9
+garage @ git+https://github.com/rlworkgroup/garage.git@1afab0c5d4e9887027af0b470bbc7b56054a40c0
 
 awscli
 boto3
@@ -40,8 +43,8 @@ scikit-learn
 seaborn
 sigopt
 tabulate
-torch==1.6
-torchvision==0.7.0
+torch==1.7.1
+torchvision==0.8.2
 tqdm
 h5py
 pretrainedmodels
@@ -62,9 +65,6 @@ stable_baselines3
 # required for CircleCI validation
 colorama==0.4.3
 urllib3==1.25.11
-
-git+https://github.com/rlworkgroup/metaworld.git@d9a75c451a15b0ba39d8b7a8b6d18d883b8655d8#egg=metaworld
--e git+https://github.com/rlworkgroup/garage.git@5cf758d90a4bfa1bb6905b1e92e1ce849eddf22c#egg=garage
 
 # added by exploring arm project
 real-robots==0.1.21
