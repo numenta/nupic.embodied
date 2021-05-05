@@ -9,6 +9,8 @@ import numpy as np
 import wandb
 from garage.torch.optimizers import OptimizerWrapper
 from nupic.torch.modules.sparse_weights import rezero_weights
+from garage.torch import global_device, prefer_gpu, set_gpu_mode
+from nupic.embodied.utils.garage_utils import compute_advantages
 
 class CustomMTPPO(PPO):
     """Modified implemenetation of Proximal Policy Optimization (PPO) for Multi-Task settings.
@@ -73,7 +75,8 @@ class CustomMTPPO(PPO):
                  multitask=True,
                  num_tasks=None,
                  task_update_frequency=1,
-                 train_task_sampler=None):
+                 train_task_sampler=None,
+                 gpu_training=False):
 
         policy_optimizer = OptimizerWrapper(
             (torch.optim.Adam, dict(lr=vf_lr)),
@@ -112,6 +115,7 @@ class CustomMTPPO(PPO):
         self._num_evaluation_episodes = num_eval_eps
         self._wandb_logging = wandb_logging
         self._eval_freq = eval_freq
+        self._gpu_training = gpu_training
 
     def train(self, trainer):
         """Obtain samplers and start actual training for each epoch.
@@ -137,7 +141,16 @@ class CustomMTPPO(PPO):
                     env_updates = self._train_task_sampler.sample(self._num_tasks)
                 trainer.step_path = self.obtain_exact_trajectories(trainer, env_update=env_updates)
 
+            # do training on GPU
+            if self._gpu_training:
+                prefer_gpu()
+                self.to(device=global_device())
+
             log_dict, last_return = self._train_once(trainer.step_itr, trainer.step_path)
+
+            # move back to CPU for collection
+            set_gpu_mode(False)
+            self.to(device=global_device())
 
             if self._wandb_logging:
                 # log dict should be a dict, not None
@@ -256,6 +269,37 @@ class CustomMTPPO(PPO):
             self._train_value_function(*dataset)
             self._value_function.apply(rezero_weights)
 
+    def _compute_advantage(self, rewards, valids, baselines):
+        r"""Compute mean value of loss.
+
+        Notes: P is the maximum episode length (self.max_episode_length)
+
+        Args:
+            rewards (torch.Tensor): Acquired rewards
+                with shape :math:`(N, P)`.
+            valids (list[int]): Numbers of valid steps in each episode
+            baselines (torch.Tensor): Value function estimation at each step
+                with shape :math:`(N, P)`.
+
+        Returns:
+            torch.Tensor: Calculated advantage values given rewards and
+                baselines with shape :math:`(N \dot [T], )`.
+
+        """
+        advantages = compute_advantages(self._discount, self._gae_lambda,
+                                        self.max_episode_length, baselines,
+                                        rewards)
+        advantage_flat = torch.cat(filter_valids(advantages, valids))
+
+        if self._center_adv:
+            means = advantage_flat.mean()
+            variance = advantage_flat.var()
+            advantage_flat = (advantage_flat - means) / (variance + 1e-8)
+
+        if self._positive_adv:
+            advantage_flat -= advantage_flat.min()
+
+        return advantage_flat
 
     def obtain_exact_trajectories(self, trainer, env_update=None):
         """Obtain an exact amount of trajs from each env being sampled from.
@@ -276,3 +320,16 @@ class CustomMTPPO(PPO):
         trainer._stats.total_env_steps += sum(episodes.lengths)
         return episodes
 
+    @property
+    def networks(self):
+        return [self.policy, self._old_policy, self._value_function]
+
+    def to(self, device=None):
+        if device is None:
+            device = global_device()
+        import time
+        s = time.time()
+        for net in self.networks:
+            net.to(device)
+        e = time.time()
+        print("TO() CALL: ", e - s)
