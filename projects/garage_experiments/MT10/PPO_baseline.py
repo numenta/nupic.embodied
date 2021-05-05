@@ -16,7 +16,6 @@ from nupic.embodied.utils.garage_utils import get_params, create_policy_net, cre
 from garage.torch import prefer_gpu
 
 @click.command()
-
 @click.option('--experiment_name')
 @click.option('--config_pth')
 @click.option('--seed', default=1)
@@ -79,6 +78,8 @@ def mtppo_metaworld_mt10(ctxt, experiment_name, config_pth, seed, n_workers, n_t
                          n_workers=n_workers,
                          worker_class=DefaultWorker)
 
+    gpu_training = True if use_gpu else False
+
     algo = CustomMTPPO(env_spec=env.spec,
                        policy=policy,
                        value_function=value_function,
@@ -100,11 +101,8 @@ def mtppo_metaworld_mt10(ctxt, experiment_name, config_pth, seed, n_workers, n_t
                        eval_freq=params["general_setting"]["eval_freq"],
                        stop_entropy_gradient=True,
                        entropy_method='max',
+                       gpu_training=gpu_training
                        )
-
-    if use_gpu:
-        prefer_gpu()
-    algo.to()
 
     trainer = Trainer(ctxt)
     trainer.setup(algo, env)
