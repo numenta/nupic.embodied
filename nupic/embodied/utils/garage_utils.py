@@ -85,6 +85,8 @@ def create_policy_net(env_spec, net_params):
             hidden_sizes=net_params["policy_hidden_sizes"],
             hidden_nonlinearity=create_nonlinearity(net_params["policy_hidden_nonlinearity"]),
             output_nonlinearity=create_nonlinearity(net_params["policy_output_nonlinearity"]),
+            min_std=net_params["policy_min_std"],
+            max_std=net_params["policy_max_std"]
         )
     elif net_type == "Dendrite_MLP":
         dendritic_layer_class = create_dendritic_layer(net_params["dendritic_layer_class"])
@@ -107,6 +109,8 @@ def create_policy_net(env_spec, net_params):
             preprocess_kw_percent_on=net_params["preprocess_kw_percent_on"],
             representation_module_type=net_params["representation_module_type"],
             representation_module_dims=net_params["representation_module_dims"],
+            min_std=net_params["policy_min_std"],
+            max_std=net_params["policy_max_std"]
         )
     else:
         raise NotImplementedError
