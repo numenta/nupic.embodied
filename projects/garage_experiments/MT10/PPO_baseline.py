@@ -13,8 +13,6 @@ from garage.sampler import RaySampler, DefaultWorker
 from nupic.embodied.algos.custom_mt_ppo import CustomMTPPO
 from garage.trainer import Trainer
 from nupic.embodied.utils.garage_utils import get_params, create_policy_net, create_vf_net
-from garage.torch import prefer_gpu
-
 @click.command()
 @click.option('--experiment_name')
 @click.option('--config_pth')
@@ -24,7 +22,7 @@ from garage.torch import prefer_gpu
 @click.option('--use_wandb', default='True')
 @click.option('--wandb_username', default='avelu')
 @click.option('--use_gpu', default=1)
-@wrap_experiment(snapshot_mode='none')
+@wrap_experiment(snapshot_mode='none', name="debug_nan")
 def mtppo_metaworld_mt10(ctxt, experiment_name, config_pth, seed, n_workers, n_tasks, use_wandb,
                          wandb_username, use_gpu):
     """Set up environment and algorithm and run the task.

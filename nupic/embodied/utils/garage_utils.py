@@ -4,8 +4,10 @@ from garage import EpisodeBatch, StepType
 import numpy as np
 from collections import defaultdict
 import json
-from nupic.embodied.policies import GaussianMLPPolicy
-from nupic.embodied.value_functions import GaussianMLPValueFunction
+from nupic.embodied.policies import GaussianMLPPolicy, GaussianDendriticMLPPolicy
+from nupic.embodied.value_functions import GaussianMLPValueFunction, GaussianDendriticValueFunction
+from nupic.research.frameworks.dendrites import BiasingDendriticLayer, AbsoluteMaxGatingDendriticLayer, \
+    OneSegmentDendriticLayer, DendriticAbsoluteMaxGate1d
 import torch
 import torch.nn.functional as F
 from garage.torch import global_device
@@ -82,10 +84,30 @@ def create_policy_net(env_spec, net_params):
             env_spec=env_spec,
             hidden_sizes=net_params["policy_hidden_sizes"],
             hidden_nonlinearity=create_nonlinearity(net_params["policy_hidden_nonlinearity"]),
-            output_nonlinearity=create_nonlinearity(net_params["policy_output_nonlinearity"])
+            output_nonlinearity=create_nonlinearity(net_params["policy_output_nonlinearity"]),
         )
     elif net_type == "Dendrite_MLP":
-        raise NotImplementedError
+        dendritic_layer_class = create_dendritic_layer(net_params["dendritic_layer_class"])
+        net = GaussianDendriticMLPPolicy(
+            env_spec=env_spec,
+            dim_context=net_params["dim_context"],
+            num_tasks=net_params["num_tasks"],
+            kw=net_params["kw"],
+            hidden_sizes=net_params["hidden_sizes"],
+            num_segments=net_params["num_segments"],
+            kw_percent_on=net_params["kw_percent_on"],
+            context_percent_on=net_params["context_percent_on"],
+            weight_sparsity=net_params["weight_sparsity"],
+            weight_init=net_params["weight_init"],
+            dendrite_init=net_params["dendrite_init"],
+            dendritic_layer_class=dendritic_layer_class,
+            output_nonlinearity=net_params["output_nonlinearity"],
+            preprocess_module_type=net_params["preprocess_module_type"],
+            preprocess_output_dim=net_params["preprocess_output_dim"],
+            preprocess_kw_percent_on=net_params["preprocess_kw_percent_on"],
+            representation_module_type=net_params["representation_module_type"],
+            representation_module_dims=net_params["representation_module_dims"],
+        )
     else:
         raise NotImplementedError
     return net
@@ -102,10 +124,44 @@ def create_vf_net(env_spec, net_params):
             output_nonlinearity=create_nonlinearity(net_params["vf_output_nonlinearity"]),
         )
     elif net_type == "Dendrite_MLP":
-        raise NotImplementedError
+        dendritic_layer_class = create_dendritic_layer(net_params["dendritic_layer_class"])
+        net = GaussianDendriticValueFunction(
+            env_spec=env_spec,
+            dim_context=net_params["dim_context"],
+            num_tasks=net_params["num_tasks"],
+            kw=net_params["kw"],
+            hidden_sizes=net_params["hidden_sizes"],
+            num_segments=net_params["num_segments"],
+            kw_percent_on=net_params["kw_percent_on"],
+            context_percent_on=net_params["context_percent_on"],
+            weight_sparsity=net_params["weight_sparsity"],
+            weight_init=net_params["weight_init"],
+            dendrite_init=net_params["dendrite_init"],
+            dendritic_layer_class=dendritic_layer_class,
+            output_nonlinearity=net_params["output_nonlinearity"],
+            preprocess_module_type=net_params["preprocess_module_type"],
+            preprocess_output_dim=net_params["preprocess_output_dim"],
+            preprocess_kw_percent_on=net_params["preprocess_kw_percent_on"],
+            representation_module_type=net_params["representation_module_type"],
+            representation_module_dims=net_params["representation_module_dims"],
+        )
     else:
         raise NotImplementedError
     return net
+
+
+def create_dendritic_layer(dendritic_layer):
+    if dendritic_layer == "biasing":
+        return BiasingDendriticLayer
+    elif dendritic_layer == "abs_max_gating":
+        return AbsoluteMaxGatingDendriticLayer
+    elif dendritic_layer == "max_gating":
+        return DendriticAbsoluteMaxGate1d
+    elif dendritic_layer == "one_segment":
+        return OneSegmentDendriticLayer
+    else:
+        raise NotImplementedError
+
 
 def create_nonlinearity(nonlinearity):
     if nonlinearity == "tanh":
@@ -117,10 +173,12 @@ def create_nonlinearity(nonlinearity):
     else:
         raise NotImplementedError
 
+
 def get_params(file_name):
     with open(file_name) as f:
         params = json.load(f)
     return params
+
 
 def log_multitask_performance(itr, batch, discount, name_map=None, use_wandb=True):
     r"""Log performance of episodes from multiple tasks.

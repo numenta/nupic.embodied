@@ -195,6 +195,7 @@ class CustomMTPPO(PPO):
         actions_flat = np_to_torch(eps.actions)
         rewards_flat = np_to_torch(eps.rewards)
         returns_flat = torch.cat(filter_valids(returns, valids))
+
         advs_flat = self._compute_advantage(rewards, valids, baselines)
 
         with torch.no_grad():
@@ -218,15 +219,15 @@ class CustomMTPPO(PPO):
         if self._wandb_logging:
             # log_dict should not be None
             log_dict['Train/Policy/LossBefore'] = policy_loss_before.item()
-            log_dict['Train/Policy/LossAfter'] = policy_loss_before.item()
-            log_dict['Train/Policy/dLoss'] = policy_loss_before.item()
-            log_dict['Train/Policy/KLBefore'] = policy_loss_before.item()
-            log_dict['Train/Policy/KL'] = policy_loss_before.item()
-            log_dict['Train/Policy/Entropy'] = policy_loss_before.item()
+            log_dict['Train/Policy/LossAfter'] = policy_loss_after.item()
+            log_dict['Train/Policy/dLoss'] = (policy_loss_before - policy_loss_after).item()
+            log_dict['Train/Policy/KLBefore'] = kl_before.item()
+            log_dict['Train/Policy/KL'] = kl_after.item()
+            log_dict['Train/Policy/Entropy'] = policy_entropy.mean().item()
 
-            log_dict['Train/VF/LossBefore'] = policy_loss_before.item()
-            log_dict['Train/VF/LossAfter'] = policy_loss_before.item()
-            log_dict['Train/VF/dLoss'] = policy_loss_before.item()
+            log_dict['Train/VF/LossBefore'] = vf_loss_before.item()
+            log_dict['Train/VF/LossAfter'] = vf_loss_after.item()
+            log_dict['Train/VF/dLoss'] = (vf_loss_before - vf_loss_after).item()
 
         with tabular.prefix(self.policy.name):
             tabular.record('/LossBefore', policy_loss_before.item())
@@ -327,9 +328,5 @@ class CustomMTPPO(PPO):
     def to(self, device=None):
         if device is None:
             device = global_device()
-        import time
-        s = time.time()
         for net in self.networks:
             net.to(device)
-        e = time.time()
-        print("TO() CALL: ", e - s)
