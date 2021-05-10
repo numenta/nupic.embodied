@@ -2,7 +2,6 @@
 import numpy as np
 from torch import nn
 
-from torch.distributions import Normal
 from nupic.embodied.modules import GaussianMLPTwoHeadedModule, GaussianTwoHeadedDendriticMLPModule
 from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer
 from garage.torch.policies.stochastic_policy import StochasticPolicy
@@ -163,8 +162,8 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
                  representation_module_dims=(128, 128),
                  learn_std=True,
                  init_std=1.0,
-                 min_std=1e-6,
-                 max_std=None,
+                 min_std=np.exp(-20.),
+                 max_std=np.exp(2.),
                  std_parameterization='exp',
                  ):
         super().__init__(env_spec, name='GaussianPolicy')
