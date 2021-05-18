@@ -62,7 +62,8 @@ class GaussianMLPPolicy(StochasticPolicy):
                  min_std=np.exp(-20.),
                  max_std=np.exp(2.),
                  std_parameterization='exp',
-                 layer_normalization=False):
+                 layer_normalization=False,
+                 normal_distribution_cls=Normal):
         super().__init__(env_spec, name='GaussianPolicy')
 
         self._obs_dim = env_spec.observation_space.flat_dim
@@ -83,7 +84,7 @@ class GaussianMLPPolicy(StochasticPolicy):
             max_std=max_std,
             std_parameterization=std_parameterization,
             layer_normalization=layer_normalization,
-            normal_distribution_cls=Normal)
+            normal_distribution_cls=normal_distribution_cls)
 
     def forward(self, observations):
         """Compute the action distributions from the observations.
@@ -144,8 +145,8 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
     def __init__(self,
                  env_spec,
                  dim_context,
-                 num_tasks,
                  kw,
+                 num_tasks=None,
                  hidden_sizes=(32, 32),
                  num_segments=1,
                  kw_percent_on=0.05,
@@ -165,14 +166,15 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
                  min_std=np.exp(-20.),
                  max_std=np.exp(2.),
                  std_parameterization='exp',
+                 normal_distribution_cls=Normal
                  ):
         super().__init__(env_spec, name='GaussianPolicy')
 
         self._obs_dim = env_spec.observation_space.flat_dim
         self._action_dim = env_spec.action_space.flat_dim
-
+        self._input_dim = self._obs_dim - num_tasks if num_tasks else self._obs_dim
         self._module = GaussianTwoHeadedDendriticMLPModule(
-            input_dim=self._obs_dim - num_tasks,
+            input_dim=self._input_dim,
             output_dim=self._action_dim,
             dim_context=dim_context,
             num_tasks=num_tasks,
@@ -196,7 +198,7 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
             min_std=min_std,
             max_std=max_std,
             std_parameterization=std_parameterization,
-            normal_distribution_cls=Normal
+            normal_distribution_cls=normal_distribution_cls
         )
 
     def forward(self, observations):
