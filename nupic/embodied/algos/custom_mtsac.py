@@ -26,9 +26,7 @@ import numpy as np
 import copy
 from nupic.embodied.utils.garage_utils import log_multitask_performance
 from dowel import tabular
-import wandb
-from garage import (EpisodeBatch, log_multitask_performance,
-                    obtain_evaluation_episodes, StepType)
+from garage import StepType
 
 class CustomMTSAC(MTSAC, CustomSAC):
     def __init__(
