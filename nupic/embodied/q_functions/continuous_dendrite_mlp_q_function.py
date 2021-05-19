@@ -65,7 +65,7 @@ class ContinuousDendriteMLPQFunction(DendriticMLP):
 
         DendriticMLP.__init__(self,
                               input_size=self._obs_dim + self._action_dim,
-                              output_sizes=1,
+                              output_sizes=(1,),
                               single_head=True,
                               dim_context=dim_context,
                               hidden_sizes=hidden_sizes,
