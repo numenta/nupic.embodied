@@ -6,11 +6,15 @@ from collections import defaultdict
 import json
 from nupic.embodied.policies import GaussianMLPPolicy, GaussianDendriticMLPPolicy
 from nupic.embodied.value_functions import GaussianMLPValueFunction, GaussianDendriticValueFunction
+from nupic.embodied.q_functions import ContinuousDendriteMLPQFunction
+from garage.torch.q_functions import ContinuousMLPQFunction
 from nupic.research.frameworks.dendrites import BiasingDendriticLayer, AbsoluteMaxGatingDendriticLayer, \
     OneSegmentDendriticLayer, DendriticAbsoluteMaxGate1d
 import torch
 import torch.nn.functional as F
 from garage.torch import global_device
+from garage.torch.distributions import TanhNormal
+from torch.distributions import Normal
 
 
 def compute_advantages(discount, gae_lambda, max_episode_length, baselines,
@@ -86,7 +90,8 @@ def create_policy_net(env_spec, net_params):
             hidden_nonlinearity=create_nonlinearity(net_params["policy_hidden_nonlinearity"]),
             output_nonlinearity=create_nonlinearity(net_params["policy_output_nonlinearity"]),
             min_std=net_params["policy_min_std"],
-            max_std=net_params["policy_max_std"]
+            max_std=net_params["policy_max_std"],
+            normal_distribution_cls=create_distribution(net_params["distribution"])
         )
     elif net_type == "Dendrite_MLP":
         dendritic_layer_class = create_dendritic_layer(net_params["dendritic_layer_class"])
@@ -106,11 +111,12 @@ def create_policy_net(env_spec, net_params):
             output_nonlinearity=net_params["output_nonlinearity"],
             preprocess_module_type=net_params["preprocess_module_type"],
             preprocess_output_dim=net_params["preprocess_output_dim"],
-            preprocess_kw_percent_on=net_params["preprocess_kw_percent_on"],
+            preprocess_kw_percent_on=net_params["kw_percent_on"],
             representation_module_type=net_params["representation_module_type"],
             representation_module_dims=net_params["representation_module_dims"],
             min_std=net_params["policy_min_std"],
-            max_std=net_params["policy_max_std"]
+            max_std=net_params["policy_max_std"],
+            normal_distribution_cls=create_distribution(net_params["distribution"])
         )
     else:
         raise NotImplementedError
@@ -154,6 +160,41 @@ def create_vf_net(env_spec, net_params):
     return net
 
 
+def create_qf_net(env_spec, net_params):
+    net_type = net_params["net_type"]
+    assert net_type in {"MLP", "Dendrite_MLP"}
+    if net_type == "MLP":
+        net = ContinuousMLPQFunction(
+            env_spec=env_spec,
+            hidden_sizes=net_params["qf_hidden_sizes"],
+            hidden_nonlinearity=create_nonlinearity(net_params["qf_hidden_nonlinearity"]),
+            output_nonlinearity=create_nonlinearity(net_params["qf_output_nonlinearity"]),
+        )
+    elif net_type == "Dendrite_MLP":
+        dendritic_layer_class = create_dendritic_layer(net_params["dendritic_layer_class"])
+        net = ContinuousDendriteMLPQFunction(
+            env_spec=env_spec,
+            hidden_sizes=net_params["hidden_sizes"],
+            num_segments=net_params["num_segments"],
+            dim_context=net_params["dim_context"],
+            kw=net_params["kw"],
+            kw_percent_on=net_params["kw_percent_on"],
+            context_percent_on=net_params["context_percent_on"],
+            weight_sparsity=net_params["weight_sparsity"],
+            weight_init=net_params["weight_init"],
+            dendrite_init=net_params["dendrite_init"],
+            dendritic_layer_class=dendritic_layer_class,
+            output_nonlinearity=net_params["output_nonlinearity"],
+            preprocess_module_type=net_params["preprocess_module_type"],
+            preprocess_output_dim=net_params["preprocess_output_dim"],
+            representation_module_type=net_params["representation_module_type"],
+            representation_module_dims=net_params["representation_module_dims"],
+        )
+    else:
+        raise NotImplementedError
+    return net
+
+
 def create_dendritic_layer(dendritic_layer):
     if dendritic_layer == "biasing":
         return BiasingDendriticLayer
@@ -182,6 +223,15 @@ def get_params(file_name):
     with open(file_name) as f:
         params = json.load(f)
     return params
+
+
+def create_distribution(distribution):
+    if distribution == "Normal":
+        return Normal
+    elif distribution == "TanhNormal":
+        return TanhNormal
+    else:
+        raise NotImplementedError
 
 
 def log_multitask_performance(itr, batch, discount, name_map=None, use_wandb=True):
