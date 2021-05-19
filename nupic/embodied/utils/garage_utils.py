@@ -228,8 +228,10 @@ def get_params(file_name):
 def create_distribution(distribution):
     if distribution == "Normal":
         return Normal
-    elif distribution == "q":
+    elif distribution == "TanhNormal":
         return TanhNormal
+    else:
+        raise NotImplementedError
 
 
 def log_multitask_performance(itr, batch, discount, name_map=None, use_wandb=True):
