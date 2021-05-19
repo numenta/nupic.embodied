@@ -15,31 +15,24 @@
         "output_nonlinearity": null,
         "preprocess_module_type": "relu",
         "preprocess_output_dim": 64,
-        "preprocess_kw_percent_on": null,
         "representation_module_type": null,
         "representation_module_dims": null,
-        "policy_min_std": 0.5,
-        "policy_max_std": 1.5,
+        "policy_min_log_std": -20.0,
+        "policy_max_log_std": 2.0,
         "distribution": "TanhNormal"
-
     },
     "general_setting": {
         "discount" : 0.99,
-        "eval_episodes" : 3,
-        "eval_freq": 1
+        "eval_episodes" : 5,
+        "num_buffer_transitions": 1e6
     },
     "training": {
-        "task_update_frequency": 50,
-        "epochs" : 10000,
-        "batch_episodes_per_task" : 2,
-        "minibatch_size" : 32,
-        "ppo_epochs": 16,
-        "num_train_per_epoch" : 1,
-        "ppo_eps": 0.2,
-        "gae_lambda": 0.95,
-
+        "task_update_frequency": 1,
+        "target_update_tau": 5e-3,
+        "buffer_batch_size": 1280,
         "policy_lr" : 5e-4,
-        "vf_lr" : 5e-4
+        "qf_lr" : 5e-4,
+        "reward_scale": 1.0
     },
     "commit_history": {
         "nupic.embodied_commit": "78f7c8cb8d8b681fa73f9b869b338b6b3e6a1924",
