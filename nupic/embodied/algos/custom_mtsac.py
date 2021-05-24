@@ -19,14 +19,19 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-from garage.torch.algos.mtsac import MTSAC
-from nupic.embodied.algos.custom_sac import CustomSAC
-import torch
-import numpy as np
 import copy
-from nupic.embodied.utils.garage_utils import log_multitask_performance
+
+import numpy as np
+import torch
+import wandb
 from dowel import tabular
 from garage import StepType
+from garage.torch.algos.mtsac import MTSAC
+from time import time
+
+from nupic.embodied.algos.custom_sac import CustomSAC
+from nupic.embodied.utils.garage_utils import log_multitask_performance
+
 
 class CustomMTSAC(MTSAC, CustomSAC):
     def __init__(
@@ -57,10 +62,11 @@ class CustomMTSAC(MTSAC, CustomSAC):
         steps_per_epoch=1,
         num_evaluation_episodes=5,
         task_update_frequency=1,
-        wandb_logging=True
+        wandb_logging=True,
+        evaluation_frequency=25,
     ):
 
-        super(CustomMTSAC, self).__init__(
+        super().__init__(
             policy=policy,
             qf1=qf1,
             qf2=qf2,
@@ -88,6 +94,7 @@ class CustomMTSAC(MTSAC, CustomSAC):
             task_update_frequency=task_update_frequency
         )
         self._wandb_logging = wandb_logging
+        self._evaluation_frequency = evaluation_frequency
 
     def train(self, trainer):
         """Obtain samplers and start actual training for each epoch.
@@ -101,50 +108,89 @@ class CustomMTSAC(MTSAC, CustomSAC):
             float: The average return in last epoch cycle.
 
         """
+        # Note: is a separate eval env really required?
         if not self._eval_env:
             self._eval_env = trainer.get_env_copy()
+
         last_return = None
-        for _ in trainer.step_epochs():
-            for i in range(self._steps_per_epoch):
-                if not (self.replay_buffer.n_transitions_stored >=
-                        self._min_buffer_size):
-                    batch_size = int(self._min_buffer_size)
-                else:
+
+        for epoch in trainer.step_epochs():
+            for step in range(self._steps_per_epoch):
+                t0 = time()
+                if self.replay_buffer.n_transitions_stored >= self._min_buffer_size:
                     batch_size = None
+                else:
+                    batch_size = int(self._min_buffer_size)
+
+                # Note: copying the policy to CPU - why? because collection is on CPU?
                 with torch.no_grad():
                     agent_update = copy.deepcopy(self.policy).to("cpu")
-                # import ipdb; ipdb.set_trace()
+
                 env_updates = None
-                if (not i and not i % self._task_update_frequency) or (self._task_update_frequency == 1):
-                    self._curr_train_tasks = self._train_task_sampler.sample(self._num_tasks)
+
+                if step % self._task_update_frequency:
+                    self._curr_train_tasks = self._train_task_sampler.sample(
+                        self._num_tasks
+                    )
                     env_updates = self._curr_train_tasks
+
                 trainer.step_episode = trainer.obtain_samples(
-                    trainer.step_itr, batch_size, agent_update=agent_update,
-                    env_update=env_updates)
+                    trainer.step_itr, batch_size,
+                    agent_update=agent_update,
+                    env_update=env_updates
+                )
+
                 path_returns = []
                 for path in trainer.step_episode:
-                    self.replay_buffer.add_path(
-                        dict(observation=path['observations'],
-                             action=path['actions'],
-                             reward=path['rewards'].reshape(-1, 1),
-                             next_observation=path['next_observations'],
-                             terminal=np.array([
-                                 step_type == StepType.TERMINAL
-                                 for step_type in path['step_types']
-                             ]).reshape(-1, 1)))
-                    path_returns.append(sum(path['rewards']))
-                assert len(path_returns) == len(trainer.step_episode)
+                    self.replay_buffer.add_path(dict(
+                        observation=path["observations"],
+                        action=path["actions"],
+                        reward=path["rewards"].reshape(-1, 1),
+                        next_observation=path["next_observations"],
+                        terminal=np.array([
+                            step_type == StepType.TERMINAL
+                            for step_type in path["step_types"]
+                        ]).reshape(-1, 1)
+                    ))
+                    path_returns.append(sum(path["rewards"]))
+
+                assert len(path_returns) == len(trainer.step_episode), \
+                    "The number of path returns have to match number step episodes"
+
                 self.episode_rewards.append(np.mean(path_returns))
+
+                t1 = time()
+
+                # Note: why only one gradient step with all the data?
                 for _ in range(self._gradient_steps):
                     policy_loss, qf1_loss, qf2_loss = self.train_once()
-            last_return = self._evaluate_policy(trainer.step_itr)
+
+            t2 = time()
+
+            # logging at each epoch
+            log_dict = None
             log_dict = self._log_statistics(policy_loss, qf1_loss, qf2_loss)
-            tabular.record('TotalEnvSteps', trainer.total_env_steps)
-
+            tabular.record("TotalEnvSteps", trainer.total_env_steps)
             if self._wandb_logging:
-                log_dict['TotalEnvSteps'] = trainer.total_env_steps
-
+                log_dict["TotalEnvSteps"] = trainer.total_env_steps
             trainer.step_itr += 1
+
+            # logging only when evaluating
+            if epoch % self._evaluation_frequency == 0:
+                last_return, eval_log_dict = self._evaluate_policy(trainer.step_itr)
+                log_dict.update(eval_log_dict)
+
+            t3 = time()
+
+            if log_dict is not None:
+                wandb.log(log_dict)
+
+            t4 = time()
+
+            print(f"Time to collect samples: {t1-t0:.2f}")
+            print(f"Time to update gradient: {t2-t1:.2f}")
+            print(f"Time to evaluate policy: {t3-t2:.2f}")
+            print(f"Time to log:             {t4-t3:.2f}")
 
         return np.mean(last_return)
 
@@ -163,15 +209,34 @@ class CustomMTSAC(MTSAC, CustomSAC):
 
         """
         self.policy.eval()
+
+        t00 = time()
+
+        # Note: why is the policy on CPU?
         with torch.no_grad():
             agent_update = copy.deepcopy(self.policy).to("cpu")
+
+        t01 = time()
+
         eval_batch = self._test_sampler.obtain_exact_episodes(
             n_eps_per_worker=self._num_evaluation_episodes,
-            agent_update=agent_update)
-        last_return = log_multitask_performance(epoch, eval_batch,
-                                                self._discount, use_wandb=self._wandb_logging)
+            agent_update=agent_update
+        )
+
+        t02 = time()
+
+        last_return, log_dict = log_multitask_performance(
+            epoch, eval_batch, self._discount, use_wandb=self._wandb_logging
+        )
+
+        t03 = time()
+
+        print(f"Time to copy network to CPU (in evaluate pol): {t01-t00:.2f}")
+        print(f"Time to obtain episodes (in evaluate pol):     {t02-t01:.2f}")
+        print(f"Time to log results (in evaluate pol):         {t03-t02:.2f}")
+
         self.policy.train()
-        return last_return
+        return last_return, log_dict
 
     def _log_statistics(self, policy_loss, qf1_loss, qf2_loss):
         """Record training statistics to dowel such as losses and returns.
@@ -183,25 +248,25 @@ class CustomMTSAC(MTSAC, CustomSAC):
 
         """
         with torch.no_grad():
-            tabular.record('AlphaTemperature/mean',
+            tabular.record("AlphaTemperature/mean",
                            self._log_alpha.exp().mean().item())
-        tabular.record('Policy/Loss', policy_loss.item())
-        tabular.record('QF/{}'.format('Qf1Loss'), float(qf1_loss))
-        tabular.record('QF/{}'.format('Qf2Loss'), float(qf2_loss))
-        tabular.record('ReplayBuffer/buffer_size',
+        tabular.record("Policy/Loss", policy_loss.item())
+        tabular.record("QF/{}".format("Qf1Loss"), float(qf1_loss))
+        tabular.record("QF/{}".format("Qf2Loss"), float(qf2_loss))
+        tabular.record("ReplayBuffer/buffer_size",
                        self.replay_buffer.n_transitions_stored)
-        tabular.record('Average/TrainAverageReturn',
+        tabular.record("Average/TrainAverageReturn",
                        np.mean(self.episode_rewards))
 
         log_dict = None
         if self._wandb_logging:
             log_dict = {}
             with torch.no_grad():
-                log_dict['AlphaTemperature/mean'] = self._log_alpha.exp().mean().item()
-            log_dict['Policy/Loss'] = policy_loss.item()
-            log_dict['QF/{}'.format('Qf1Loss')] = float(qf1_loss)
-            log_dict['QF/{}'.format('Qf2Loss')] = float(qf2_loss)
-            log_dict['ReplayBuffer/buffer_size'] = self.replay_buffer.n_transitions_stored
-            log_dict['Average/TrainAverageReturn'] = np.mean(self.episode_rewards)
+                log_dict["AlphaTemperature/mean"] = self._log_alpha.exp().mean().item()
+            log_dict["Policy/Loss"] = policy_loss.item()
+            log_dict["QF/{}".format("Qf1Loss")] = float(qf1_loss)
+            log_dict["QF/{}".format("Qf2Loss")] = float(qf2_loss)
+            log_dict["ReplayBuffer/buffer_size"] = self.replay_buffer.n_transitions_stored  # noqa: E501
+            log_dict["Average/TrainAverageReturn"] = np.mean(self.episode_rewards)
 
         return log_dict
