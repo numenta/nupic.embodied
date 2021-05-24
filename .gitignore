@@ -119,3 +119,9 @@ projects/robot_arm/wandb
 projects/robot_arm/statistics
 projects/robot_arm/models
 projects/robot_arm/artifacts
+
+pip-wheel-metadata/nupic.embodied.dist-info/LICENSE
+
+pip-wheel-metadata/nupic.embodied.dist-info/METADATA
+
+pip-wheel-metadata/nupic.embodied.dist-info/top_level.txt

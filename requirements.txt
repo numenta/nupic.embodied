@@ -28,7 +28,7 @@ garage @ git+https://github.com/rlworkgroup/garage.git@1afab0c5d4e9887027af0b470
 
 awscli
 boto3
-gym
+# gym
 jupyter
 matplotlib
 mujoco-py<2.1,>=2.0
@@ -67,6 +67,6 @@ colorama==0.4.3
 urllib3==1.25.11
 
 # added by exploring arm project
-real-robots==0.1.21
+# real-robots==0.1.21
 # stable_baselines3
-stable-baselines3
+# stable-baselines3

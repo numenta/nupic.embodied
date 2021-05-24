@@ -24,7 +24,8 @@
     "general_setting": {
         "discount" : 0.99,
         "eval_episodes" : 5,
-        "num_buffer_transitions": 1e6
+        "num_buffer_transitions": 1e6,
+        "evaluation_frequency": 25
     },
     "training": {
         "task_update_frequency": 1,
