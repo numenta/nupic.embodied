@@ -1,0 +1,46 @@
+{
+    "experiment_name": "SingleSegKW6seed0",
+
+    "net":{
+        "net_type": "Dendrite_MLP",
+        "dim_context": 50,
+        "num_tasks": 50,
+        "kw": true,
+        "hidden_sizes": [2048, 2048],
+        "num_segments": 1,
+        "kw_percent_on": 0.43,
+        "context_percent_on": 1.0,
+        "weight_sparsity": 0.0,
+        "weight_init": "modified",
+        "dendrite_init": "modified",
+        "dendritic_layer_class": "one_segment",
+        "output_nonlinearity": null,
+        "preprocess_module_type": "relu",
+        "preprocess_output_dim": 64,
+        "representation_module_type": null,
+        "representation_module_dims": null,
+        "policy_min_log_std": -20.0,
+        "policy_max_log_std": 2.0,
+        "distribution": "TanhNormal"
+    },
+    "general_setting": {
+        "discount" : 0.99,
+        "eval_episodes" : 3,
+        "num_buffer_transitions": 1e6,
+        "evaluation_frequency": 25
+    },
+    "training": {
+        "task_update_frequency": 1,
+        "target_update_tau": 5e-3,
+        "buffer_batch_size": 2560,
+        "num_grad_steps_scale": 0.5,
+        "policy_lr" : 2.49e-4,
+        "qf_lr" : 2.49e-4,
+        "reward_scale": 1.0
+    },
+    "commit_history": {
+        "nupic.embodied_commit": "78f7c8cb8d8b681fa73f9b869b338b6b3e6a1924",
+        "nupic.research_commit": "b45c10c148f0d675f78470d8ce1180c9b2fa846b",
+        "nupic.torch_commit":"6a31c6ec51d1529446a19ed33d581250b0e81590"
+    }
+}

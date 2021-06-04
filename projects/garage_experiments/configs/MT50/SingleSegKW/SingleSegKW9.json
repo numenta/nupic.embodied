@@ -1,14 +1,14 @@
 {
-    "experiment_name": "SingleSegKW2seed0",
+    "experiment_name": "SingleSegKW9seed0",
 
     "net":{
         "net_type": "Dendrite_MLP",
         "dim_context": 50,
         "num_tasks": 50,
         "kw": true,
-        "hidden_sizes": [1024, 1024],
+        "hidden_sizes": [1024, 1024, 1024],
         "num_segments": 1,
-        "kw_percent_on": 0.5,
+        "kw_percent_on": 0.45,
         "context_percent_on": 1.0,
         "weight_sparsity": 0.0,
         "weight_init": "modified",
@@ -34,8 +34,8 @@
         "target_update_tau": 5e-3,
         "buffer_batch_size": 2560,
         "num_grad_steps_scale": 0.5,
-        "policy_lr" : 3.03e-4,
-        "qf_lr" : 3.03e-4,
+        "policy_lr" : 5.79e-5,
+        "qf_lr" : 5.79e-5,
         "reward_scale": 1.0
     },
     "commit_history": {
