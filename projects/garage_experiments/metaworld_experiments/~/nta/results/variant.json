@@ -1,7 +1,0 @@
-{
-  "experiment_name": "test_run",
-  "config_pth": "/Users/avelu/nta/nupic.embodied/projects/garage_experiments/configs/MT10/mt10_mtsac_dendrite.json",
-  "seed": 1,
-  "use_wandb": "True",
-  "gpu": null
-}
