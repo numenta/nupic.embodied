@@ -24,7 +24,6 @@ import copy
 import numpy as np
 import torch
 import wandb
-from dowel import tabular
 from garage import StepType
 from garage.torch.algos.mtsac import MTSAC
 from time import time
@@ -160,7 +159,7 @@ class CustomMTSAC(MTSAC, CustomSAC):
                 self.episode_rewards.append(np.mean(path_returns))
 
                 t1 = time()
-
+                print("TRAINING DEVICE: ", next(self.policy.parameters()).device)
                 # Note: why only one gradient step with all the data?
                 for _ in range(self._gradient_steps):
                     policy_loss, qf1_loss, qf2_loss = self.train_once()
@@ -168,9 +167,7 @@ class CustomMTSAC(MTSAC, CustomSAC):
             t2 = time()
 
             # logging at each epoch
-            log_dict = None
             log_dict = self._log_statistics(policy_loss, qf1_loss, qf2_loss)
-            tabular.record("TotalEnvSteps", trainer.total_env_steps)
             if self._wandb_logging:
                 log_dict["TotalEnvSteps"] = trainer.total_env_steps
             trainer.step_itr += 1
@@ -178,7 +175,8 @@ class CustomMTSAC(MTSAC, CustomSAC):
             # logging only when evaluating
             if epoch % self._evaluation_frequency == 0:
                 last_return, eval_log_dict = self._evaluate_policy(trainer.step_itr)
-                log_dict.update(eval_log_dict)
+                if log_dict is not None:
+                    log_dict.update(eval_log_dict)
 
             t3 = time()
 
@@ -247,17 +245,6 @@ class CustomMTSAC(MTSAC, CustomSAC):
             qf2_loss (torch.Tensor): loss from 2nd qf/critic network.
 
         """
-        with torch.no_grad():
-            tabular.record("AlphaTemperature/mean",
-                           self._log_alpha.exp().mean().item())
-        tabular.record("Policy/Loss", policy_loss.item())
-        tabular.record("QF/{}".format("Qf1Loss"), float(qf1_loss))
-        tabular.record("QF/{}".format("Qf2Loss"), float(qf2_loss))
-        tabular.record("ReplayBuffer/buffer_size",
-                       self.replay_buffer.n_transitions_stored)
-        tabular.record("Average/TrainAverageReturn",
-                       np.mean(self.episode_rewards))
-
         log_dict = None
         if self._wandb_logging:
             log_dict = {}

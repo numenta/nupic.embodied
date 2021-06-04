@@ -12,7 +12,6 @@ import os
 import wandb
 
 from garage import wrap_experiment
-from garage.envs import normalize
 from garage.experiment import deterministic
 from garage.experiment.task_sampler import MetaWorldTaskSampler
 from garage.replay_buffer import PathBuffer
@@ -35,12 +34,14 @@ t0 = time()
 @click.option("--experiment_name")
 @click.option("--config_pth")
 @click.option("--seed", "seed", type=int, default=1)
+@click.option("--timesteps", type=int, default=15000000)
 @click.option("--use_wandb", default="True")
+@click.option("--wandb_project_name", default="mt10")
 @click.option("--gpu", default=None)
 @wrap_experiment(snapshot_mode="none", name_parameters="passed", name="test_run",
                  log_dir=os.environ["LOG_DIR"] or None, archive_launch_repo=False)
 def mtsac_metaworld_mt10(
-    ctxt=None, *, experiment_name, config_pth, seed, use_wandb, gpu
+    ctxt=None, *, experiment_name, config_pth, seed, timesteps, use_wandb, wandb_project_name, gpu
 ):
     """Train MTSAC with MT10 environment.
     Args:
@@ -63,7 +64,7 @@ def mtsac_metaworld_mt10(
         use_wandb = True
         wandb.init(
             name=experiment_name,
-            project="mt10_debug",
+            project=wandb_project_name,
             group="Baselines{}".format("mt10"),
             reinit=True,
             config=params,
@@ -71,8 +72,8 @@ def mtsac_metaworld_mt10(
     else:
         use_wandb = False
 
-    num_tasks = params["net"]["num_tasks"]
-    timesteps = 15000000
+    num_tasks = 10
+    timesteps = timesteps
     deterministic.set_seed(seed)
     trainer = Trainer(ctxt)
     mt10 = metaworld.MT10()
@@ -120,16 +121,10 @@ def mtsac_metaworld_mt10(
     # can we create a unified worker that cointais both rules?
 
     # Number of transitions before a set of gradient updates
-    # Note: should we use avg episode length, if they are not same for all tasks?
-    batch_size = int(max_episode_length * num_tasks)
+    steps_between_updates = int(max_episode_length * num_tasks)
 
-    # TODO: this whole block seems unnecessary, it is not doing anything.
-    # Number of times policy is evaluated (also the # of epochs)
-    num_evaluation_points = timesteps // batch_size
-    epochs = timesteps // batch_size
-    # number of times new batch of samples + gradient updates are done per epoch
-    epoch_cycles = epochs // num_evaluation_points  # this will always be equal to 1
-    epochs = epochs // epoch_cycles
+    # epoch: 1 cycle of data collection + gradient updates
+    epochs = timesteps // steps_between_updates
 
     mtsac = CustomMTSAC(
         env_spec=env.spec,
@@ -140,9 +135,8 @@ def mtsac_metaworld_mt10(
         sampler=sampler,
         train_task_sampler=train_task_sampler,
         test_sampler=test_sampler,
-        gradient_steps_per_itr=1,
+        gradient_steps_per_itr=int(max_episode_length * params["training"]["num_grad_steps_scale"]),
         num_tasks=num_tasks,
-        steps_per_epoch=epoch_cycles,
         min_buffer_size=max_episode_length * num_tasks,
         target_update_tau=params["training"]["target_update_tau"],
         discount=params["general_setting"]["discount"],
@@ -161,7 +155,7 @@ def mtsac_metaworld_mt10(
 
     mtsac.to()
     trainer.setup(algo=mtsac, env=mt10_train_envs)
-    trainer.train(n_epochs=epochs, batch_size=batch_size)
+    trainer.train(n_epochs=epochs, batch_size=steps_between_updates)
 
 
 if __name__ == "__main__":
