@@ -1,0 +1,10 @@
+{
+  "experiment_name": "debug_nan",
+  "config_pth": "/Users/avelu/nta/nupic.embodied/projects/garage_experiments/configs/MT10/mt10_ppo_dendrite_test.json",
+  "use_wandb": "False",
+  "seed": 1,
+  "n_workers": 10,
+  "n_tasks": 10,
+  "wandb_username": "avelu",
+  "use_gpu": 0
+}

@@ -1,4 +1,4 @@
-"""MTSAC implementation based on Metaworld. Benchmarked on metaworld_experiments.
+"""MTSAC implementation based on Metaworld. Benchmarked on MT50.
 https://arxiv.org/pdf/1910.10897.pdf
 
 Requires following environment variables: WANDB_DIR, LOG_DIR, WANDB_API_KEY
@@ -31,18 +31,27 @@ t0 = time()
 
 
 @click.command()
-@click.option("--experiment_name")
 @click.option("--config_pth")
 @click.option("--seed", "seed", type=int, default=1)
-@click.option("--timesteps", type=int, default=15000000)
+@click.option("--timesteps", type=int, default=500000000)
 @click.option("--use_wandb", default="True")
-@click.option("--wandb_project_name", default="mt10")
+@click.option("--wandb_project_name", default="mt50")
 @click.option("--gpu", default=None)
 @wrap_experiment(snapshot_mode="none", name_parameters="passed", name="test_run",
                  log_dir=os.environ["LOG_DIR"] or None, archive_launch_repo=False)
-def mtsac_metaworld_mt10(
-    ctxt=None, *, experiment_name, config_pth, seed, timesteps, use_wandb, wandb_project_name, gpu
+def mtsac_metaworld_mt50(
+    ctxt=None, *, config_pth, seed, timesteps, use_wandb, wandb_project_name, gpu
 ):
+    """Train MTSAC with MT50 environment.
+    Args:
+        ctxt (garage.experiment.ExperimentContext): The experiment
+            configuration used by Trainer to create the snapshotter.
+        seed (int): Used to seed the random number generator to produce
+            determinism.
+        _gpu (int): The ID of the gpu to be used (used on multi-gpu machines).
+        num_tasks (int): Number of tasks to use. Should be a multiple of 10.
+        timesteps (int): Number of timesteps to run.
+    """
     """Train MTSAC with metaworld_experiments environment.
     Args:
         ctxt (garage.experiment.ExperimentContext): The experiment
@@ -52,7 +61,7 @@ def mtsac_metaworld_mt10(
         _gpu (int): The ID of the gpu to be used (used on multi-gpu machines).
         timesteps (int): Number of timesteps to run.
     """
-    print(f"Initiation took {time()-t0:.2f} secs")
+    print(f"Initiation took {time() - t0:.2f} secs")
 
     # Get experiment parameters (e.g. hyperparameters) and save the json file
     params = get_params(config_pth)
@@ -63,27 +72,27 @@ def mtsac_metaworld_mt10(
     if use_wandb == "True":
         use_wandb = True
         wandb.init(
-            name=experiment_name,
+            name=params["experiment_name"],
             project=wandb_project_name,
-            group="Baselines{}".format("mt10"),
+            group="Baselines{}".format("mt50"),
             reinit=True,
             config=params,
         )
     else:
         use_wandb = False
 
-    num_tasks = 10
+    num_tasks = 50
     timesteps = timesteps
     deterministic.set_seed(seed)
     trainer = CustomTrainer(ctxt)
-    mt10 = metaworld.MT10()
+    mt10 = metaworld.MT50()
 
     train_task_sampler = MetaWorldTaskSampler(mt10, "train", add_env_onehot=True)
 
     assert num_tasks % 10 == 0, "Number of tasks have to divisible by 10"
     assert num_tasks <= 500, "Number of tasks should be less or equal 500"
-    mt10_train_envs = train_task_sampler.sample(num_tasks)
-    env = mt10_train_envs[0]()
+    mt50_train_envs = train_task_sampler.sample(num_tasks)
+    env = mt50_train_envs[0]()
 
     params["net"]["policy_min_std"] = np.exp(params["net"]["policy_min_log_std"])
     params["net"]["policy_max_std"] = np.exp(params["net"]["policy_max_log_std"])
@@ -100,7 +109,7 @@ def mtsac_metaworld_mt10(
 
     sampler = RaySampler(
         agents=policy,
-        envs=mt10_train_envs,
+        envs=mt50_train_envs,
         max_episode_length=max_episode_length,
         # 1 sampler worker for each environment
         n_workers=num_tasks,
@@ -109,16 +118,12 @@ def mtsac_metaworld_mt10(
 
     test_sampler = RaySampler(
         agents=policy,
-        envs=mt10_train_envs,
+        envs=mt50_train_envs,
         max_episode_length=max_episode_length,
         # 1 sampler worker for each environment
         n_workers=num_tasks,
         worker_class=EvalWorker
     )
-
-    # Note:  difference between sampler and test sampler is only the worker
-    # difference is one line in EvalWorker, uses average: a = agent_info['mean']
-    # can we create a unified worker that cointais both rules?
 
     # Number of transitions before a set of gradient updates
     steps_between_updates = int(max_episode_length * num_tasks)
@@ -154,10 +159,10 @@ def mtsac_metaworld_mt10(
         set_gpu_mode(True, gpu)
 
     mtsac.to()
-    trainer.setup(algo=mtsac, env=mt10_train_envs)
+    trainer.setup(algo=mtsac, env=mt50_train_envs)
     trainer.train(n_epochs=epochs, batch_size=steps_between_updates)
 
 
 if __name__ == "__main__":
     print("Starting script...")
-    mtsac_metaworld_mt10()
+    mtsac_metaworld_mt50()
