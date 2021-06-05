@@ -1,16 +1,16 @@
 {
     "sampler":{
         "cpus_per_worker": 0,
-        "gpus_per_worker": 0.075
+        "gpus_per_worker": 0.14
     },
     "net":{
         "net_type": "Dendrite_MLP",
-        "dim_context": 10,
-        "num_tasks": 10,
-        "kw": false,
-        "hidden_sizes": [512, 512],
+        "dim_context": 50,
+        "num_tasks": 50,
+        "kw": true,
+        "hidden_sizes": [2048, 2048],
         "num_segments": 1,
-        "kw_percent_on": null,
+        "kw_percent_on": 0.33,
         "context_percent_on": 1.0,
         "weight_sparsity": 0.0,
         "weight_init": "modified",
@@ -27,16 +27,17 @@
     },
     "general_setting": {
         "discount" : 0.99,
-        "eval_episodes" : 5,
+        "eval_episodes" : 3,
         "num_buffer_transitions": 1e6,
         "evaluation_frequency": 25
     },
     "training": {
         "task_update_frequency": 1,
         "target_update_tau": 5e-3,
-        "buffer_batch_size": 1280,
-        "policy_lr" : 5e-4,
-        "qf_lr" : 5e-4,
+        "buffer_batch_size": 2560,
+        "num_grad_steps_scale": 0.5,
+        "policy_lr" : 3.91e-4,
+        "qf_lr" : 3.91e-4,
         "reward_scale": 1.0
     },
     "commit_history": {

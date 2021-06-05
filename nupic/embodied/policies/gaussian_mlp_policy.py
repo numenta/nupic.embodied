@@ -49,22 +49,30 @@ class GaussianMLPPolicy(StochasticPolicy):
         layer_normalization (bool): Bool for using layer normalization or not.
     """
 
-    def __init__(self,
-                 env_spec,
-                 hidden_sizes=(32, 32),
-                 hidden_nonlinearity=nn.ReLU,
-                 hidden_w_init=nn.init.xavier_uniform_,
-                 hidden_b_init=nn.init.zeros_,
-                 output_nonlinearity=None,
-                 output_w_init=nn.init.xavier_uniform_,
-                 output_b_init=nn.init.zeros_,
-                 init_std=1.0,
-                 min_std=np.exp(-20.),
-                 max_std=np.exp(2.),
-                 std_parameterization='exp',
-                 layer_normalization=False,
-                 normal_distribution_cls=Normal):
-        super().__init__(env_spec, name='GaussianPolicy')
+    def __init__(
+        self,
+        env_spec,
+        hidden_sizes=(32, 32),
+        hidden_nonlinearity=nn.ReLU,
+        hidden_w_init=nn.init.xavier_uniform_,
+        hidden_b_init=nn.init.zeros_,
+        output_nonlinearity=None,
+        output_w_init=nn.init.xavier_uniform_,
+        output_b_init=nn.init.zeros_,
+        init_std=1.0,
+        min_std=None,
+        max_std=None,
+        std_parameterization="exp",
+        layer_normalization=False,
+        normal_distribution_cls=Normal
+    ):
+        super().__init__(env_spec, name="GaussianPolicy")
+
+        # Note: avoid function calls as the default (PEP8)
+        if min_std is None:
+            min_std = np.exp(-20.)
+        if max_std is None:
+            max_std = np.exp(2.)
 
         self._obs_dim = env_spec.observation_space.flat_dim
         self._action_dim = env_spec.action_space.flat_dim
@@ -96,8 +104,8 @@ class GaussianMLPPolicy(StochasticPolicy):
             dict[str, torch.Tensor]: Additional agent_info, as torch Tensors
         """
         dist = self._module(observations)
-        ret_mean = dist.mean.cpu()
-        ret_log_std = (dist.variance.sqrt()).log().cpu()
+        ret_mean = dist.mean  # .cpu()
+        ret_log_std = (dist.variance.sqrt()).log()  # .cpu()
         return dist, dict(mean=ret_mean, log_std=ret_log_std)
 
 
@@ -165,10 +173,10 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
                  init_std=1.0,
                  min_std=np.exp(-20.),
                  max_std=np.exp(2.),
-                 std_parameterization='exp',
+                 std_parameterization="exp",
                  normal_distribution_cls=Normal
                  ):
-        super().__init__(env_spec, name='GaussianPolicy')
+        super().__init__(env_spec, name="GaussianPolicy")
 
         self._obs_dim = env_spec.observation_space.flat_dim
         self._action_dim = env_spec.action_space.flat_dim
@@ -211,6 +219,6 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
             dict[str, torch.Tensor]: Additional agent_info, as torch Tensors
         """
         dist = self._module(observations)
-        ret_mean = dist.mean.cpu()
-        ret_log_std = (dist.variance.sqrt()).log().cpu()
+        ret_mean = dist.mean  # .cpu()
+        ret_log_std = (dist.variance.sqrt()).log()  # .cpu()
         return dist, dict(mean=ret_mean, log_std=ret_log_std)

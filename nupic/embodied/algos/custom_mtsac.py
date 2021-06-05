@@ -21,6 +21,7 @@
 # ------------------------------------------------------------------------------
 import copy
 
+from copy import deepcopy
 import numpy as np
 import torch
 import wandb
@@ -96,6 +97,7 @@ class CustomMTSAC(MTSAC, CustomSAC):
         self._wandb_logging = wandb_logging
         self._evaluation_frequency = evaluation_frequency
 
+
     def train(self, trainer):
         """Obtain samplers and start actual training for each epoch.
 
@@ -122,13 +124,11 @@ class CustomMTSAC(MTSAC, CustomSAC):
                 else:
                     batch_size = int(self._min_buffer_size)
 
-                # Note: copying the policy to CPU - why? because collection is on CPU?
-                with torch.no_grad():
-                    agent_update = copy.deepcopy(self.policy).to("cpu")
-
                 env_updates = None
 
                 if step % self._task_update_frequency:
+                    # here train task sampler calls sample, and return something
+                    # called env_updates
                     self._curr_train_tasks = self._train_task_sampler.sample(
                         self._num_tasks
                     )
@@ -136,7 +136,7 @@ class CustomMTSAC(MTSAC, CustomSAC):
 
                 trainer.step_episode = trainer.obtain_samples(
                     trainer.step_itr, batch_size,
-                    agent_update=agent_update,
+                    agent_update=deepcopy(self.policy),
                     env_update=env_updates
                 )
 
@@ -176,9 +176,9 @@ class CustomMTSAC(MTSAC, CustomSAC):
             trainer.step_itr += 1
 
             # logging only when evaluating
-            if epoch % self._evaluation_frequency == 0:
-                last_return, eval_log_dict = self._evaluate_policy(trainer.step_itr)
-                log_dict.update(eval_log_dict)
+            # if epoch % self._evaluation_frequency == 0:
+            #     last_return, eval_log_dict = self._evaluate_policy(trainer.step_itr)
+            #     log_dict.update(eval_log_dict)
 
             t3 = time()
 
@@ -212,15 +212,11 @@ class CustomMTSAC(MTSAC, CustomSAC):
 
         t00 = time()
 
-        # Note: why is the policy on CPU?
-        with torch.no_grad():
-            agent_update = copy.deepcopy(self.policy).to("cpu")
-
         t01 = time()
 
         eval_batch = self._test_sampler.obtain_exact_episodes(
             n_eps_per_worker=self._num_evaluation_episodes,
-            agent_update=agent_update
+            agent_update=deepcopy(self.policy)
         )
 
         t02 = time()
