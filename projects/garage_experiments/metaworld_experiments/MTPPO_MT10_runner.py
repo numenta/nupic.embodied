@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""This is an example to train PPO on MT10 environment."""
+"""This is an example to train PPO on metaworld_experiments environment."""
 # pylint: disable=no-value-for-parameter
 import click
 import metaworld
