@@ -1,4 +1,5 @@
 {
+    "experiment_name": "mtasc_dendrite_2xbs",
     "net":{
         "net_type": "Dendrite_MLP",
         "dim_context": 50,
