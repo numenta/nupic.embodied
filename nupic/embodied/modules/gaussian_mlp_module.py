@@ -28,8 +28,8 @@ from torch.distributions.independent import Independent
 
 from garage.torch.distributions import TanhNormal
 from garage.torch.modules import MultiHeadedMLPModule, MLPModule
-from nupic.research.frameworks.dendrites import DendriticMLP, AbsoluteMaxGatingDendriticLayer
-
+from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer
+from nupic.embodied.models.dendrite_mlp import CustomDendriticMLP
 
 class GaussianMLPBaseModule(nn.Module):
     """Base of GaussianMLPModel. Adapted from:
@@ -469,8 +469,8 @@ class GaussianDendriticMLPModule(GaussianMLPBaseModule):
                          layer_normalization=False,
                          normal_distribution_cls=normal_distribution_cls)
         self._n_tasks = num_tasks
-        self._mean_module = DendriticMLP(
-            input_size=input_dim,
+        self._mean_module = CustomDendriticMLP(
+            input_dim=input_dim,
             output_sizes=(output_dim,),
             hidden_sizes=hidden_sizes,
             num_segments=num_segments,
@@ -488,7 +488,6 @@ class GaussianDendriticMLPModule(GaussianMLPBaseModule):
             preprocess_kw_percent_on=preprocess_kw_percent_on,
             representation_module_type=representation_module_type,
             representation_module_dims=representation_module_dims,
-            single_head=True
         )
 
     # pylint: disable=arguments-differ
@@ -566,8 +565,8 @@ class GaussianTwoHeadedDendriticMLPModule(GaussianMLPBaseModule):
                          layer_normalization=False,
                          normal_distribution_cls=normal_distribution_cls)
         self._n_tasks = num_tasks
-        self._shared_mean_log_std_network = DendriticMLP(
-            input_size=input_dim,
+        self._shared_mean_log_std_network = CustomDendriticMLP(
+            input_dim=input_dim,
             output_sizes=(output_dim, output_dim),
             hidden_sizes=hidden_sizes,
             num_segments=num_segments,
@@ -585,7 +584,6 @@ class GaussianTwoHeadedDendriticMLPModule(GaussianMLPBaseModule):
             preprocess_kw_percent_on=preprocess_kw_percent_on,
             representation_module_type=representation_module_type,
             representation_module_dims=representation_module_dims,
-            single_head=False
         )
 
     def _get_mean_and_log_std(self, x):
@@ -596,13 +594,18 @@ class GaussianTwoHeadedDendriticMLPModule(GaussianMLPBaseModule):
             torch.Tensor: The mean of Gaussian distribution.
             torch.Tensor: The variance of Gaussian distribution.
         """
-        if len(x.shape) == 1:
-            x, task_onehot = x[:-self._n_tasks], x[-self._n_tasks:]
-        elif len(x.shape) == 2:
-            x, task_onehot = x[:, :-self._n_tasks], x[:, -self._n_tasks:]
-        elif len(x.shape) == 3:
-            x, task_onehot = x[:, :, :-self._n_tasks], x[:, :, -self._n_tasks:]
-        else:
-            raise Exception
+        obs, task_onehot = separate_taskid(x, self._n_tasks)
 
-        return self._shared_mean_log_std_network(x, task_onehot)
+        return self._shared_mean_log_std_network(obs, task_onehot)
+
+
+def separate_taskid(x, n_tasks):
+    if len(x.shape) == 1:
+        x, task_onehot = x[:-n_tasks], x[-n_tasks:]
+    elif len(x.shape) == 2:
+        x, task_onehot = x[:, :-n_tasks], x[:, -n_tasks:]
+    elif len(x.shape) == 3:
+        x, task_onehot = x[:, :, :-n_tasks], x[:, :, -n_tasks:]
+    else:
+        raise Exception
+    return x, task_onehot

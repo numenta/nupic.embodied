@@ -23,10 +23,11 @@
 
 import torch
 
-from nupic.research.frameworks.dendrites.modules import DendriticMLP, AbsoluteMaxGatingDendriticLayer
+from nupic.research.frameworks.dendrites.modules import AbsoluteMaxGatingDendriticLayer
+from nupic.embodied.models.dendrite_mlp import CustomDendriticMLP
 
 
-class ContinuousDendriteMLPQFunction(DendriticMLP):
+class ContinuousDendriteMLPQFunction(CustomDendriticMLP):
     """Implements a continuous MLP Q-value network.
 
     It predicts the Q-value for all actions based on the input state. It uses
@@ -44,7 +45,6 @@ class ContinuousDendriteMLPQFunction(DendriticMLP):
                  weight_sparsity=0.95,
                  weight_init="modified",
                  dendrite_init="modified",
-                 freeze_dendrites=False,
                  dendritic_layer_class=AbsoluteMaxGatingDendriticLayer,
                  output_nonlinearity=None,
                  preprocess_module_type=None,
@@ -63,28 +63,26 @@ class ContinuousDendriteMLPQFunction(DendriticMLP):
         self._obs_dim = env_spec.observation_space.flat_dim - self._dim_context
         self._action_dim = env_spec.action_space.flat_dim
 
-        DendriticMLP.__init__(self,
-                              input_size=self._obs_dim + self._action_dim,
-                              output_sizes=(1,),
-                              single_head=True,
-                              dim_context=dim_context,
-                              hidden_sizes=hidden_sizes,
-                              num_segments=num_segments,
-                              kw=kw,
-                              kw_percent_on=kw_percent_on,
-                              context_percent_on=context_percent_on,
-                              weight_sparsity=weight_sparsity,
-                              weight_init=weight_init,
-                              dendrite_init=dendrite_init,
-                              freeze_dendrites=freeze_dendrites,
-                              dendritic_layer_class=dendritic_layer_class,
-                              output_nonlinearity=output_nonlinearity,
-                              preprocess_module_type=preprocess_module_type,
-                              preprocess_output_dim=preprocess_output_dim,
-                              preprocess_kw_percent_on=kw_percent_on,
-                              representation_module_type=representation_module_type,
-                              representation_module_dims=representation_module_dims
-                              )
+        CustomDendriticMLP.__init__(self,
+                                    input_dim=self._obs_dim + self._action_dim,
+                                    output_sizes=1,
+                                    dim_context=dim_context,
+                                    hidden_sizes=hidden_sizes,
+                                    num_segments=num_segments,
+                                    kw=kw,
+                                    kw_percent_on=kw_percent_on,
+                                    context_percent_on=context_percent_on,
+                                    weight_sparsity=weight_sparsity,
+                                    weight_init=weight_init,
+                                    dendrite_init=dendrite_init,
+                                    dendritic_layer_class=dendritic_layer_class,
+                                    output_nonlinearity=output_nonlinearity,
+                                    preprocess_module_type=preprocess_module_type,
+                                    preprocess_output_dim=preprocess_output_dim,
+                                    preprocess_kw_percent_on=kw_percent_on,
+                                    representation_module_type=representation_module_type,
+                                    representation_module_dims=representation_module_dims
+                                    )
 
     def forward(self, observations, actions):
         """Return Q-value(s).
