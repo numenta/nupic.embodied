@@ -1,5 +1,5 @@
 {
-    "experiment_name": "SingleSegKW12seed0",
+    "experiment_name": "SingleSegReLU2Seed0",
 
     "net":{
         "net_type": "Dendrite_MLP",
