@@ -19,55 +19,134 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-from nupic.embodied.models import MultiHeadedDendriticMLP
+from nupic.research.frameworks.dendrites import DendriticMLP
 from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer
+from nupic.torch.modules import KWinners, SparseWeights
+import torch
+from torch import nn
 
 
-class DendriticMLP(MultiHeadedDendriticMLP):
-    """
-    A dendritic network which is similar to a MLP with a two hidden layers, except that
-    activations are modified by dendrites. The context input to the network is used as
-    input to the dendritic weights.
-    """
-
+class CustomDendriticMLP(nn.Module):
     def __init__(self,
-                 input_size,
-                 output_dim,
+                 input_dim,
+                 output_sizes,
                  dim_context,
+                 kw,
                  hidden_sizes=(32, 32),
-                 num_segments=(5, 5),
-                 weight_sparsity=0.5,
-                 k_winners=False,
-                 k_winners_percent_on=0.1,
-                 relu=False,
-                 output_nonlinearities=(None, ),
-                 dendritic_layer_class=AbsoluteMaxGatingDendriticLayer):
+                 num_segments=1,
+                 kw_percent_on=0.05,
+                 context_percent_on=1.0,
+                 weight_sparsity=0.50,
+                 weight_init="modified",
+                 dendrite_init="modified",
+                 dendritic_layer_class=AbsoluteMaxGatingDendriticLayer,
+                 output_nonlinearity=None,
+                 preprocess_module_type=None,
+                 preprocess_output_dim=128,
+                 preprocess_kw_percent_on=0.1,
+                 representation_module_type=None,
+                 representation_module_dims=(128, 128),
+                 ):
+        super(CustomDendriticMLP, self).__init__()
+        assert preprocess_module_type in (None, "relu", "kw")
 
-        super(DendriticMLP, self).__init__(
-            input_size=input_size,
-            num_heads=1,
-            output_dims=(output_dim, ),
-            dim_context=dim_context,
+        self.weight_sparsity = weight_sparsity
+
+        self.representation_dim = input_dim
+        # representation module: learns context(Task) independent representation of input
+        self.representation_module = self._create_representation_module(
+            representation_module_type,
+            representation_module_dims
+        )
+
+        self.context_representation_dim = dim_context
+        # preprocess module: builds a representation of context + input representation (for input to dendrite segments)
+        self.preprocess_module = self._create_preprocess_module(
+            preprocess_module_type,
+            preprocess_output_dim,
+            preprocess_kw_percent_on
+        )
+
+        self.dendritic_module = DendriticMLP(
+            input_size=self.representation_dim,
+            output_size=output_sizes,
             hidden_sizes=hidden_sizes,
             num_segments=num_segments,
+            dim_context=self.context_representation_dim,
+            kw=kw,
+            kw_percent_on=kw_percent_on,
+            context_percent_on=context_percent_on,
             weight_sparsity=weight_sparsity,
-            k_winners=k_winners,
-            relu=relu,
-            k_winners_percent_on=k_winners_percent_on,
-            output_nonlinearities=output_nonlinearities,
-            dendritic_layer_class=dendritic_layer_class
+            weight_init=weight_init,
+            dendrite_init=dendrite_init,
+            dendritic_layer_class=dendritic_layer_class,
+            output_nonlinearity=output_nonlinearity,
         )
-        self._output_dim = output_dim
 
     def forward(self, x, context):
-        return super().forward(x, context)[0]
+        if self.representation_module is not None:
+            x = self.representation_module(x)
 
-    @property
-    def output_dim(self):
-        """Return output dimension of network.
+        if self.context_representation_dim is not None:
+            context = self.preprocess_module(torch.cat([x, context], dim=-1))
 
-        Returns:
-            int: Output dimension of network.
+        return self.dendritic_module(x, context)
 
-        """
-        return self._output_dim
+    def _create_representation_module(self, module_type, dims):
+        if module_type is None:
+            return None
+        representation_module = nn.Sequential()
+
+        inp_dim = self.input_size
+        for i in range(len(dims)):
+            output_dim = dims[i]
+            layer = SparseWeights(
+                torch.nn.Linear(inp_dim,
+                                output_dim,
+                                bias=True),
+                sparsity=self.weight_sparsity,
+                allow_extremes=True
+            )
+            # network input is dense (no sparsity constraints)
+            DendriticMLP._init_sparse_weights(layer, 0.0)
+
+            if module_type == "relu":
+                nonlinearity = nn.ReLU()
+            else:
+                raise NotImplementedError
+            representation_module.add_module("linear_layer_{}".format(i), layer)
+            representation_module.add_module("nonlinearity_{}".format(i), nonlinearity)
+            inp_dim = output_dim
+
+        self.representation_dim = inp_dim
+        return representation_module
+
+    def _create_preprocess_module(self, module_type, preprocess_output_dim, kw_percent_on):
+        if module_type is None:
+            return None
+
+        preprocess_module = nn.Sequential()
+        linear_layer = SparseWeights(
+            torch.nn.Linear(self.context_representation_dim + self.representation_dim,
+                            preprocess_output_dim,
+                            bias=True),
+            sparsity=self.weight_sparsity,
+            allow_extremes=True
+        )
+        DendriticMLP._init_sparse_weights(linear_layer, 0.0)
+
+        if module_type == "relu":
+            nonlinearity = nn.ReLU()
+        else:
+            nonlinearity = KWinners(
+                n=preprocess_output_dim,
+                percent_on=kw_percent_on,
+                k_inference_factor=1.0,
+                boost_strength=0.0,
+                boost_strength_factor=0.0
+            )
+        preprocess_module.add_module("linear_layer", linear_layer)
+        preprocess_module.add_module("nonlinearity", nonlinearity)
+
+        self.context_representation_dim = preprocess_output_dim
+        return preprocess_module
