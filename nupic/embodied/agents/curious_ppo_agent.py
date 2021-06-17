@@ -175,11 +175,10 @@ class PpoOptimizer(object):
             param_list.extend(dynamic.param_list)
 
         # Initialize the optimizer
+        self.optimizer = torch.optim.Adam(param_list, lr=self.lr)
         if self.backprop_through_reward:
-            self.optimizer = torch.optim.Adam(self.policy.param_list, lr=self.lr)
             self.loss_fn = self.backprop_loss
         else:
-            self.optimizer = torch.optim.Adam(param_list, lr=self.lr)
             self.loss_fn = self.rl_loss
 
         # set parameters
