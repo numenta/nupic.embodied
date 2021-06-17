@@ -1,8 +1,4 @@
 {
-    "sampler":{
-        "cpus_per_worker": 0,
-        "gpus_per_worker": 0.075
-    },
     "net":{
         "net_type": "Dendrite_MLP",
         "dim_context": 10,
