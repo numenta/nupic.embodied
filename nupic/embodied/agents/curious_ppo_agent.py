@@ -177,11 +177,10 @@ class PpoOptimizer(object):
         # Initialize the optimizer
         if self.backprop_through_reward:
             self.optimizer = torch.optim.Adam(self.policy.param_list, lr=self.lr)
+            self.loss_fn = self.backprop_loss
         else:
             self.optimizer = torch.optim.Adam(param_list, lr=self.lr)
-
-        # Set gradients to zero
-        self.optimizer.zero_grad()
+            self.loss_fn = self.rl_loss
 
         # set parameters
         self.nenvs = nenvs = len(env_fns)
@@ -227,12 +226,16 @@ class PpoOptimizer(object):
         self.t_last_update = time.time()
         self.t_start = time.time()
 
+        # Set internal step loop parameters
+        envsperbatch = (self.nenvs * self.nsegs_per_env) // self.nminibatches
+        self.envs_per_batch = max(1, envsperbatch)
+
     def stop_interaction(self):
         """Close environments when stopping."""
         for env in self.envs:
             env.close()
 
-    def calculate_advantages(self, rews, use_done, gamma, lam, normalize):
+    def calculate_advantages(self, rews, use_done, gamma, lam):
         """Calculate advantages from the rewards.
 
         Parameters
@@ -281,7 +284,7 @@ class PpoOptimizer(object):
         # Update return buffer (advantages + value estimates)
         self.buf_returns[:] = self.buf_advantages + self.rollout.buf_vpreds
 
-    def init_info_dict(self):
+    def log_pre_update(self):
         """
         Initialize the info dictionary to be logged in wandb and collect base metrics
         Returns info dictionary.
@@ -373,177 +376,52 @@ class PpoOptimizer(object):
             rews=rews, use_done=self.use_done, gamma=self.gamma, lam=self.lam
         )
 
-        # TODO: we are logging buf_advantages before normalizing, is that correct?
-        info = self.init_info_dict()
-
+        info = self.log_pre_update()
         to_report = Counter()
 
+        # TODO: we are logging buf_advantages before normalizing, is that correct?
         if self.normadv:  # defaults to True
             # normalize advantages
             m, s = get_mean_and_std(self.buf_advantages)
             self.buf_advantages = (self.buf_advantages - m) / (s + 1e-7)
-        # Set update hyperparameters
-        envsperbatch = (self.nenvs * self.nsegs_per_env) // self.nminibatches
-        envsperbatch = max(1, envsperbatch)
-        envinds = np.arange(self.nenvs * self.nsegs_per_env)
 
         # Update the networks & get losses for nepochs * nminibatches
         for _ in range(self.nepochs):
-            np.random.shuffle(envinds)
-            for start in range(0, self.nenvs * self.nsegs_per_env, envsperbatch):
-                end = start + envsperbatch
-                minibatch_envinds = envinds[start:end]  # minibatch environment indexes
+            env_idxs = np.random.permutation(self.nenvs * self.nsegs_per_env)
+            for start in range(0, self.nenvs * self.nsegs_per_env, self.envs_per_batch):
+                minibatch_idxs = env_idxs[start:start + self.envs_per_batch]
+
                 # Get rollout experiences for current minibatch
-                acs = self.rollout.buf_acs[minibatch_envinds]
-                rews = self.rollout.buf_rewards[minibatch_envinds]
-                neglogprobs = self.rollout.buf_neglogprobs[
-                    minibatch_envinds
-                ]  # negative log probabilities (action probabilities from pi)
-                obs = self.rollout.buf_obs[minibatch_envinds]
-                returns = self.buf_returns[minibatch_envinds]
-                advantages = self.buf_advantages[minibatch_envinds]
-                last_obs = self.rollout.buf_obs_last[minibatch_envinds]
+                acs, rews, neglogprobs, obs, last_obs = self.rollout.load_from_buffer(
+                    minibatch_idxs
+                )
+                advantages, returns = self.load_returns(minibatch_idxs)
 
-                # Update features of the policy network to minibatch obs and acs
-                self.policy.update_features(obs, acs)
-
-                # Update features of the auxiliary network to minibatch obs and acs
-                # Using first element in dynamics list is sufficient bc all dynamics
-                # models have the same auxiliary task model and features
-                # TODO: should the feature model be independent of dynamics?
-                self.dynamics_list[0].auxiliary_task.update_features(obs, last_obs)
-                # Get the loss and variance of the feature model
-                aux_loss = torch.mean(self.dynamics_list[0].auxiliary_task.get_loss())
-                # Take variance over steps -> [feature_dim] vars -> average
-                # This is the average variance in a feature over time
-                feature_var = torch.mean(
-                    torch.var(self.dynamics_list[0].auxiliary_task.features, [0, 1])
-                )
-                feature_var_2 = torch.mean(
-                    torch.var(self.dynamics_list[0].auxiliary_task.features, [2])
-                )
-
-                # disagreement = []
-                dyn_prediction_loss = []
-                # Loop through dynamics models
-                for dynamic in self.dynamics_list:
-                    # Get the features of the observations in the dynamics model (just
-                    # gets features from the auxiliary model)
-                    dynamic.update_features()
-                    # Put features into dynamics model and get loss
-                    # (if use_disagreement just returns features, therfor here the
-                    # partial loss is used for optimizing and loging)
-                    # disagreement.append(torch.mean(np.var(dynamic.get_loss(),axis=0)))
-
-                    # Put features into dynamics model and get partial loss (dropout)
-                    dyn_prediction_loss.append(torch.mean(dynamic.get_loss_partial()))
-
-                # Reshape actions and put in tensor
-                acs = torch.tensor(flatten_dims(acs, len(self.ac_space.shape))).to(
-                    self.device
-                )
-                # Get the negative log probs of the actions under the policy
-                neglogprobs_new = self.policy.pd.neglogp(acs)
-                # Get the entropy of the current policy
-                entropy = torch.mean(self.policy.pd.entropy())
-                # Get the value estimate of the policies value head
-                vpred = self.policy.vpred
-                # Calculate the msq difference between value estimate and return
-                vf_loss = 0.5 * torch.mean(
-                    (vpred.squeeze() - torch.tensor(returns).to(self.device)) ** 2
-                )
-                # Put old neglogprobs from buffer into tensor
-                neglogprobs_old = torch.tensor(flatten_dims(neglogprobs, 0)).to(
-                    self.device
-                )
-                # Calculate exp difference between old nlp and neglogprobs_new
-                # neglogprobs: negative log probability of the action (old)
-                # neglogprobs_new: negative log probability of the action (new)
-                ratio = torch.exp(neglogprobs_old - neglogprobs_new.squeeze())
-                # Put advantages and negative advantages into tensors
-                advantages = flatten_dims(advantages, 0)
-                neg_advantages = torch.tensor(-advantages).to(self.device)
-                # Calculate policy gradient loss. Once multiplied with original ratio
-                # between old and new policy probs (1 if identical) and once with
-                # clipped ratio.
-                policy_gradient_losses1 = neg_advantages * ratio
-                policy_gradient_losses2 = neg_advantages * torch.clamp(
-                    ratio, min=1.0 - self.cliprange, max=1.0 + self.cliprange
-                )
-                # Get the bigger of the two losses
-                policy_gradient_loss_surr = torch.max(
-                    policy_gradient_losses1, policy_gradient_losses2
-                )
-                # Get the average policy gradient loss
-                policy_gradient_loss = torch.mean(policy_gradient_loss_surr)
-
-                # Get an approximation of the kl-difference between old and new policy
-                # probabilities (mean squared difference)
-                approx_kl_divergence = 0.5 * torch.mean(
-                    (neglogprobs_old - neglogprobs_new.squeeze()) ** 2
-                )
-                # Get the fraction of times that the policy gradient loss was clipped
-                clipfrac = torch.mean(
-                    (
-                        torch.abs(policy_gradient_losses2 - policy_gradient_loss_surr)
-                        > 1e-6
-                    ).float()
-                )
-
-                # Multiply the policy entropy with the entropy coeficient
-                entropy_loss = (-self.entropy_coef) * entropy
-
-                # Calculate the total loss out of the policy gradient loss, the entropy
-                # loss (*entropy_coef), the value function loss (*0.5) and feature loss
-                total_loss = policy_gradient_loss + entropy_loss + vf_loss + aux_loss
-                for i in range(len(dyn_prediction_loss)):
-                    # add the loss of each of the dynamics networks to the total loss
-                    total_loss = total_loss + dyn_prediction_loss[i]
-                # propagate the loss back through the networks
-                total_loss.backward()
-                self.optimizer.step()
-                # set the gradients back to zero
+                # Calculate losses and backpropagate
                 self.optimizer.zero_grad()
+                aux_loss, aux_loss_info = self.auxiliary_loss(acs, obs, last_obs)
+                loss, loss_info = self.loss_fn(
+                    aux_loss, acs, neglogprobs, advantages, returns
+                )
+                loss.backward()
+                self.optimizer.step()
 
-                # Log statistics (divide by nminibatchs * nepochs because we add the
-                # loss in these two loops.)
-                to_report["loss/total_loss"] += total_loss.cpu().data.numpy() / (
-                    self.nminibatches * self.nepochs
-                )
-                to_report[
-                    "loss/policy_gradient_loss"
-                ] += policy_gradient_loss.cpu().data.numpy() / (
-                    self.nminibatches * self.nepochs
-                )
-                to_report["loss/value_loss"] += vf_loss.cpu().data.numpy() / (
-                    self.nminibatches * self.nepochs
-                )
-                to_report["loss/entropy_loss"] += entropy_loss.cpu().data.numpy() / (
-                    self.nminibatches * self.nepochs
-                )
-                to_report[
-                    "ppo/approx_kl_divergence"
-                ] += approx_kl_divergence.cpu().data.numpy() / (
-                    self.nminibatches * self.nepochs
-                )
-                to_report["ppo/clipfraction"] += clipfrac.cpu().data.numpy() / (
-                    self.nminibatches * self.nepochs
-                )
-                to_report["phi/feature_var_ax01"] += feature_var.cpu().data.numpy() / (
-                    self.nminibatches * self.nepochs
-                )
-                to_report["phi/feature_var_ax2"] += feature_var_2.cpu().data.numpy() / (
-                    self.nminibatches * self.nepochs
-                )
-                to_report["loss/auxiliary_task"] += aux_loss.cpu().data.numpy() / (
-                    self.nminibatches * self.nepochs
-                )
-                to_report["loss/dynamic_loss"] += np.sum(
-                    [e.cpu().data.numpy() for e in dyn_prediction_loss]
-                ) / (self.nminibatches * self.nepochs)
+                # Update counter with info gathered from aux loss and loss
+                loss_info.update(aux_loss_info)
+                for metric, value in loss_info.items():
+                    to_report[metric] += value
 
+        num_steps_taken = self.nminibatches * self.nepochs
+        to_report = {k: v / num_steps_taken for k, v in to_report.items()}
         info.update(to_report)
         self.n_updates += 1
+
+        info = self.log_post_update(info)
+
+        return info
+
+    def log_post_update(self, info):
+
         info["performance/buffer_external_rewards"] = np.sum(
             self.rollout.buf_ext_rewards
         )
@@ -556,12 +434,10 @@ class PpoOptimizer(object):
             self.rollout.buf_ext_rewards > 0
         )
         info["run/n_updates"] = self.n_updates
-        info.update(
-            {
-                dn: (np.mean(dvs) if len(dvs) > 0 else 0)
-                for (dn, dvs) in self.rollout.statlists.items()
-            }
-        )
+        info.update({
+            dn: (np.mean(dvs) if len(dvs) > 0 else 0)
+            for (dn, dvs) in self.rollout.statlists.items()
+        })
         info.update(self.rollout.stats)
         if "states_visited" in info:
             info.pop("states_visited")
@@ -573,6 +449,125 @@ class PpoOptimizer(object):
         self.t_last_update = tnow
 
         return info
+
+    def auxiliary_loss(self, acs, obs, last_obs):
+        # Update features of the policy network to minibatch obs and acs
+        self.policy.update_features(obs, acs)
+
+        # Update features of the auxiliary network to minibatch obs and acs
+        # Using first element in dynamics list is sufficient bc all dynamics
+        # models have the same auxiliary task model and features
+        # TODO: should the feature model be independent of dynamics?
+        self.dynamics_list[0].auxiliary_task.update_features(obs, last_obs)
+        # Get the loss and variance of the feature model
+        aux_loss = torch.mean(
+            self.dynamics_list[0].auxiliary_task.get_loss()
+        )
+        # Take variance over steps -> [feature_dim] vars -> average
+        # This is the average variance in a feature over time
+        feature_var = torch.mean(
+            torch.var(self.dynamics_list[0].auxiliary_task.features, [0, 1])
+        )
+        feature_var_2 = torch.mean(
+            torch.var(self.dynamics_list[0].auxiliary_task.features, [2])
+        )
+        return aux_loss, {
+            "phi/feature_var_ax01": to_numpy(feature_var),
+            "phi/feature_var_ax2": to_numpy(feature_var_2),
+            "loss/auxiliary_task": to_numpy(aux_loss)
+        }
+
+    def backprop_loss(self, aux_loss, *args):
+        loss = self.rollout.calculate_backprop_loss()
+        total_loss = loss + aux_loss
+        return total_loss, {
+            "loss/backprop_reward": to_numpy(loss)
+        }
+
+    def rl_loss(self, aux_loss, acs, neglogprobs, advantages, returns, *args):
+        dyn_prediction_loss = []
+        # Loop through dynamics models
+        for dynamic in self.dynamics_list:
+            # Get the features of the observations in the dynamics model (just
+            # gets features from the auxiliary model)
+            dynamic.update_features()
+            # Put features into dynamics model and get loss
+            # (if use_disagreement just returns features, therfor here the
+            # partial loss is used for optimizing and loging)
+            # disagreement.append(torch.mean(np.var(dynamic.get_loss(),axis=0)))
+
+            # Put features into dynamics model and get partial loss (dropout)
+            dyn_prediction_loss.append(torch.mean(dynamic.get_loss_partial()))
+
+        # Reshape actions and put in tensor
+        acs = torch.tensor(flatten_dims(acs, len(self.ac_space.shape))).to(
+            self.device
+        )
+        # Get the negative log probs of the actions under the policy
+        neglogprobs_new = self.policy.pd.neglogp(acs)
+        # Get the entropy of the current policy
+        entropy = torch.mean(self.policy.pd.entropy())
+        # Get the value estimate of the policies value head
+        vpred = self.policy.vpred
+        # Calculate the msq difference between value estimate and return
+        vf_loss = 0.5 * torch.mean(
+            (vpred.squeeze() - torch.tensor(returns).to(self.device)) ** 2
+        )
+        # Put old neglogprobs from buffer into tensor
+        neglogprobs_old = torch.tensor(flatten_dims(neglogprobs, 0)).to(
+            self.device
+        )
+        # Calculate exp difference between old nlp and neglogprobs_new
+        # neglogprobs: negative log probability of the action (old)
+        # neglogprobs_new: negative log probability of the action (new)
+        ratio = torch.exp(neglogprobs_old - neglogprobs_new.squeeze())
+        # Put advantages and negative advantages into tensors
+        advantages = flatten_dims(advantages, 0)
+        neg_advantages = torch.tensor(-advantages).to(self.device)
+        # Calculate policy gradient loss. Once multiplied with original ratio
+        # between old and new policy probs (1 if identical) and once with
+        # clipped ratio.
+        policy_gradient_losses1 = neg_advantages * ratio
+        policy_gradient_losses2 = neg_advantages * torch.clamp(
+            ratio, min=1.0 - self.cliprange, max=1.0 + self.cliprange
+        )
+        # Get the bigger of the two losses
+        policy_gradient_loss_surr = torch.max(
+            policy_gradient_losses1, policy_gradient_losses2
+        )
+        # Get the average policy gradient loss
+        policy_gradient_loss = torch.mean(policy_gradient_loss_surr)
+
+        # Get an approximation of the kl-difference between old and new policy
+        # probabilities (mean squared difference)
+        approx_kl_divergence = 0.5 * torch.mean(
+            (neglogprobs_old - neglogprobs_new.squeeze()) ** 2
+        )
+        # Get the fraction of times that the policy gradient loss was clipped
+        clipfrac = torch.mean(
+            (torch.abs(policy_gradient_losses2 - policy_gradient_loss_surr) > 1e-6)
+            .float()
+        )
+
+        # Multiply the policy entropy with the entropy coeficient
+        entropy_loss = (-self.entropy_coef) * entropy
+
+        # Calculate the total loss out of the policy gradient loss, the entropy
+        # loss (*entropy_coef), the value function loss (*0.5) and feature loss
+        total_loss = policy_gradient_loss + entropy_loss + vf_loss + aux_loss
+        for i in range(len(dyn_prediction_loss)):
+            # add the loss of each of the dynamics networks to the total loss
+            total_loss = total_loss + dyn_prediction_loss[i]
+
+        return total_loss, {
+            "ppo/approx_kl_divergence": to_numpy(approx_kl_divergence),
+            "ppo/clipfraction": to_numpy(clipfrac),
+            "loss/total_loss": to_numpy(total_loss),
+            "loss/policy_gradient_loss": to_numpy(policy_gradient_loss),
+            "loss/value_loss": to_numpy(vf_loss),
+            "loss/entropy_loss": to_numpy(entropy_loss),
+            "loss/dyn_prediction_loss": to_numpy(torch.sum(dyn_prediction_loss))
+        }
 
     def step(self):
         """Collect one rollout and use it to update the networks.
@@ -587,26 +582,12 @@ class PpoOptimizer(object):
         self.rollout.collect_rollout()
 
         # Calculate reward or loss
-        if self.backprop_through_reward:
-            loss = self.backprop_gradient_step()
-            # TODO: break the update function into two, one only to log
-            update_info = dict(backprop_loss=loss)
-        else:
-            # Calculate losses and backpropagate them through the networks
-            update_info = self.update()
+        update_info = self.update()
 
         # Update stepcount
         self.step_count = self.start_step + self.rollout.step_count
         # Return the update statistics for logging
         return {"update": update_info}
-
-    def backprop_gradient_step(self):
-        self.optimizer.zero_grad()
-        loss = self.rollout.calculate_backprop_loss()
-        print(f"Loss from the backprop: {loss:.4f}")
-        loss.backward()
-        self.optimizer.step()
-        return loss.item()
 
     def get_activation_stats(self, act, name):
         stacked_act = np.reshape(act, (act.shape[0] * act.shape[1], act.shape[2]))
@@ -666,3 +647,7 @@ class RewardForwardFilter(object):
         else:
             self.rewems = self.rewems * self.gamma + rews
         return self.rewems
+
+
+def to_numpy(tensor):
+    return tensor.cpu().data.numpy()
