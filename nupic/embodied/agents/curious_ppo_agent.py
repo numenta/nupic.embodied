@@ -126,6 +126,7 @@ class PpoOptimizer(object):
         vLogFreq,
         debugging,
         dynamics_list,
+        backprop_through_reward=False,
     ):
         self.dynamics_list = dynamics_list
         self.n_updates = 0
@@ -151,6 +152,7 @@ class PpoOptimizer(object):
         self.vLogFreq = vLogFreq
         self.debugging = debugging
         self.time_trained_so_far = 0
+        self.backprop_through_reward = backprop_through_reward
 
     def start_interaction(self, env_fns, dynamics_list, nlump=1):
         """Set up environments and initialize everything.
@@ -175,7 +177,10 @@ class PpoOptimizer(object):
             param_list.extend(dynamic.param_list)
 
         # Initialize the optimizer
-        self.optimizer = torch.optim.Adam(param_list, lr=self.lr)
+        if self.backprop_through_reward:
+            self.optimizer = torch.optim.Adam(self.policy.param_list, lr=self.lr)
+        else:
+            self.optimizer = torch.optim.Adam(param_list, lr=self.lr)
 
         # Set gradients to zero
         self.optimizer.zero_grad()
@@ -565,12 +570,27 @@ class PpoOptimizer(object):
         """
         # Collect rollout
         self.rollout.collect_rollout()
-        # Calculate losses and backpropagate them through the networks
-        update_info = self.update()
+
+        # Calculate reward or loss
+        if self.backprop_through_reward:
+            self.backprop_gradient_step()
+            # TODO: break the update function into two, one only to log
+            update_info = dict()
+        else:
+            # Calculate losses and backpropagate them through the networks
+            update_info = self.update()
+
         # Update stepcount
         self.step_count = self.start_step + self.rollout.step_count
         # Return the update statistics for logging
         return {"update": update_info}
+
+    def backprop_gradient_step(self):
+        self.optimizer.zero_grad()
+        loss = self.rollout.calculate_backprop_loss()
+        print(f"Loss from the backprop: {loss:.4f}")
+        loss.backward()
+        self.optimizer.step()
 
     def get_activation_stats(self, act, name):
         stacked_act = np.reshape(act, (act.shape[0] * act.shape[1], act.shape[2]))

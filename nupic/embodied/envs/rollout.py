@@ -20,6 +20,7 @@
 #
 # ------------------------------------------------------------------------------
 
+import torch
 from collections import deque, defaultdict
 
 import numpy as np
@@ -160,10 +161,43 @@ class Rollout(object):
     def collect_rollout(self):
         """Steps through environment, calculates reward and update info."""
         self.ep_infos_new = []
-        for t in range(self.nsteps):
+        for _ in range(self.nsteps):
             self.rollout_step()
         self.calculate_reward()
         self.update_info()
+
+    def backprop_gradient_step(self):
+        self.backprop_optim.zero_grad()
+        loss = self.calculate_backprop_loss()
+        loss.backward()
+        self.backprop_optim.step()
+
+    def calculate_backprop_loss(self):
+        """
+        Calculates the reward from the output of teh dynamics models and the external
+        rewards.
+
+        """
+
+        pred_features = []
+        # Get output from all dynamics models (featurewise)
+        # shape=[num_dynamics, num_envs, n_steps_per_seg, feature_dim]
+
+        # Forward pass per dynamic model
+        for dynamics in self.dynamics_list:
+            pred_features.append(
+                dynamics.predict_features(
+                    obs=self.buf_obs, last_obs=self.buf_obs_last, acs=self.buf_acs
+                )
+            )
+
+        # Get variance over dynamics models
+        # shape=[n_envs, n_steps_per_seg, feature_dim]  # 64, 128, 512
+        # n_dynamic_models, n_evns, n_steps_per_seg, feature_dim
+        disagreement = torch.var(torch.stack(pred_features), axis=0)
+        # n_envs, n_steps_per_seg, feature_dim
+        loss = -torch.mean(disagreement)
+        return loss
 
     def calculate_reward(self):
         """Calculates the reward from the output of teh dynamics models and the external

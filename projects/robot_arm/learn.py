@@ -164,6 +164,7 @@ class Trainer(object):
             vLogFreq=hyperparameter["video_log_freq"],
             debugging=hyperparameter["debugging"],
             dynamics_list=self.dynamics_list,
+            backprop_through_reward=hyperparameter["backprop_through_reward"]
         )
 
         self.agent.start_interaction(
@@ -524,6 +525,9 @@ if __name__ == "__main__":
     parser.add_argument("--nsegs_per_env", type=int, default=1)
     parser.add_argument("--envs_per_process", type=int, default=128)
     parser.add_argument("--nlumps", type=int, default=1)
+    parser.add_argument(
+        "-b", "--backprop_through_reward", action="store_true", default=False
+    )
 
     args = parser.parse_args()
 
