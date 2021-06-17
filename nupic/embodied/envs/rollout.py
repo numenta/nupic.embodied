@@ -198,11 +198,12 @@ class Rollout(object):
             )
 
         # Get variance over dynamics models
-        # shape=[n_envs, n_steps_per_seg, feature_dim]  # 64, 128, 512
-        # n_dynamic_models, n_evns, n_steps_per_seg, feature_dim
+        # shape pre var = n_dynamic_models, n_envs, n_steps_per_seg, feature_dim
+        # shape post var = n_envs, n_steps_per_seg, feature_dim
         disagreement = torch.var(torch.stack(pred_features), axis=0)
-        # n_envs, n_steps_per_seg, feature_dim
-        loss = -torch.mean(disagreement)
+
+        # Loss is minimized, and we need to maximize variance, so using the inverse
+        loss = 1 / torch.mean(disagreement)
         return loss
 
     def calculate_reward(self):
