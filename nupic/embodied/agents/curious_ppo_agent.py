@@ -83,9 +83,9 @@ class PpoOptimizer(object):
         Number of environment steps per update segment.
     nsegs_per_env : int
         Number of segments to collect in each environment.
-    expName : str
+    exp_name : str
         Name of the experiment (used for video logging).. currently not used
-    vLogFreq : int
+    vlog_freq : int
         After how many steps should a video of the training be logged.
     dynamics_list : [Dynamics]
         List of dynamics models to use for internal reward calculation.
@@ -122,8 +122,8 @@ class PpoOptimizer(object):
         int_coeff,
         nsteps_per_seg,
         nsegs_per_env,
-        expName,
-        vLogFreq,
+        exp_name,  # TODO: not being used, delete it?
+        vlog_freq,
         debugging,
         dynamics_list,
         backprop_through_reward=False,
@@ -149,7 +149,7 @@ class PpoOptimizer(object):
         self.entropy_coef = entropy_coef
         self.ext_coeff = ext_coeff
         self.int_coeff = int_coeff
-        self.vLogFreq = vLogFreq
+        self.vlog_freq = vlog_freq
         self.debugging = debugging
         self.time_trained_so_far = 0
         self.backprop_through_reward = backprop_through_reward
