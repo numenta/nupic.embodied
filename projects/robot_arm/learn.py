@@ -30,22 +30,9 @@ import numpy as np
 import gym
 import os
 
-from baselines.common.atari_wrappers import NoopResetEnv, FrameStack
 from baselines.bench import Monitor
 import wandb
 
-
-from nupic.embodied.envs.wrappers import (
-    MontezumaInfoWrapper,
-    make_mario_env,
-    make_multi_pong,
-    AddRandomStateToInfo,
-    MaxAndSkipEnv,
-    ProcessFrame84,
-    ExtraTimeLimit,
-    StickyActionEnv,
-    CartesianControlDiscrete,
-)
 from nupic.embodied.policies.auxiliary_tasks import (
     FeatureExtractor,
     InverseDynamics,
@@ -395,6 +382,15 @@ def make_env_all_params(rank, args):
 
     """
     if args["env_kind"] == "atari":
+        from nupic.embodied.envs.wrappers import (
+            MontezumaInfoWrapper,
+            MaxAndSkipEnv,
+            ProcessFrame84,
+            ExtraTimeLimit,
+            StickyActionEnv,
+            AddRandomStateToInfo
+        )
+        from baselines.common.atari_wrappers import NoopResetEnv, FrameStack
         env = gym.make(args["env"])
         assert "NoFrameskip" in env.spec.id
         if args["stickyAtari"]:
@@ -411,12 +407,14 @@ def make_env_all_params(rank, args):
             env = MontezumaInfoWrapper(env)
         env = AddRandomStateToInfo(env)
     elif args["env_kind"] == "mario":
+        from nupic.embodied.envs.wrappers import make_mario_env
         env = make_mario_env()
     elif args["env_kind"] == "retro_multi":
+        from nupic.embodied.envs.wrappers import make_multi_pong
         env = make_multi_pong()
     elif args["env_kind"] == "roboarm":
         from real_robots.envs import REALRobotEnv
-
+        from nupic.embodied.envs.wrappers import CartesianControlDiscrete
         env = REALRobotEnv(objects=3, action_type="cartesian")
         env = CartesianControlDiscrete(
             env,
