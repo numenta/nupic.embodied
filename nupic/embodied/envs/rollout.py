@@ -166,6 +166,18 @@ class Rollout(object):
         self.calculate_reward()
         self.update_info()
 
+    def load_from_buffer(self, idxs):
+        """
+        Loads relevant buffer information to be used by the agent update step
+        Note: negative log probabilities are the action probabilities from pi
+        """
+        acs = self.buf_acs[idxs]
+        rews = self.buf_rewards[idxs]
+        neglogprobs = self.buf_neglogprobs[idxs]
+        obs = self.buf_obs[idxs]
+        last_obs = self.buf_obs_last[idxs]
+        return acs, rews, neglogprobs, obs, last_obs
+
     def backprop_gradient_step(self):
         self.backprop_optim.zero_grad()
         loss = self.calculate_backprop_loss()

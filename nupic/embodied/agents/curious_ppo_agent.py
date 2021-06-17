@@ -354,6 +354,8 @@ class PpoOptimizer(object):
             # Copy directly from buff rewards
             return np.copy(self.rollout.buf_rewards)
 
+    def load_returns(self, idxs):
+        return self.buf_advantages[idxs], self.buf_returns[idxs]
 
     def update(self):
         """Calculate losses and update parameters based on current rollout.
