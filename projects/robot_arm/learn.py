@@ -70,8 +70,8 @@ class Trainer(object):
             device=self.device,
             ob_space=self.ob_space,
             ac_space=self.ac_space,
-            feature_dim=self.hyperparameter["feature_dim"],
-            hidden_dim=self.hyperparameter["policy_hidden_dim"],
+            feature_dim=hyperparameter["feature_dim"],
+            hidden_dim=hyperparameter["policy_hidden_dim"],
             ob_mean=self.ob_mean,
             ob_std=self.ob_std,
             layernormalize=False,
@@ -156,7 +156,7 @@ class Trainer(object):
 
         self.agent.start_interaction(
             self.envs,
-            nlump=self.hyperparameter["nlumps"],
+            nlump=hyperparameter["nlumps"],
             dynamics_list=self.dynamics_list,
         )
 
