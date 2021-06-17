@@ -200,7 +200,6 @@ class Dynamics(object):
         do_loss = do(loss)
         return do_loss  # vector with mse for each feature
 
-
     def calculate_loss(self, obs, last_obs, acs):
         """
         Forward pass of the dynamics model
@@ -265,7 +264,6 @@ class Dynamics(object):
                 losses = torch.cat((losses, loss), 0)
 
         return losses.cpu().data.numpy()
-
 
     def predict_features(self, obs, last_obs, acs):
         """

@@ -324,7 +324,7 @@ class PpoOptimizer(object):
                 self.rollout.buf_acs.flatten()
             )
 
-            if self.vLogFreq >= 0 and self.n_updates % self.vLogFreq == 0:
+            if self.vlog_freq >= 0 and self.n_updates % self.vlog_freq == 0:
                 print(str(self.n_updates) + " updates - logging video.")
                 # Reshape images such that they have shape [time,channels,width,height]
                 sample_video = np.moveaxis(self.rollout.buf_obs[0], 3, 1)
