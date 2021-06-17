@@ -19,24 +19,22 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-
-
 import time
-import wandb
-from nupic.embodied.utils.model_parts import flatten_dims
-import torch
+from collections import Counter
+
 import numpy as np
-from nupic.embodied.utils.mpi import mpi_moments
+import torch
+import wandb
 
 from nupic.embodied.envs.rollout import Rollout
-from nupic.embodied.utils.utils import (
-    get_mean_and_std,
-    explained_variance,
-    RunningMeanStd,
-)
 from nupic.embodied.envs.vec_env import ShmemVecEnv as VecEnv
-
-from collections import Counter
+from nupic.embodied.utils.model_parts import flatten_dims
+from nupic.embodied.utils.mpi import mpi_moments
+from nupic.embodied.utils.utils import (
+    RunningMeanStd,
+    explained_variance,
+    get_mean_and_std,
+)
 
 
 class PpoOptimizer(object):

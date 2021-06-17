@@ -24,23 +24,23 @@
 # Code from https://github.com/qqadssp/Pytorch-Large-Scale-Curiosity
 # and https://github.com/pathak22/exploration-by-disagreement
 
-from functools import partial
-import torch
-import numpy as np
-import gym
 import os
+from functools import partial
 
-from baselines.bench import Monitor
+import gym
+import numpy as np
+import torch
 import wandb
 
+from baselines.bench import Monitor
+from nupic.embodied.agents.curious_ppo_agent import PpoOptimizer
 from nupic.embodied.policies.auxiliary_tasks import (
+    VAE,
     FeatureExtractor,
     InverseDynamics,
-    VAE,
 )
-from nupic.embodied.policies.dynamics import Dynamics
 from nupic.embodied.policies.curious_cnn_policy import CnnPolicy
-from nupic.embodied.agents.curious_ppo_agent import PpoOptimizer
+from nupic.embodied.policies.dynamics import Dynamics
 from nupic.embodied.utils.utils import random_agent_ob_mean_std
 
 
@@ -382,15 +382,16 @@ def make_env_all_params(rank, args):
 
     """
     if args["env_kind"] == "atari":
+        from baselines.common.atari_wrappers import FrameStack, NoopResetEnv
+
         from nupic.embodied.envs.wrappers import (
-            MontezumaInfoWrapper,
-            MaxAndSkipEnv,
-            ProcessFrame84,
+            AddRandomStateToInfo,
             ExtraTimeLimit,
+            MaxAndSkipEnv,
+            MontezumaInfoWrapper,
+            ProcessFrame84,
             StickyActionEnv,
-            AddRandomStateToInfo
         )
-        from baselines.common.atari_wrappers import NoopResetEnv, FrameStack
         env = gym.make(args["env"])
         assert "NoFrameskip" in env.spec.id
         if args["stickyAtari"]:
