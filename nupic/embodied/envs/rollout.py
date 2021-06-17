@@ -178,12 +178,6 @@ class Rollout(object):
         last_obs = self.buf_obs_last[idxs]
         return acs, rews, neglogprobs, obs, last_obs
 
-    def backprop_gradient_step(self):
-        self.backprop_optim.zero_grad()
-        loss = self.calculate_backprop_loss()
-        loss.backward()
-        self.backprop_optim.step()
-
     def calculate_backprop_loss(self):
         """
         Calculates the reward from the output of teh dynamics models and the external
