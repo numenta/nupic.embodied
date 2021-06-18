@@ -436,7 +436,7 @@ class PpoOptimizer(object):
         self.optimizer.step()
 
         loss_info.update(aux_loss_info)
-        loss_info.update(dyn_loss)
+        loss_info.update(dyn_loss_info)
         loss_info["loss/total_loss"] = to_numpy(total_loss)
 
         return loss_info
