@@ -28,6 +28,7 @@ import os
 from functools import partial
 
 import gym
+from gym.wrappers import ResizeObservation
 import numpy as np
 import torch
 import wandb
@@ -151,7 +152,8 @@ class Trainer(object):
             vlog_freq=hyperparameter["video_log_freq"],
             debugging=hyperparameter["debugging"],
             dynamics_list=self.dynamics_list,
-            backprop_through_reward=hyperparameter["backprop_through_reward"]
+            dyn_loss_weight=hyperparameter["dyn_loss_weight"],
+            backprop_through_reward=hyperparameter["backprop_through_reward"],
         )
 
         self.agent.start_interaction(
@@ -174,17 +176,20 @@ class Trainer(object):
         env = self.make_env(0)
         self.ob_space, self.ac_space = env.observation_space, env.action_space
 
+        print("observation space: " + str(self.ob_space))
+        print("action space: " + str(self.ac_space))
+
         try:
-            self.ob_mean = np.load(
-                "./statistics/" + self.hyperparameter["env"] + "/ob_mean.npy"
-            )
-            self.ob_std = np.load(
-                "./statistics/" + self.hyperparameter["env"] + "/ob_std.npy"
-            )
-            print("loaded environment statistics")
+            path_name = "./statistics/" + self.hyperparameter["env"]
+            if self.hyperparameter["resize_obs"] > 0:
+                path_name = path_name + "_" + str(self.hyperparameter["resize_obs"])
+            print("loading environment statistics from " + path_name)
+
+            self.ob_mean = np.load(path_name + "/ob_mean.npy")
+            self.ob_std = np.load(path_name + "/ob_std.npy")
         except FileNotFoundError:
             print("No statistics file found. Creating new one.")
-            path_name = "./statistics/" + self.hyperparameter["env"] + "/"
+            path_name = path_name + "/"
             os.makedirs(os.path.dirname(path_name))
             self.ob_mean, self.ob_std = random_agent_ob_mean_std(env, nsteps=10000)
             np.save(
@@ -424,6 +429,8 @@ def make_env_all_params(rank, args):
             touch_reward=args["touch_reward"],
             random_force=args["random_force"],
         )
+        if args["resize_obs"] > 0:
+            env = ResizeObservation(env, args["resize_obs"])
 
     print("adding monitor")
     env = Monitor(env, filename=None)
@@ -478,6 +485,8 @@ if __name__ == "__main__":
     )
     # Number of dynamics models
     parser.add_argument("--num_dynamics", type=int, default=5)
+    # Weight of dynamic loss in the total loss
+    parser.add_argument("--dyn_loss_weight", type=float, default=1.0)
     # Network parameters
     parser.add_argument("--feature_dim", type=int, default=512)
     parser.add_argument("--policy_hidden_dim", type=int, default=512)
@@ -507,6 +516,8 @@ if __name__ == "__main__":
     parser.add_argument("--crop_obs", action="store_true", default=True)
     parser.add_argument("--touch_reward", action="store_true", default=False)
     parser.add_argument("--random_force", action="store_true", default=False)
+    # With current CNN possible sizes are 36, 44, 52, 60, 68, 76, 84, ..., 180
+    parser.add_argument("--resize_obs", type=int, default=0)
 
     # Optimization parameters:
     parser.add_argument("--lambda", type=float, default=0.95)

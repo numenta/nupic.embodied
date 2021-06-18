@@ -87,6 +87,8 @@ class PpoOptimizer(object):
         After how many steps should a video of the training be logged.
     dynamics_list : [Dynamics]
         List of dynamics models to use for internal reward calculation.
+    dyn_loss_weight: float
+        Weighting of the dynamic loss in the total loss.
 
     Attributes
     ----------
@@ -124,7 +126,7 @@ class PpoOptimizer(object):
         vlog_freq,
         debugging,
         dynamics_list,
-        weight_dynamics_loss=None,
+        dyn_loss_weight,
         backprop_through_reward=False,
     ):
         self.dynamics_list = dynamics_list
@@ -151,7 +153,7 @@ class PpoOptimizer(object):
         self.vlog_freq = vlog_freq
         self.debugging = debugging
         self.time_trained_so_far = 0
-        self.weight_dynamics_loss = weight_dynamics_loss
+        self.dyn_loss_weight = dyn_loss_weight
         self.backprop_through_reward = backprop_through_reward
 
     def start_interaction(self, env_fns, dynamics_list, nlump=1):
@@ -181,9 +183,6 @@ class PpoOptimizer(object):
         else:
             params_list = policy_param_list + dynamics_param_list
             self.optimizer = torch.optim.Adam(params_list, lr=self.lr)
-
-        # Add a weight to dynamic loss to make it backward compatible
-        self.weight_dynamics_loss = self.weight_dynamics_loss or len(self.dynamics_list)
 
         # set parameters
         self.nenvs = nenvs = len(env_fns)
