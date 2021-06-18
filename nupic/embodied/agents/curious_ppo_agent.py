@@ -124,6 +124,7 @@ class PpoOptimizer(object):
         vlog_freq,
         debugging,
         dynamics_list,
+        weight_dynamics_loss=None,
         backprop_through_reward=False,
     ):
         self.dynamics_list = dynamics_list
@@ -150,6 +151,7 @@ class PpoOptimizer(object):
         self.vlog_freq = vlog_freq
         self.debugging = debugging
         self.time_trained_so_far = 0
+        self.weight_dynamics_loss = weight_dynamics_loss
         self.backprop_through_reward = backprop_through_reward
 
     def start_interaction(self, env_fns, dynamics_list, nlump=1):
@@ -167,19 +169,21 @@ class PpoOptimizer(object):
         """
         # Specify parameters that should be optimized
         # auxiliary task params is the same for all dynamic models
-        param_list = [
-            *self.policy.param_list,
-            *self.dynamics_list[0].auxiliary_task.param_list,
-        ]
+        policy_param_list = [*self.policy.param_list]
+        dynamics_param_list = [*self.dynamics_list[0].auxiliary_task.param_list]
         for dynamic in self.dynamics_list:
-            param_list.extend(dynamic.param_list)
+            dynamics_param_list.extend(dynamic.param_list)
 
         # Initialize the optimizer
-        self.optimizer = torch.optim.Adam(param_list, lr=self.lr)
         if self.backprop_through_reward:
-            self.loss_fn = self.backprop_loss
+            self.policy_optimizer = torch.optim.Adam(policy_param_list, lr=self.lr)
+            self.dynamics_optimizer = torch.optim.Adam(dynamics_param_list, lr=self.lr)
         else:
-            self.loss_fn = self.rl_loss
+            params_list = policy_param_list + dynamics_param_list
+            self.optimizer = torch.optim.Adam(params_list, lr=self.lr)
+
+        # Add a weight to dynamic loss to make it backward compatible
+        self.weight_dynamics_loss = self.weight_dynamics_loss or len(self.dynamics_list)
 
         # set parameters
         self.nenvs = nenvs = len(env_fns)
@@ -396,17 +400,14 @@ class PpoOptimizer(object):
                 )
                 advantages, returns = self.load_returns(minibatch_idxs)
 
-                # Calculate losses and backpropagate
-                self.optimizer.zero_grad()
-                aux_loss, aux_loss_info = self.auxiliary_loss(acs, obs, last_obs)
-                loss, loss_info = self.loss_fn(
-                    aux_loss, acs, neglogprobs, advantages, returns
-                )
-                loss.backward()
-                self.optimizer.step()
+                if self.backprop_through_reward:
+                    loss_info = self.update_step_backprop(acs, obs, last_obs)
+                else:
+                    loss_info = self.update_step_ppo(
+                        acs, obs, last_obs, neglogprobs, advantages, returns
+                    )
 
                 # Update counter with info gathered from aux loss and loss
-                loss_info.update(aux_loss_info)
                 for metric, value in loss_info.items():
                     to_report[metric] += value
 
@@ -418,6 +419,50 @@ class PpoOptimizer(object):
         info = self.log_post_update(info)
 
         return info
+
+    def update_step_ppo(
+        self, acs, obs, last_obs, neglogprobs, advantages, returns
+    ):
+        """Regular update step in exploration by disagreement using PPO"""
+
+        self.optimizer.zero_grad()
+        aux_loss, aux_loss_info = self.auxiliary_loss(acs, obs, last_obs)
+        dyn_loss, dyn_loss_info = self.dynamics_loss()
+        policy_loss, loss_info = self.ppo_loss(
+            aux_loss, acs, neglogprobs, advantages, returns
+        )
+        total_loss = aux_loss + dyn_loss + policy_loss
+        total_loss.backward()
+        self.optimizer.step()
+
+        loss_info.update(aux_loss_info)
+        loss_info.update(dyn_loss)
+        loss_info["loss/total_loss"] = to_numpy(total_loss)
+
+        return loss_info
+
+    def update_step_backprop(self, acs, obs, last_obs):
+        """
+        Update when using backpropagation through rewards instead of PPO
+        Alternate between steps to the dynamics loss and the policy loss
+        """
+
+        self.dynamics_optimizer.zero_grad()
+        aux_loss, aux_loss_info = self.auxiliary_loss(acs, obs, last_obs)
+        dyn_loss, dyn_loss_info = self.dynamics_loss()
+        total_dyn_loss = aux_loss + dyn_loss
+        total_dyn_loss.backward()
+        self.dynamics_optimizer.step()
+
+        self.policy_optimizer.zero_grad()
+        policy_loss, loss_info = self.backprop_loss()
+        policy_loss.backward()
+        self.policy_optimizer.step()
+
+        loss_info.update(aux_loss_info)
+        loss_info["loss/total_loss"] = to_numpy(policy_loss) + to_numpy(total_dyn_loss)
+
+        return loss_info
 
     def log_post_update(self, info):
 
@@ -476,27 +521,36 @@ class PpoOptimizer(object):
             "loss/auxiliary_task": to_numpy(aux_loss)
         }
 
-    def backprop_loss(self, aux_loss, *args):
+    def backprop_loss(self, *args):
         loss = self.rollout.calculate_backprop_loss()
-        total_loss = loss + aux_loss
-        return total_loss, {
-            "loss/backprop_reward": to_numpy(loss)
+        return loss, {
+            "loss/backprop_through_reward_loss": to_numpy(loss)
         }
 
-    def rl_loss(self, aux_loss, acs, neglogprobs, advantages, returns, *args):
-        dyn_prediction_loss = []
-        # Loop through dynamics models
+    def dynamics_loss(self):
+        dyn_prediction_loss = 0
         for dynamic in self.dynamics_list:
             # Get the features of the observations in the dynamics model (just
             # gets features from the auxiliary model)
             dynamic.update_features()
             # Put features into dynamics model and get loss
-            # (if use_disagreement just returns features, therfor here the
+            # (if use_disagreement just returns features, therefore the
             # partial loss is used for optimizing and loging)
             # disagreement.append(torch.mean(np.var(dynamic.get_loss(),axis=0)))
 
             # Put features into dynamics model and get partial loss (dropout)
-            dyn_prediction_loss.append(torch.mean(dynamic.get_loss_partial()))
+            dyn_prediction_loss += torch.mean(dynamic.get_loss_partial())
+
+        # Divide by number of models so the number of dynamic models doesn't impact
+        # the total loss. Multiply by a weight that can be defined by the user
+        dyn_prediction_loss /= len(self.dynamics_list)
+        dyn_prediction_loss *= self.weight_dynamics_loss
+
+        return dyn_prediction_loss, {
+            "loss/dyn_prediction_loss": to_numpy(dyn_prediction_loss)
+        }
+
+    def ppo_loss(self, aux_loss, acs, neglogprobs, advantages, returns, *args):
 
         # Reshape actions and put in tensor
         acs = torch.tensor(flatten_dims(acs, len(self.ac_space.shape))).to(
@@ -553,20 +607,16 @@ class PpoOptimizer(object):
 
         # Calculate the total loss out of the policy gradient loss, the entropy
         # loss (*entropy_coef), the value function loss (*0.5) and feature loss
-        total_loss = policy_gradient_loss + entropy_loss + vf_loss + aux_loss
-        for i in range(len(dyn_prediction_loss)):
-            # add the loss of each of the dynamics networks to the total loss
-            total_loss = total_loss + dyn_prediction_loss[i]
+        ppo_loss = policy_gradient_loss + entropy_loss + vf_loss
 
-        return total_loss, {
+        return ppo_loss, {
             "ppo/approx_kl_divergence": to_numpy(approx_kl_divergence),
             "ppo/clipfraction": to_numpy(clipfrac),
-            "loss/total_loss": to_numpy(total_loss),
             "loss/policy_gradient_loss": to_numpy(policy_gradient_loss),
             "loss/value_loss": to_numpy(vf_loss),
             "loss/entropy_loss": to_numpy(entropy_loss),
-            "loss/dyn_prediction_loss": to_numpy(torch.sum(dyn_prediction_loss))
         }
+
 
     def step(self):
         """Collect one rollout and use it to update the networks.
