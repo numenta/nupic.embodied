@@ -126,6 +126,7 @@ class PpoOptimizer(object):
         vLogFreq,
         debugging,
         dynamics_list,
+        backprop_through_reward=False,
     ):
         self.dynamics_list = dynamics_list
         self.n_updates = 0
@@ -151,6 +152,7 @@ class PpoOptimizer(object):
         self.vLogFreq = vLogFreq
         self.debugging = debugging
         self.time_trained_so_far = 0
+        self.backprop_through_reward = backprop_through_reward
 
     def start_interaction(self, env_fns, dynamics_list, nlump=1):
         """Set up environments and initialize everything.
@@ -175,7 +177,10 @@ class PpoOptimizer(object):
             param_list.extend(dynamic.param_list)
 
         # Initialize the optimizer
-        self.optimizer = torch.optim.Adam(param_list, lr=self.lr)
+        if self.backprop_through_reward:
+            self.optimizer = torch.optim.Adam(self.policy.param_list, lr=self.lr)
+        else:
+            self.optimizer = torch.optim.Adam(param_list, lr=self.lr)
 
         # Set gradients to zero
         self.optimizer.zero_grad()
@@ -229,7 +234,7 @@ class PpoOptimizer(object):
         for env in self.envs:
             env.close()
 
-    def calculate_advantages(self, rews, use_done, gamma, lam):
+    def calculate_advantages(self, rews, use_done, gamma, lam, normalize):
         """Calculate advantages from the rewards.
 
         Parameters
@@ -278,39 +283,11 @@ class PpoOptimizer(object):
         # Update return buffer (advantages + value estimates)
         self.buf_returns[:] = self.buf_advantages + self.rollout.buf_vpreds
 
-    def update(self):
-        """Calculate losses and update parameters based on current rollout.
-
-        Returns
-        -------
-        info
-            Dictionary of infos about the current update and training statistics.
-
+    def init_info_dict(self):
         """
-        if self.normrew:
-            # Normalize the rewards using the running mean and std
-            discounted_rewards = np.array(
-                [
-                    self.reward_forward_filter.update(rew)
-                    for rew in self.rollout.buf_rewards.T
-                ]
-            )
-            # rewards_mean, rewards_std, rewards_count
-            rewards_mean, rewards_std, rewards_count = mpi_moments(
-                discounted_rewards.ravel()
-            )
-            # reward forward filter running mean std
-            self.reward_stats.update_from_moments(
-                rewards_mean, rewards_std ** 2, rewards_count
-            )
-            rews = self.rollout.buf_rewards / np.sqrt(self.reward_stats.var)
-        else:
-            rews = np.copy(self.rollout.buf_rewards)
-
-        # Calculate advantages using the current rewards and value estimates
-        self.calculate_advantages(
-            rews=rews, use_done=self.use_done, gamma=self.gamma, lam=self.lam
-        )
+        Initialize the info dictionary to be logged in wandb and collect base metrics
+        Returns info dictionary.
+        """
 
         # Initialize and update the info dict for logging
         info = dict()
@@ -355,6 +332,49 @@ class PpoOptimizer(object):
                 sample_video = np.moveaxis(self.rollout.buf_obs[0], 3, 1)
                 # Log buffer video from first env
                 info["observations"] = wandb.Video(sample_video, fps=12, format="gif")
+
+        return info
+
+    def collect_rewards(self, normalize=False):
+        if normalize:
+            discounted_rewards = np.array(
+                [
+                    self.reward_forward_filter.update(rew)
+                    for rew in self.rollout.buf_rewards.T
+                ]
+            )
+            # rewards_mean, rewards_std, rewards_count
+            rewards_mean, rewards_std, rewards_count = mpi_moments(
+                discounted_rewards.ravel()
+            )
+            # reward forward filter running mean std
+            self.reward_stats.update_from_moments(
+                rewards_mean, rewards_std ** 2, rewards_count
+            )
+            return self.rollout.buf_rewards / np.sqrt(self.reward_stats.var)
+        else:
+            # Copy directly from buff rewards
+            return np.copy(self.rollout.buf_rewards)
+
+
+    def update(self):
+        """Calculate losses and update parameters based on current rollout.
+
+        Returns
+        -------
+        info
+            Dictionary of infos about the current update and training statistics.
+
+        """
+        rews = self.collect_rewards(normalize=self.normrew)
+
+        # Calculate advantages using the current rewards and value estimates
+        self.calculate_advantages(
+            rews=rews, use_done=self.use_done, gamma=self.gamma, lam=self.lam
+        )
+
+        # TODO: we are logging buf_advantages before normalizing, is that correct?
+        info = self.init_info_dict()
 
         to_report = Counter()
 
@@ -565,12 +585,28 @@ class PpoOptimizer(object):
         """
         # Collect rollout
         self.rollout.collect_rollout()
-        # Calculate losses and backpropagate them through the networks
-        update_info = self.update()
+
+        # Calculate reward or loss
+        if self.backprop_through_reward:
+            loss = self.backprop_gradient_step()
+            # TODO: break the update function into two, one only to log
+            update_info = dict(backprop_loss=loss)
+        else:
+            # Calculate losses and backpropagate them through the networks
+            update_info = self.update()
+
         # Update stepcount
         self.step_count = self.start_step + self.rollout.step_count
         # Return the update statistics for logging
         return {"update": update_info}
+
+    def backprop_gradient_step(self):
+        self.optimizer.zero_grad()
+        loss = self.rollout.calculate_backprop_loss()
+        print(f"Loss from the backprop: {loss:.4f}")
+        loss.backward()
+        self.optimizer.step()
+        return loss.item()
 
     def get_activation_stats(self, act, name):
         stacked_act = np.reshape(act, (act.shape[0] * act.shape[1], act.shape[2]))
