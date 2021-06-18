@@ -81,12 +81,12 @@ class PpoOptimizer(object):
         Number of environment steps per update segment.
     nsegs_per_env : int
         Number of segments to collect in each environment.
-    exp_name : str
-        Name of the experiment (used for video logging).. currently not used
     vlog_freq : int
         After how many steps should a video of the training be logged.
     dynamics_list : [Dynamics]
         List of dynamics models to use for internal reward calculation.
+    dyn_loss_weight: float
+        Weighting of the dynamic loss in the total loss.
 
     Attributes
     ----------
@@ -120,11 +120,10 @@ class PpoOptimizer(object):
         int_coeff,
         nsteps_per_seg,
         nsegs_per_env,
-        exp_name,  # TODO: not being used, delete it?
         vlog_freq,
         debugging,
         dynamics_list,
-        weight_dynamics_loss=None,
+        dyn_loss_weight,
         backprop_through_reward=False,
     ):
         self.dynamics_list = dynamics_list
@@ -151,7 +150,7 @@ class PpoOptimizer(object):
         self.vlog_freq = vlog_freq
         self.debugging = debugging
         self.time_trained_so_far = 0
-        self.weight_dynamics_loss = weight_dynamics_loss
+        self.dyn_loss_weight = dyn_loss_weight
         self.backprop_through_reward = backprop_through_reward
 
     def start_interaction(self, env_fns, dynamics_list, nlump=1):
@@ -181,9 +180,6 @@ class PpoOptimizer(object):
         else:
             params_list = policy_param_list + dynamics_param_list
             self.optimizer = torch.optim.Adam(params_list, lr=self.lr)
-
-        # Add a weight to dynamic loss to make it backward compatible
-        self.weight_dynamics_loss = self.weight_dynamics_loss or len(self.dynamics_list)
 
         # set parameters
         self.nenvs = nenvs = len(env_fns)
@@ -436,7 +432,7 @@ class PpoOptimizer(object):
         self.optimizer.step()
 
         loss_info.update(aux_loss_info)
-        loss_info.update(dyn_loss)
+        loss_info.update(dyn_loss_info)
         loss_info["loss/total_loss"] = to_numpy(total_loss)
 
         return loss_info
@@ -460,6 +456,7 @@ class PpoOptimizer(object):
         self.policy_optimizer.step()
 
         loss_info.update(aux_loss_info)
+        loss_info.update(dyn_loss_info)
         loss_info["loss/total_loss"] = to_numpy(policy_loss) + to_numpy(total_dyn_loss)
 
         return loss_info

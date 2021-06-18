@@ -149,6 +149,8 @@ class small_convnet(torch.nn.Module):
 
         assert oH == int(oH)  # whether oH is a .0 float ?
         assert oW == int(oW)
+        # for 180x180 this is 18, for 84x84 this is 7. Other possible formats are: 28(0)
+        # 36(1), 44(2), 52(3), 60(4), 68(5), 76(6)
 
         self.flatten_dim = int(oH * oW * feat_list[-1][1])
         # Add fc layer at end for feature output
