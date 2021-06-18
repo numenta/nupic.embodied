@@ -20,10 +20,10 @@
 #
 # ------------------------------------------------------------------------------
 
-import torch
-from collections import deque, defaultdict
+from collections import defaultdict, deque
 
 import numpy as np
+import torch
 
 
 class Rollout(object):
@@ -166,11 +166,17 @@ class Rollout(object):
         self.calculate_reward()
         self.update_info()
 
-    def backprop_gradient_step(self):
-        self.backprop_optim.zero_grad()
-        loss = self.calculate_backprop_loss()
-        loss.backward()
-        self.backprop_optim.step()
+    def load_from_buffer(self, idxs):
+        """
+        Loads relevant buffer information to be used by the agent update step
+        Note: negative log probabilities are the action probabilities from pi
+        """
+        acs = self.buf_acs[idxs]
+        rews = self.buf_rewards[idxs]
+        neglogprobs = self.buf_neglogprobs[idxs]
+        obs = self.buf_obs[idxs]
+        last_obs = self.buf_obs_last[idxs]
+        return acs, rews, neglogprobs, obs, last_obs
 
     def calculate_backprop_loss(self):
         """
@@ -192,11 +198,12 @@ class Rollout(object):
             )
 
         # Get variance over dynamics models
-        # shape=[n_envs, n_steps_per_seg, feature_dim]  # 64, 128, 512
-        # n_dynamic_models, n_evns, n_steps_per_seg, feature_dim
+        # shape pre var = n_dynamic_models, n_envs, n_steps_per_seg, feature_dim
+        # shape post var = n_envs, n_steps_per_seg, feature_dim
         disagreement = torch.var(torch.stack(pred_features), axis=0)
-        # n_envs, n_steps_per_seg, feature_dim
-        loss = -torch.mean(disagreement)
+
+        # Loss is minimized, and we need to maximize variance, so using the inverse
+        loss = 1 / torch.mean(disagreement)
         return loss
 
     def calculate_reward(self):
