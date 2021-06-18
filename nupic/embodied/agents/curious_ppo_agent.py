@@ -456,6 +456,7 @@ class PpoOptimizer(object):
         self.policy_optimizer.step()
 
         loss_info.update(aux_loss_info)
+        loss_info.update(dyn_loss_info)
         loss_info["loss/total_loss"] = to_numpy(policy_loss) + to_numpy(total_dyn_loss)
 
         return loss_info
