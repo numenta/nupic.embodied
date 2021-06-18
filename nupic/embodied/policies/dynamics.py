@@ -22,8 +22,8 @@
 
 import torch
 
-from nupic.embodied.utils.model_parts import flatten_dims, unflatten_first_dim
 from nupic.embodied.models import DynamicsNet
+from nupic.embodied.utils.model_parts import flatten_dims, unflatten_first_dim
 
 
 class Dynamics(object):
@@ -201,7 +201,8 @@ class Dynamics(object):
         return do_loss  # vector with mse for each feature
 
     def calculate_loss(self, obs, last_obs, acs):
-        """Short summary.
+        """
+        Forward pass of the dynamics model
 
         Parameters
         ----------
@@ -253,6 +254,7 @@ class Dynamics(object):
             self.auxiliary_task.update_features(ob, last_ob)
             # get the updated features
             self.update_features()
+
             # get the loss from the loss model corresponding with the new features
             loss = self.get_loss()
             if losses is None:
@@ -260,4 +262,34 @@ class Dynamics(object):
             else:
                 # concatenate the losses from the current slice
                 losses = torch.cat((losses, loss), 0)
+
         return losses.cpu().data.numpy()
+
+    def predict_features(self, obs, last_obs, acs):
+        """
+        Forward pass of the dynamics model
+
+        Parameters
+        ----------
+        obs : array
+            batch of observations. shape = [n_env, nsteps_per_seg, W, H, C].
+        last_obs : array
+            batch of last observations. shape = [n_env, 1, W, H, C].
+        acs : array
+            batch of actions. shape = [n_env, nsteps_per_seg]
+
+        Returns
+        -------
+        array
+            losses. shape = [n_env, nsteps_per_seg, feature_dim]
+
+        """
+        # update the policy features and the auxiliary task features
+        self.auxiliary_task.policy.update_features(obs, acs)
+        self.auxiliary_task.update_features(obs, last_obs)
+        # updating the features
+        self.update_features()
+        # get the loss from the loss model corresponding with the new features
+        pred_features = self.get_loss()
+
+        return pred_features

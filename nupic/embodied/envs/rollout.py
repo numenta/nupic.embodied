@@ -20,9 +20,10 @@
 #
 # ------------------------------------------------------------------------------
 
-from collections import deque, defaultdict
+from collections import defaultdict, deque
 
 import numpy as np
+import torch
 
 
 class Rollout(object):
@@ -160,10 +161,50 @@ class Rollout(object):
     def collect_rollout(self):
         """Steps through environment, calculates reward and update info."""
         self.ep_infos_new = []
-        for t in range(self.nsteps):
+        for _ in range(self.nsteps):
             self.rollout_step()
         self.calculate_reward()
         self.update_info()
+
+    def load_from_buffer(self, idxs):
+        """
+        Loads relevant buffer information to be used by the agent update step
+        Note: negative log probabilities are the action probabilities from pi
+        """
+        acs = self.buf_acs[idxs]
+        rews = self.buf_rewards[idxs]
+        neglogprobs = self.buf_neglogprobs[idxs]
+        obs = self.buf_obs[idxs]
+        last_obs = self.buf_obs_last[idxs]
+        return acs, rews, neglogprobs, obs, last_obs
+
+    def calculate_backprop_loss(self):
+        """
+        Calculates the reward from the output of teh dynamics models and the external
+        rewards.
+
+        """
+
+        pred_features = []
+        # Get output from all dynamics models (featurewise)
+        # shape=[num_dynamics, num_envs, n_steps_per_seg, feature_dim]
+
+        # Forward pass per dynamic model
+        for dynamics in self.dynamics_list:
+            pred_features.append(
+                dynamics.predict_features(
+                    obs=self.buf_obs, last_obs=self.buf_obs_last, acs=self.buf_acs
+                )
+            )
+
+        # Get variance over dynamics models
+        # shape pre var = n_dynamic_models, n_envs, n_steps_per_seg, feature_dim
+        # shape post var = n_envs, n_steps_per_seg, feature_dim
+        disagreement = torch.var(torch.stack(pred_features), axis=0)
+
+        # Loss is minimized, and we need to maximize variance, so using the inverse
+        loss = 1 / torch.mean(disagreement)
+        return loss
 
     def calculate_reward(self):
         """Calculates the reward from the output of teh dynamics models and the external

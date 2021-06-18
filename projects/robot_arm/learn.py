@@ -24,36 +24,23 @@
 # Code from https://github.com/qqadssp/Pytorch-Large-Scale-Curiosity
 # and https://github.com/pathak22/exploration-by-disagreement
 
-from functools import partial
-import torch
-import numpy as np
-import gym
 import os
+from functools import partial
 
-from baselines.common.atari_wrappers import NoopResetEnv, FrameStack
-from baselines.bench import Monitor
+import gym
+import numpy as np
+import torch
 import wandb
 
-
-from nupic.embodied.envs.wrappers import (
-    MontezumaInfoWrapper,
-    make_mario_env,
-    make_multi_pong,
-    AddRandomStateToInfo,
-    MaxAndSkipEnv,
-    ProcessFrame84,
-    ExtraTimeLimit,
-    StickyActionEnv,
-    CartesianControlDiscrete,
-)
+from baselines.bench import Monitor
+from nupic.embodied.agents.curious_ppo_agent import PpoOptimizer
 from nupic.embodied.policies.auxiliary_tasks import (
+    VAE,
     FeatureExtractor,
     InverseDynamics,
-    VAE,
 )
-from nupic.embodied.policies.dynamics import Dynamics
 from nupic.embodied.policies.curious_cnn_policy import CnnPolicy
-from nupic.embodied.agents.curious_ppo_agent import PpoOptimizer
+from nupic.embodied.policies.dynamics import Dynamics
 from nupic.embodied.utils.utils import random_agent_ob_mean_std
 
 
@@ -83,8 +70,8 @@ class Trainer(object):
             device=self.device,
             ob_space=self.ob_space,
             ac_space=self.ac_space,
-            feature_dim=self.hyperparameter["feature_dim"],
-            hidden_dim=self.hyperparameter["policy_hidden_dim"],
+            feature_dim=hyperparameter["feature_dim"],
+            hidden_dim=hyperparameter["policy_hidden_dim"],
             ob_mean=self.ob_mean,
             ob_std=self.ob_std,
             layernormalize=False,
@@ -160,15 +147,16 @@ class Trainer(object):
             normadv=hyperparameter["norm_adv"],  # whether to normalize advantage
             ext_coeff=hyperparameter["ext_coeff"],  # weight of the environment reward
             int_coeff=hyperparameter["int_coeff"],  # weight of the disagreement reward
-            expName=hyperparameter["exp_name"],
-            vLogFreq=hyperparameter["video_log_freq"],
+            exp_name=hyperparameter["exp_name"],
+            vlog_freq=hyperparameter["video_log_freq"],
             debugging=hyperparameter["debugging"],
             dynamics_list=self.dynamics_list,
+            backprop_through_reward=hyperparameter["backprop_through_reward"]
         )
 
         self.agent.start_interaction(
             self.envs,
-            nlump=self.hyperparameter["nlumps"],
+            nlump=hyperparameter["nlumps"],
             dynamics_list=self.dynamics_list,
         )
 
@@ -394,6 +382,16 @@ def make_env_all_params(rank, args):
 
     """
     if args["env_kind"] == "atari":
+        from baselines.common.atari_wrappers import FrameStack, NoopResetEnv
+
+        from nupic.embodied.envs.wrappers import (
+            AddRandomStateToInfo,
+            ExtraTimeLimit,
+            MaxAndSkipEnv,
+            MontezumaInfoWrapper,
+            ProcessFrame84,
+            StickyActionEnv,
+        )
         env = gym.make(args["env"])
         assert "NoFrameskip" in env.spec.id
         if args["stickyAtari"]:
@@ -410,12 +408,14 @@ def make_env_all_params(rank, args):
             env = MontezumaInfoWrapper(env)
         env = AddRandomStateToInfo(env)
     elif args["env_kind"] == "mario":
+        from nupic.embodied.envs.wrappers import make_mario_env
         env = make_mario_env()
     elif args["env_kind"] == "retro_multi":
+        from nupic.embodied.envs.wrappers import make_multi_pong
         env = make_multi_pong()
     elif args["env_kind"] == "roboarm":
         from real_robots.envs import REALRobotEnv
-
+        from nupic.embodied.envs.wrappers import CartesianControlDiscrete
         env = REALRobotEnv(objects=3, action_type="cartesian")
         env = CartesianControlDiscrete(
             env,
@@ -524,6 +524,9 @@ if __name__ == "__main__":
     parser.add_argument("--nsegs_per_env", type=int, default=1)
     parser.add_argument("--envs_per_process", type=int, default=128)
     parser.add_argument("--nlumps", type=int, default=1)
+    parser.add_argument(
+        "-b", "--backprop_through_reward", action="store_true", default=False
+    )
 
     args = parser.parse_args()
 
@@ -552,6 +555,11 @@ if __name__ == "__main__":
         use_disagreement=args.dont_use_disagreement,
         device=device,
     )
+
+    if args.load and len(args.download_model_from) == 0:
+        # If the model is not downloaded from wandb we want to load the checkpoint first
+        # to get the previous wandb_id to resume logging with that.
+        trainer.load_models()
 
     # Initialize wandb for logging (if not debugging)
     if not args.debugging:
@@ -601,7 +609,8 @@ if __name__ == "__main__":
                 log_freq=model_stats_log_freq,
             )"""
 
-    if args.load:
+    if args.load and len(args.download_model_from) > 0:
+        # TODO: Figure out how to continue logging when loading an artifact
         trainer.load_models()
 
     model_path = "./models/" + args.exp_name

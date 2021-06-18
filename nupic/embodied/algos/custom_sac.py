@@ -21,9 +21,10 @@
 # ------------------------------------------------------------------------------
 from garage.torch.algos.sac import SAC
 from nupic.torch.modules.sparse_weights import rezero_weights
+import torch
 
 
-class SparseWeightsSAC(SAC):
+class CustomSAC(SAC):
 
     def optimize_policy(self, samples_data):
         """Optimize the policy q_functions, and temperature coefficient. Rezero
@@ -87,6 +88,6 @@ class SparseWeightsSAC(SAC):
 
     def _evaluate_policy(self, epoch):
         self.policy.eval()
-        result = super(SparseWeightsSAC, self)._evaluate_policy(epoch=epoch)
+        result = super(CustomSAC, self)._evaluate_policy(epoch=epoch)
         self.policy.train()
         return result

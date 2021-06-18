@@ -24,8 +24,8 @@
 
 import numpy as np
 import torch
-from nupic.embodied.utils.distributions import make_pdtype
 
+from nupic.embodied.utils.distributions import make_pdtype
 from nupic.embodied.utils.model_parts import small_convnet, unflatten_first_dim
 
 

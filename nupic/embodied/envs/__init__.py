@@ -19,3 +19,4 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
+from .garage_wrappers.noisy_env import add_noise
