@@ -148,7 +148,6 @@ class Trainer(object):
             normadv=hyperparameter["norm_adv"],  # whether to normalize advantage
             ext_coeff=hyperparameter["ext_coeff"],  # weight of the environment reward
             int_coeff=hyperparameter["int_coeff"],  # weight of the disagreement reward
-            exp_name=hyperparameter["exp_name"],
             vlog_freq=hyperparameter["video_log_freq"],
             debugging=hyperparameter["debugging"],
             dynamics_list=self.dynamics_list,

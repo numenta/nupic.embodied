@@ -81,8 +81,6 @@ class PpoOptimizer(object):
         Number of environment steps per update segment.
     nsegs_per_env : int
         Number of segments to collect in each environment.
-    exp_name : str
-        Name of the experiment (used for video logging).. currently not used
     vlog_freq : int
         After how many steps should a video of the training be logged.
     dynamics_list : [Dynamics]
@@ -122,7 +120,6 @@ class PpoOptimizer(object):
         int_coeff,
         nsteps_per_seg,
         nsegs_per_env,
-        exp_name,  # TODO: not being used, delete it?
         vlog_freq,
         debugging,
         dynamics_list,
