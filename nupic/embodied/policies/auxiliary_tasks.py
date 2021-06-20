@@ -22,12 +22,14 @@
 
 import numpy as np
 import torch
+
 from nupic.embodied.utils.model_parts import (
-    small_convnet,
     flatten_dims,
-    unflatten_first_dim,
+    small_convnet,
     small_deconvnet,
+    unflatten_first_dim,
 )
+from nupic.embodied.utils.torch import to_tensor
 
 
 class FeatureExtractor(object):
@@ -167,6 +169,7 @@ class FeatureExtractor(object):
             Features of the observations.
 
         """
+        # TODO: refactor - too many shape transformations in obs and act, confusing
         has_timesteps = len(obs.shape) == 5
         if has_timesteps:
             sh = obs.shape  # shape=[1, nsteps, H, W, C]
@@ -174,9 +177,9 @@ class FeatureExtractor(object):
         # Normalize observations
         obs = (obs - self.ob_mean) / self.ob_std
         # Reshape observations, shape=[nsteps, C, H, W]
-        obs = np.transpose(obs, [i for i in range(len(obs.shape) - 3)] + [-1, -3, -2])
+        obs = obs.permute([i for i in range(len(obs.shape) - 3)] + [-1, -3, -2])
         # Get features from the features_model
-        act = self.features_model(torch.tensor(obs).to(self.device))
+        act = self.features_model(obs)
 
         if has_timesteps:
             act = unflatten_first_dim(act, sh)
@@ -185,7 +188,7 @@ class FeatureExtractor(object):
 
     def get_loss(self, *arg, **kwarg):
         # is 0 because we use no auxiliary task for feature learning
-        return torch.tensor(0.0).to(self.device)
+        return torch.tensor(0.0)
 
 
 class InverseDynamics(FeatureExtractor):
@@ -275,7 +278,7 @@ class InverseDynamics(FeatureExtractor):
         ac = flatten_dims(self.ac, len(self.ac_space.shape))
         # Calculate the cross entropy between the logits of the action predictions and
         # the actual actions. shape=[n_steps_per_seg, 1]
-        return idfpd.neglogp(torch.tensor(ac).to(self.device))
+        return idfpd.neglogp(ac)
 
 
 class VAE(FeatureExtractor):
@@ -363,6 +366,7 @@ class VAE(FeatureExtractor):
         self.spherical_obs = spherical_obs
         if self.spherical_obs:
             # Initialize a scale paramtere and add it to optimized parameters.
+            # TODO: verify - is the scale really a param that requires grad?
             self.scale = torch.nn.Parameter(torch.tensor(1.0), requires_grad=True)
             self.param_list.extend([self.scale])
 
@@ -438,7 +442,7 @@ class VAE(FeatureExtractor):
         # Get the log probability of the normed observations under the reconstruction
         # distribution and sum up this reconstruction likelihood.
         reconstruction_likelihood = reconstruction_distribution.log_prob(
-            torch.tensor(norm_obs).float()
+            norm_obs.float()
         )
         assert reconstruction_likelihood.shape[-3:] == (4, 84, 84)
         reconstruction_likelihood = torch.sum(reconstruction_likelihood, [-3, -2, -1])

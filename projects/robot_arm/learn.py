@@ -201,7 +201,7 @@ class Trainer(object):
             )
             print("Saved environment statistics.")
         print(
-            "obervation stats: "
+            "observation stats: "
             + str(np.mean(self.ob_mean))
             + " std: "
             + str(self.ob_std)
@@ -419,6 +419,7 @@ def make_env_all_params(rank, args):
         env = make_multi_pong()
     elif args["env_kind"] == "roboarm":
         from real_robots.envs import REALRobotEnv
+
         from nupic.embodied.envs.wrappers import CartesianControlDiscrete
         env = REALRobotEnv(objects=3, action_type="cartesian")
         env = CartesianControlDiscrete(

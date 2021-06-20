@@ -21,6 +21,7 @@
 # ------------------------------------------------------------------------------
 
 import numpy as np
+import torch
 
 
 def random_agent_ob_mean_std(env, nsteps=10000):
@@ -38,14 +39,8 @@ def random_agent_ob_mean_std(env, nsteps=10000):
     return mean, std
 
 
-def get_mean_and_std(array):
-    mean = np.array(np.mean(array))  # local_mean
-
-    n_array = array - mean
-    sqs = n_array ** 2
-    var = np.array(np.mean(sqs))  # local_mean
-    std = var ** 0.5
-    return mean, std
+def get_mean_and_std(tensor):
+    return tensor.mean(), tensor.std()
 
 
 def explained_variance(ypred, y):
@@ -58,22 +53,22 @@ def explained_variance(ypred, y):
         ev=1  =>  perfect prediction
         ev<0  =>  worse than just predicting zero
     """
-    assert y.ndim == 1 and ypred.ndim == 1
-    vary = np.var(y)
-    return np.nan if vary == 0 else 1 - np.var(y - ypred) / vary
+    assert y.dim() == 1 and ypred.dim() == 1
+    vary = torch.var(y)
+    return torch.nan if vary == 0 else 1 - torch.var(y - ypred) / vary
 
 
 class RunningMeanStd(object):
     # from baselines.common.running_mean_std
     # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
     def __init__(self, epsilon=1e-4, shape=()):
-        self.mean = np.zeros(shape, "float64")
-        self.var = np.ones(shape, "float64")
+        self.mean = torch.zeros(shape, dtype=torch.float64)
+        self.var = torch.ones(shape, dtype=torch.float64)
         self.count = epsilon
 
     def update(self, x):
-        batch_mean = np.mean(x, axis=0)
-        batch_var = np.var(x, axis=0)
+        batch_mean = torch.mean(x, axis=0)
+        batch_var = torch.var(x, axis=0)
         batch_count = x.shape[0]
         self.update_from_moments(batch_mean, batch_var, batch_count)
 
@@ -93,8 +88,8 @@ def update_mean_var_count_from_moments(
     new_mean = mean + delta * batch_count / tot_count
     m_a = var * count
     m_b = batch_var * batch_count
-    M2 = m_a + m_b + np.square(delta) * count * batch_count / tot_count
-    new_var = M2 / tot_count
+    m2 = m_a + m_b + torch.square(delta) * count * batch_count / tot_count
+    new_var = m2 / tot_count
     new_count = tot_count
 
     return new_mean, new_var, new_count
