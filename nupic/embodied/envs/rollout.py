@@ -25,6 +25,7 @@ from collections import defaultdict, deque
 import numpy as np
 import torch
 
+from nupic.embodied.utils.torch import env_output_to_tensor, to_numpy
 
 class Rollout(object):
     """Collect rollouts of experiences in the environments and process them.
@@ -104,6 +105,7 @@ class Rollout(object):
         int_rew_coeff,
         ext_rew_coeff,
         dynamics_list,
+        device=None
     ):
         self.nenvs = nenvs
         self.nsteps_per_seg = nsteps_per_seg
@@ -120,37 +122,42 @@ class Rollout(object):
         # Define the reward function as a weighted combination of internal and (clipped)
         # external rewards.
         self.reward_function = (
-            lambda ext_rew, internal_reward: ext_rew_coeff * np.clip(ext_rew, -1.0, 1.0)
-            + int_rew_coeff * internal_reward
+            lambda ext_rew, internal_reward:
+                ext_rew_coeff * torch.clip(ext_rew, -1.0, 1.0)
+                + int_rew_coeff * internal_reward
         )
+
+        def empty_tensor(shape):
+            return torch.zeros(shape, dtype=torch.float32, device=device)
 
         # Initialize buffer
-        self.buf_vpreds = np.empty((nenvs, self.nsteps), np.float32)
-        self.buf_neglogprobs = np.empty((nenvs, self.nsteps), np.float32)
-        self.buf_rewards = np.empty((nenvs, self.nsteps), np.float32)
-        self.buf_ext_rewards = np.empty((nenvs, self.nsteps), np.float32)
-        self.buf_acs = np.empty(
-            (nenvs, self.nsteps, *self.ac_space.shape), self.ac_space.dtype
-        )
-        self.buf_obs = np.empty(
-            (nenvs, self.nsteps, *self.ob_space.shape), self.ob_space.dtype
-        )
-        self.buf_obs_last = np.empty(
-            (nenvs, self.nsegs_per_env, *self.ob_space.shape), np.float32
-        )
-        self.buf_dones = np.zeros((nenvs, self.nsteps), np.float32)
-        self.buf_done_last = self.buf_dones[:, 0, ...].copy()
-        self.buf_vpred_last = self.buf_vpreds[:, 0, ...].copy()
 
-        self.buf_acts_features = np.empty(
+        self.buf_vpreds = empty_tensor((nenvs, self.nsteps))
+        self.buf_neglogprobs = empty_tensor((nenvs, self.nsteps))
+        self.buf_rewards = empty_tensor((nenvs, self.nsteps))
+        self.buf_ext_rewards = empty_tensor((nenvs, self.nsteps))
+        # TODO: ignoring self.ac_space.dtype
+        self.buf_acs = empty_tensor((nenvs, self.nsteps, *self.ac_space.shape))
+        # TODO: ignoring self.ob_space.dtype
+        self.buf_obs = empty_tensor((nenvs, self.nsteps, *self.ob_space.shape))
+        self.buf_obs_last = empty_tensor(
+            (nenvs, self.nsegs_per_env, *self.ob_space.shape)
+        )
+        self.buf_dones = empty_tensor((nenvs, self.nsteps))
+
+        # Note: removed the copy
+        self.buf_done_last = empty_tensor((nenvs,))
+        self.buf_vpred_last = empty_tensor((nenvs,))
+
+        self.buf_acts_features = empty_tensor(
             (nenvs, self.nsteps_per_seg, self.policy.feature_dim)
         )
-        self.buf_acts_pi = np.empty(
+        self.buf_acts_pi = empty_tensor(
             (nenvs, self.nsteps_per_seg, self.policy.feature_dim)
         )
 
         self.env_results = [None] * self.nlumps
-        self.internal_reward = np.zeros((nenvs,), np.float32)
+        self.internal_reward = empty_tensor((nenvs,))
 
         self.statlists = defaultdict(lambda: deque([], maxlen=100))
         self.stats = defaultdict(float)
@@ -190,7 +197,9 @@ class Rollout(object):
         # shape=[num_dynamics, num_envs, n_steps_per_seg, feature_dim]
 
         # Forward pass per dynamic model
-        for dynamics in self.dynamics_list:
+        # TODO: parallelize this loop! Can use Ray, torch.mp, etc
+        for idx, dynamics in enumerate(self.dynamics_list):
+            print(f"Running dynamics model: {idx+1}/{len(self.dynamics_list)}")
             pred_features.append(
                 dynamics.predict_features(
                     obs=self.buf_obs, last_obs=self.buf_obs_last, acs=self.buf_acs
@@ -224,10 +233,11 @@ class Rollout(object):
                 )
             # Get variance over dynamics models
             # shape=[n_envs, n_steps_per_seg, feature_dim]
-            disagreement = np.var(net_output, axis=0)
+            net_output = torch.stack(net_output)
+            disagreement = torch.var(net_output, axis=0)
             # Get reward by mean along features
             # shape=[n_envs, n_steps_per_seg]
-            disagreement_reward = np.mean(disagreement, axis=-1)
+            disagreement_reward = torch.mean(disagreement, axis=-1)
         else:
             # Get loss from all dynamics models (difference between dynamics output and
             # the features of the next state)
@@ -240,7 +250,8 @@ class Rollout(object):
                 )
             # Get the variance of the dynamics loss over dynamic models
             # shape=[n_envs, n_steps_per_seg]
-            disagreement_reward = np.var(net_output, axis=0)
+            net_output = torch.stack(net_output)
+            disagreement_reward = torch.var(net_output, axis=0)
         # Fill reward buffer with the new rewards
         self.buf_rewards[:] = self.reward_function(
             internal_reward=disagreement_reward, ext_rew=self.buf_ext_rewards
@@ -270,7 +281,7 @@ class Rollout(object):
             acs, vpreds, nlps = self.policy.get_ac_value_nlp(obs)
 
             # Execute the policies actions in the environments
-            self.env_step(lump, acs)
+            self.env_step(lump, to_numpy(acs.squeeze()))
             # Fill the buffer
             sli = slice(lump * self.lump_stride, (lump + 1) * self.lump_stride)
             self.buf_obs[sli, t] = obs
@@ -282,10 +293,8 @@ class Rollout(object):
                 self.buf_ext_rewards[sli, t - 1] = prevrews
 
             # Fill buffer with hidden activations (used for stats logging)
-            self.buf_acts_features[
-                sli, t
-            ] = self.policy.flat_features.cpu().data.numpy()
-            self.buf_acts_pi[sli, t] = self.policy.hidden_pi.cpu().data.numpy()
+            self.buf_acts_features[sli, t] = self.policy.flat_features
+            self.buf_acts_pi[sli, t] = self.policy.hidden_pi
 
         self.step_count += 1
         if s == self.nsteps_per_seg - 1:
@@ -297,9 +306,10 @@ class Rollout(object):
                 if t == self.nsteps - 1:
                     self.buf_done_last[sli] = nextnews
                     self.buf_ext_rewards[sli, t] = ext_rews
-                    _, self.buf_vpred_last[sli], _ = self.policy.get_ac_value_nlp(
+                    next_acs, next_vpreds, next_nlps = self.policy.get_ac_value_nlp(
                         nextobs
                     )
+                    self.buf_vpred_last[sli] = next_vpreds
 
     def update_info(self):
         """If there is episode info (like stats at the end of an episode) save them."""
@@ -358,10 +368,7 @@ class Rollout(object):
             ob = self.envs[lump].reset()
             print("env reset")
             out = self.env_results[lump] = (
-                ob,
-                None,
-                np.ones(self.lump_stride, bool),
-                {},
+                ob, None, np.ones(self.lump_stride, bool), {},
             )
         else:
             if self.env_results[lump] is None:
@@ -369,4 +376,5 @@ class Rollout(object):
                 out = self.env_results[lump] = self.envs[lump].step_wait()
             else:
                 out = self.env_results[lump]
-        return out
+
+        return env_output_to_tensor(out)

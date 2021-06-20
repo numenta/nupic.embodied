@@ -120,8 +120,8 @@ class Dynamics(object):
         self.ac = self.auxiliary_task.ac
         self.ob = self.auxiliary_task.ob
 
-    def get_loss(self):
-        """Get the current loss of the dynamics model.
+    def get_predictions(self):
+        """Get the current prediction of the dynamics model.
 
         Returns
         -------
@@ -130,12 +130,13 @@ class Dynamics(object):
             the mean squared difference between the output and the next features.
 
         """
+        # TODO: refactor this function, too many shape transformations in ac, confusing
         ac = self.ac
         sh = ac.shape  # = [1, nsteps_per_seg]
         ac = flatten_dims(ac, len(self.ac_space.shape))  # shape = [nsteps_per_seg]
         # Turn actions into one hot encoding
         ac = torch.zeros(ac.shape + (self.ac_space.n,)).scatter_(
-            1, torch.tensor(ac).unsqueeze(1), 1
+            1, ac.unsqueeze(1).type(torch.int64), 1
         )  # shape = [nsteps_per_seg, ac_space.n]
 
         features = self.features
@@ -158,7 +159,7 @@ class Dynamics(object):
             next_features = self.next_features
             return torch.mean((x - next_features) ** 2, -1)
 
-    def get_loss_partial(self):
+    def get_predictions_partial(self):
         """Get the loss of the dynamics model with dropout. No use_disagreement is
         calculated here because the dynamics models are trained using the prediction
         error. The disagreement is only used as a reward signal for the policy.
@@ -176,7 +177,7 @@ class Dynamics(object):
         ac = flatten_dims(ac, len(self.ac_space.shape))  # shape = [nsteps_per_seg]
         # Turn actions into one hot encoding
         ac = torch.zeros(ac.shape + (self.ac_space.n,)).scatter_(
-            1, torch.tensor(ac).unsqueeze(1), 1
+            1, ac.unsqueeze(1).type(torch.int64), 1
         )  # shape = [nsteps_per_seg, ac_space.n]
 
         features = self.features
@@ -242,7 +243,7 @@ class Dynamics(object):
             """
             return slice(i * chunk_size, (i + 1) * chunk_size)
 
-        losses = None
+        predictions = []
 
         for i in range(n_chunks):
             # process the current slice of observations
@@ -255,15 +256,12 @@ class Dynamics(object):
             # get the updated features
             self.update_features()
 
-            # get the loss from the loss model corresponding with the new features
-            loss = self.get_loss()
-            if losses is None:
-                losses = loss
-            else:
-                # concatenate the losses from the current slice
-                losses = torch.cat((losses, loss), 0)
+            # get the prediction from the model corresponding with the new features
+            predictions.append(self.get_predictions())
 
-        return losses.cpu().data.numpy()
+        predictions = torch.cat(predictions, 0)
+
+        return predictions
 
     def predict_features(self, obs, last_obs, acs):
         """
@@ -290,6 +288,6 @@ class Dynamics(object):
         # updating the features
         self.update_features()
         # get the loss from the loss model corresponding with the new features
-        pred_features = self.get_loss()
+        pred_features = self.get_predictions()
 
         return pred_features

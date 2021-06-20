@@ -22,7 +22,6 @@
 
 # from https://github.com/qqadssp/Pytorch-Large-Scale-Curiosity/
 
-import numpy as np
 import torch
 
 from nupic.embodied.utils.distributions import make_pdtype
@@ -208,14 +207,14 @@ class CnnPolicy(object):
         # Get a shape of [N, H, W, C]
         ob = ob.reshape((-1,) + ob.shape[-len(self.ob_space.shape) :])
 
-        if len(ob.shape) == 5:
+        if ob.dim() == 5:
             print("Timesteps are not implemented yet.")
         # Normalize observations
         ob = (ob - self.ob_mean) / self.ob_std
         # reshape observations: [N, H, W, C] --> [N, C, H, W]
-        ob = np.transpose(ob, [i for i in range(len(ob.shape) - 3)] + [-1, -3, -2])
+        ob = ob.permute([i for i in range(len(ob.shape) - 3)] + [-1, -3, -2])
         # Run observations through feature model
-        ob = self.features_model(torch.tensor(ob).to(self.device))
+        ob = self.features_model(ob)
 
         return ob
 
@@ -229,7 +228,7 @@ class CnnPolicy(object):
 
         Returns
         -------
-        (np.array, np.array, np.array)
+        (torch.Tensor, torch.Tensor, torch.Tensor)
             List of (sampled action, value estimate, negative log prob of the sampled
             action)
 
@@ -237,8 +236,4 @@ class CnnPolicy(object):
         self.update_features(ob, None)
         a_samp = self.pd.sample()
         nlp_samp = self.pd.neglogp(a_samp)
-        return (
-            a_samp.squeeze().cpu().data.numpy(),
-            self.vpred.squeeze().cpu().data.numpy(),
-            nlp_samp.squeeze().cpu().data.numpy(),
-        )
+        return (a_samp.squeeze(), self.vpred.squeeze(), nlp_samp.squeeze())

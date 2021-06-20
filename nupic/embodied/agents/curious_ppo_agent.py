@@ -35,6 +35,11 @@ from nupic.embodied.utils.utils import (
     explained_variance,
     get_mean_and_std,
 )
+from nupic.embodied.utils.torch import (
+    convert_log_to_numpy,
+    to_numpy,
+    to_tensor,
+)
 
 
 class PpoOptimizer(object):
@@ -209,10 +214,12 @@ class PpoOptimizer(object):
             dynamics_list=dynamics_list,
         )
 
+        def empty_tensor(shape):
+            return torch.zeros(shape, dtype=torch.float32, device=self.device)
+
         # Initialize replay buffers for advantages and returns of each rollout
-        # TODO: standardize to torch
-        self.buf_advantages = np.zeros((nenvs, self.rollout.nsteps), np.float32)
-        self.buf_returns = np.zeros((nenvs, self.rollout.nsteps), np.float32)
+        self.buf_advantages = empty_tensor((nenvs, self.rollout.nsteps))
+        self.buf_returns = empty_tensor((nenvs, self.rollout.nsteps))
 
         if self.normrew:  # if normalize reward, defaults to True
             # Sum up and discount rewards
@@ -262,7 +269,7 @@ class PpoOptimizer(object):
                 nextnew = 0
             nextnotnew = 1 - nextnew
 
-            # The value etimate of the next time step
+            # The value estimate of the next time step
             nextvals = (
                 self.rollout.buf_vpreds[:, t + 1]
                 if t + 1 < nsteps
@@ -298,9 +305,10 @@ class PpoOptimizer(object):
         info["ppo/value_est_mean"] = self.rollout.buf_vpreds.mean()
         info["ppo/value_est_std"] = self.rollout.buf_vpreds.std()
         info["ppo/explained_variance"] = explained_variance(
-            self.rollout.buf_vpreds.ravel(), self.buf_returns.ravel()
+            self.rollout.buf_vpreds.flatten(),  # TODO: switch to ravel if pytorch>=1.9
+            self.buf_returns.flatten()  # TODO: switch to ravel if pytorch >= 1.9
         )
-        info["ppo/reward_mean"] = np.mean(self.rollout.buf_rewards)
+        info["ppo/reward_mean"] = torch.mean(self.rollout.buf_rewards)
 
         if self.rollout.best_ext_return is not None:
             info["performance/best_ext_return"] = self.rollout.best_ext_return
@@ -329,32 +337,33 @@ class PpoOptimizer(object):
             if self.vlog_freq >= 0 and self.n_updates % self.vlog_freq == 0:
                 print(str(self.n_updates) + " updates - logging video.")
                 # Reshape images such that they have shape [time,channels,width,height]
-                sample_video = np.moveaxis(self.rollout.buf_obs[0], 3, 1)
+                sample_video = torch.moveaxis(self.rollout.buf_obs[0], 3, 1)
                 # Log buffer video from first env
                 info["observations"] = wandb.Video(sample_video, fps=12, format="gif")
 
         return info
 
     def collect_rewards(self, normalize=False):
+        """Outputs a torch Tensor"""
         if normalize:
-            discounted_rewards = np.array(
-                [
-                    self.reward_forward_filter.update(rew)
-                    for rew in self.rollout.buf_rewards.T
-                ]
-            )
+            discounted_rewards = [
+                self.reward_forward_filter.update(rew)
+                for rew in self.rollout.buf_rewards.T
+            ]
+            discounted_rewards = torch.stack(discounted_rewards)
             # rewards_mean, rewards_std, rewards_count
             rewards_mean, rewards_std, rewards_count = mpi_moments(
-                discounted_rewards.ravel()
+                discounted_rewards.flatten()  # TODO: switch to ravel in pytorch >= 1.9
             )
             # reward forward filter running mean std
             self.reward_stats.update_from_moments(
                 rewards_mean, rewards_std ** 2, rewards_count
             )
-            return self.rollout.buf_rewards / np.sqrt(self.reward_stats.var)
+            return self.rollout.buf_rewards / torch.sqrt(self.reward_stats.var)
         else:
             # Copy directly from buff rewards
-            return np.copy(self.rollout.buf_rewards)
+            # TODO: should it be detached? is gradient propagating through buf rewards?
+            return self.rollout.buf_rewards.clone().detach()
 
     def load_returns(self, idxs):
         return self.buf_advantages[idxs], self.buf_returns[idxs]
@@ -385,9 +394,12 @@ class PpoOptimizer(object):
             self.buf_advantages = (self.buf_advantages - m) / (s + 1e-7)
 
         # Update the networks & get losses for nepochs * nminibatches
-        for _ in range(self.nepochs):
+        for idx in range(self.nepochs):
+            print(f"Starting epoch: {idx+1}/{self.nepochs}")
             env_idxs = np.random.permutation(self.nenvs * self.nsegs_per_env)
-            for start in range(0, self.nenvs * self.nsegs_per_env, self.envs_per_batch):
+            total_segs = self.nenvs * self.nsegs_per_env
+            for idx, start in enumerate(range(0, total_segs, self.envs_per_batch)):
+                print(f"Starting batch: {idx+1}/{total_segs//self.envs_per_batch}")
                 minibatch_idxs = env_idxs[start:start + self.envs_per_batch]
 
                 # Get rollout experiences for current minibatch
@@ -423,17 +435,17 @@ class PpoOptimizer(object):
 
         self.optimizer.zero_grad()
         aux_loss, aux_loss_info = self.auxiliary_loss(acs, obs, last_obs)
-        dyn_loss, dyn_loss_info = self.dynamics_loss()
+        dyn_loss, dyn_loss_info = self.dynamics_loss()  # forward
         policy_loss, loss_info = self.ppo_loss(
             aux_loss, acs, neglogprobs, advantages, returns
-        )
+        )  # forward
         total_loss = aux_loss + dyn_loss + policy_loss
         total_loss.backward()
         self.optimizer.step()
 
         loss_info.update(aux_loss_info)
         loss_info.update(dyn_loss_info)
-        loss_info["loss/total_loss"] = to_numpy(total_loss)
+        loss_info["loss/total_loss"] = total_loss
 
         return loss_info
 
@@ -457,22 +469,22 @@ class PpoOptimizer(object):
 
         loss_info.update(aux_loss_info)
         loss_info.update(dyn_loss_info)
-        loss_info["loss/total_loss"] = to_numpy(policy_loss) + to_numpy(total_dyn_loss)
+        loss_info["loss/total_loss"] = policy_loss + total_dyn_loss
 
         return loss_info
 
     def log_post_update(self, info):
 
-        info["performance/buffer_external_rewards"] = np.sum(
+        info["performance/buffer_external_rewards"] = torch.sum(
             self.rollout.buf_ext_rewards
         )
         # This is especially for the robot_arm environment because the touch sensor
         # magnitude can vary a lot.
-        info["performance/buffer_external_rewards_mean"] = np.mean(
+        info["performance/buffer_external_rewards_mean"] = torch.mean(
             self.rollout.buf_ext_rewards
         )
-        info["performance/buffer_external_rewards_present"] = np.mean(
-            self.rollout.buf_ext_rewards > 0
+        info["performance/buffer_external_rewards_present"] = torch.mean(
+            (self.rollout.buf_ext_rewards > 0).float()
         )
         info["run/n_updates"] = self.n_updates
         info.update({
@@ -513,15 +525,15 @@ class PpoOptimizer(object):
             torch.var(self.dynamics_list[0].auxiliary_task.features, [2])
         )
         return aux_loss, {
-            "phi/feature_var_ax01": to_numpy(feature_var),
-            "phi/feature_var_ax2": to_numpy(feature_var_2),
-            "loss/auxiliary_task": to_numpy(aux_loss)
+            "phi/feature_var_ax01": feature_var,
+            "phi/feature_var_ax2": feature_var_2,
+            "loss/auxiliary_task": aux_loss
         }
 
     def backprop_loss(self, *args):
         loss = self.rollout.calculate_backprop_loss()
         return loss, {
-            "loss/backprop_through_reward_loss": to_numpy(loss)
+            "loss/backprop_through_reward_loss": loss
         }
 
     def dynamics_loss(self):
@@ -536,23 +548,21 @@ class PpoOptimizer(object):
             # disagreement.append(torch.mean(np.var(dynamic.get_loss(),axis=0)))
 
             # Put features into dynamics model and get partial loss (dropout)
-            dyn_prediction_loss += torch.mean(dynamic.get_loss_partial())
+            dyn_prediction_loss += torch.mean(dynamic.get_predictions_partial())
 
         # Divide by number of models so the number of dynamic models doesn't impact
         # the total loss. Multiply by a weight that can be defined by the user
         dyn_prediction_loss /= len(self.dynamics_list)
-        dyn_prediction_loss *= self.weight_dynamics_loss
+        dyn_prediction_loss *= self.dyn_loss_weight
 
         return dyn_prediction_loss, {
-            "loss/dyn_prediction_loss": to_numpy(dyn_prediction_loss)
+            "loss/dyn_prediction_loss": dyn_prediction_loss
         }
 
     def ppo_loss(self, aux_loss, acs, neglogprobs, advantages, returns, *args):
 
         # Reshape actions and put in tensor
-        acs = torch.tensor(flatten_dims(acs, len(self.ac_space.shape))).to(
-            self.device
-        )
+        acs = torch.flatten_dims(acs, len(self.ac_space.shape))
         # Get the negative log probs of the actions under the policy
         neglogprobs_new = self.policy.pd.neglogp(acs)
         # Get the entropy of the current policy
@@ -561,19 +571,17 @@ class PpoOptimizer(object):
         vpred = self.policy.vpred
         # Calculate the msq difference between value estimate and return
         vf_loss = 0.5 * torch.mean(
-            (vpred.squeeze() - torch.tensor(returns).to(self.device)) ** 2
+            (vpred.squeeze() - returns) ** 2
         )
         # Put old neglogprobs from buffer into tensor
-        neglogprobs_old = torch.tensor(flatten_dims(neglogprobs, 0)).to(
-            self.device
-        )
+        neglogprobs_old = flatten_dims(neglogprobs, 0)
         # Calculate exp difference between old nlp and neglogprobs_new
         # neglogprobs: negative log probability of the action (old)
         # neglogprobs_new: negative log probability of the action (new)
         ratio = torch.exp(neglogprobs_old - neglogprobs_new.squeeze())
         # Put advantages and negative advantages into tensors
         advantages = flatten_dims(advantages, 0)
-        neg_advantages = torch.tensor(-advantages).to(self.device)
+        neg_advantages = -advantages
         # Calculate policy gradient loss. Once multiplied with original ratio
         # between old and new policy probs (1 if identical) and once with
         # clipped ratio.
@@ -607,13 +615,12 @@ class PpoOptimizer(object):
         ppo_loss = policy_gradient_loss + entropy_loss + vf_loss
 
         return ppo_loss, {
-            "ppo/approx_kl_divergence": to_numpy(approx_kl_divergence),
-            "ppo/clipfraction": to_numpy(clipfrac),
-            "loss/policy_gradient_loss": to_numpy(policy_gradient_loss),
-            "loss/value_loss": to_numpy(vf_loss),
-            "loss/entropy_loss": to_numpy(entropy_loss),
+            "ppo/approx_kl_divergence": approx_kl_divergence,
+            "ppo/clipfraction": clipfrac,
+            "loss/policy_gradient_loss": policy_gradient_loss,
+            "loss/value_loss": vf_loss,
+            "loss/entropy_loss": entropy_loss,
         }
-
 
     def step(self):
         """Collect one rollout and use it to update the networks.
@@ -629,6 +636,8 @@ class PpoOptimizer(object):
 
         # Calculate reward or loss
         update_info = self.update()
+        # convert_to_numpy
+        convert_log_to_numpy(update_info)
 
         # Update stepcount
         self.step_count = self.start_step + self.rollout.step_count
@@ -636,33 +645,21 @@ class PpoOptimizer(object):
         return {"update": update_info}
 
     def get_activation_stats(self, act, name):
-        stacked_act = np.reshape(act, (act.shape[0] * act.shape[1], act.shape[2]))
-        num_active = np.sum(stacked_act > 0, axis=0)
-
-        def gini(array):
-            """
-            Gini index is a measure of sparsity (https://arxiv.org/abs/0811.4706) where
-            an index close to 1 is very sparse and close to 0 has little sparsity.
-            """
-            array = array.flatten()
-            array += 0.0000001  # we want all values to be > 0
-            array = np.sort(array)
-            index = np.arange(1, array.shape[0] + 1)
-            n = array.shape[0]
-            return (np.sum((2 * index - n - 1) * array)) / (n * np.sum(array))
+        stacked_act = act.view((act.shape[0] * act.shape[1], act.shape[2]))
+        num_active = torch.sum(stacked_act > 0, axis=0)
 
         stats = dict()
         stats[name + "percentage_active_per_frame"] = (
-            np.mean(np.sum(stacked_act > 0, axis=1) / act.shape[2]) * 100
+            torch.mean(torch.sum(stacked_act > 0, axis=1) / act.shape[2]) * 100
         )
         stats[name + "percentage_dead"] = (
-            np.sum(num_active == 0) / stacked_act.shape[1] * 100
+            torch.sum(num_active == 0) / stacked_act.shape[1] * 100
         )
         # Classically the gini index is defined for positive values (if negative values
         # are included is can be > 1) so we take the abs of activations. For the agent
         # activation this doesn't make a difference since all output of the ReLu is > 0
         # The features are distributed around 0 so here taking the abs has an effect.
-        stats[name + "gini_index"] = gini(np.abs(act))
+        stats[name + "gini_index"] = gini(torch.abs(act))
 
         return stats, stacked_act
 
@@ -695,5 +692,14 @@ class RewardForwardFilter(object):
         return self.rewems
 
 
-def to_numpy(tensor):
-    return tensor.cpu().data.numpy()
+def gini(tensor):
+    """
+    Gini index is a measure of sparsity (https://arxiv.org/abs/0811.4706) where
+    an index close to 1 is very sparse and close to 0 has little sparsity.
+    """
+    tensor = tensor.flatten()
+    tensor += 0.0000001  # we want all values to be > 0
+    tensor, _ = torch.sort(tensor)
+    index = torch.arange(1, tensor.shape[0] + 1)
+    n = tensor.shape[0]
+    return (torch.sum((2 * index - n - 1) * tensor)) / (n * torch.sum(tensor))
