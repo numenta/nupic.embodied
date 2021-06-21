@@ -339,7 +339,9 @@ class PpoOptimizer(object):
                 # Reshape images such that they have shape [time,channels,width,height]
                 sample_video = torch.moveaxis(self.rollout.buf_obs[0], 3, 1)
                 # Log buffer video from first env
-                info["observations"] = wandb.Video(sample_video, fps=12, format="gif")
+                info["observations"] = wandb.Video(
+                    to_numpy(sample_video), fps=12, format="gif"
+                )
 
         return info
 
@@ -572,9 +574,9 @@ class PpoOptimizer(object):
     def ppo_loss(self, aux_loss, acs, neglogprobs, advantages, returns, *args):
 
         # Reshape actions and put in tensor
-        acs = torch.flatten_dims(acs, len(self.ac_space.shape))
+        acs = flatten_dims(acs, len(self.ac_space.shape))
         # Get the negative log probs of the actions under the policy
-        neglogprobs_new = self.policy.pd.neglogp(acs)
+        neglogprobs_new = self.policy.pd.neglogp(acs.type(torch.LongTensor))
         # Get the entropy of the current policy
         entropy = torch.mean(self.policy.pd.entropy())
         # Get the value estimate of the policies value head
