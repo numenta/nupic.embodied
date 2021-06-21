@@ -345,7 +345,7 @@ class PpoOptimizer(object):
 
     def collect_rewards(self, normalize=False):
         """Outputs a torch Tensor"""
-        if normalize:
+        if normalize:  # default=True
             discounted_rewards = [
                 self.reward_forward_filter.update(rew)
                 for rew in self.rollout.buf_rewards.T
@@ -377,6 +377,7 @@ class PpoOptimizer(object):
             Dictionary of infos about the current update and training statistics.
 
         """
+        print("Calculate Statistics")
         rews = self.collect_rewards(normalize=self.normrew)
 
         # Calculate advantages using the current rewards and value estimates
@@ -394,6 +395,7 @@ class PpoOptimizer(object):
             self.buf_advantages = (self.buf_advantages - m) / (s + 1e-7)
 
         # Update the networks & get losses for nepochs * nminibatches
+        print("Update the models")
         for idx in range(self.nepochs):
             print(f"Starting epoch: {idx+1}/{self.nepochs}")
             env_idxs = np.random.permutation(self.nenvs * self.nsegs_per_env)
@@ -434,6 +436,7 @@ class PpoOptimizer(object):
         """Regular update step in exploration by disagreement using PPO"""
 
         self.optimizer.zero_grad()
+        # TODO: aux task could be skipped if not using aux task
         aux_loss, aux_loss_info = self.auxiliary_loss(acs, obs, last_obs)
         dyn_loss, dyn_loss_info = self.dynamics_loss()  # forward
         policy_loss, loss_info = self.ppo_loss(
@@ -505,6 +508,10 @@ class PpoOptimizer(object):
 
     def auxiliary_loss(self, acs, obs, last_obs):
         # Update features of the policy network to minibatch obs and acs
+        # TODO: No need to update features if there is no aux task. When there is a task
+        # I think we also don't need to update the policy features, just policy.ac and
+        # policy.ob (at least as long we don't share features with policy) This saves a
+        # forward pass.
         self.policy.update_features(obs, acs)
 
         # Update features of the auxiliary network to minibatch obs and acs
@@ -538,7 +545,10 @@ class PpoOptimizer(object):
 
     def dynamics_loss(self):
         dyn_prediction_loss = 0
-        for dynamic in self.dynamics_list:
+        for idx, dynamic in enumerate(self.dynamics_list):
+            print(
+                f"Getting dynamics model prediction error: {idx+1}/{len(self.dynamics_list)}"
+            )
             # Get the features of the observations in the dynamics model (just
             # gets features from the auxiliary model)
             dynamic.update_features()
@@ -612,6 +622,7 @@ class PpoOptimizer(object):
 
         # Calculate the total loss out of the policy gradient loss, the entropy
         # loss (*entropy_coef), the value function loss (*0.5) and feature loss
+        # TODO: problem in pg loss and vf loss: Trying to backpropagate a second time
         ppo_loss = policy_gradient_loss + entropy_loss + vf_loss
 
         return ppo_loss, {
@@ -632,6 +643,7 @@ class PpoOptimizer(object):
 
         """
         # Collect rollout
+        print("Collecting Rollout")
         self.rollout.collect_rollout()
 
         # Calculate reward or loss

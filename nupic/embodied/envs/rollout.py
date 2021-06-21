@@ -170,7 +170,9 @@ class Rollout(object):
         self.ep_infos_new = []
         for _ in range(self.nsteps):
             self.rollout_step()
+        print("--------------------calculate reward-----------------------------------")
         self.calculate_reward()
+        print("-------------------------done------------------------------------------")
         self.update_info()
 
     def load_from_buffer(self, idxs):
@@ -198,6 +200,9 @@ class Rollout(object):
 
         # Forward pass per dynamic model
         # TODO: parallelize this loop! Can use Ray, torch.mp, etc
+        # TODO: update buffer to minibatch content?
+        # This is what takes longer. Could we just store the disagreement in the buffer
+        # during rollout?
         for idx, dynamics in enumerate(self.dynamics_list):
             print(f"Running dynamics model: {idx+1}/{len(self.dynamics_list)}")
             pred_features.append(
