@@ -324,14 +324,14 @@ class PpoOptimizer(object):
             info.update(hidden_stats)
 
             info["activations_features/raw_act_distribution"] = wandb.Histogram(
-                stacked_act_feat
+                to_numpy(stacked_act_feat)
             )
             info["activations_hidden/raw_act_distribution"] = wandb.Histogram(
-                stacked_act_pi
+                to_numpy(stacked_act_pi)
             )
 
             info["ppo/action_distribution"] = wandb.Histogram(
-                self.rollout.buf_acs.flatten()
+                to_numpy(self.rollout.buf_acs).flatten()
             )
 
             if self.vlog_freq >= 0 and self.n_updates % self.vlog_freq == 0:
