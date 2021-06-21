@@ -442,7 +442,7 @@ class PpoOptimizer(object):
         aux_loss, aux_loss_info = self.auxiliary_loss(acs, obs, last_obs)
         dyn_loss, dyn_loss_info = self.dynamics_loss()  # forward
         policy_loss, loss_info = self.ppo_loss(
-            aux_loss, acs, neglogprobs, advantages, returns
+            acs, neglogprobs, advantages, returns
         )  # forward
         total_loss = aux_loss + dyn_loss + policy_loss
         total_loss.backward()
@@ -571,7 +571,7 @@ class PpoOptimizer(object):
             "loss/dyn_prediction_loss": dyn_prediction_loss
         }
 
-    def ppo_loss(self, aux_loss, acs, neglogprobs, advantages, returns, *args):
+    def ppo_loss(self, acs, neglogprobs, advantages, returns, *args):
 
         # Reshape actions and put in tensor
         acs = flatten_dims(acs, len(self.ac_space.shape))
