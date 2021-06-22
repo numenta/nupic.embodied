@@ -468,7 +468,7 @@ class PpoOptimizer(object):
         self.dynamics_optimizer.step()
 
         self.policy_optimizer.zero_grad()
-        policy_loss, loss_info = self.backprop_loss()
+        policy_loss, loss_info = self.backprop_loss(acs, obs, last_obs)
         policy_loss.backward()
         self.policy_optimizer.step()
 
@@ -539,11 +539,28 @@ class PpoOptimizer(object):
             "loss/auxiliary_task": aux_loss
         }
 
-    def backprop_loss(self, *args):
-        loss = self.rollout.calculate_backprop_loss()
-        return loss, {
-            "loss/backprop_through_reward_loss": loss
-        }
+    def backprop_loss(self, acs, obs, last_obs):
+        pred_features = []
+        # Get output from all dynamics models (featurewise)
+        # shape=[num_dynamics, num_envs, n_steps_per_seg, feature_dim]
+
+        # Forward pass per dynamic model
+        # TODO: parallelize this loop! Can use Ray, torch.mp, etc
+        # TODO: This is what takes longer. Could we just store the disagreement in the
+        # buffer during rollout?
+
+        for idx, dynamics in enumerate(self.dynamics_list):
+            print(f"Running dynamics model: {idx+1}/{len(self.dynamics_list)}")
+            pred_features.append(
+                dynamics.predict_features_mb(obs=obs, last_obs=last_obs, acs=acs)
+            )
+
+        # Get variance over dynamics models
+        disagreement = torch.var(torch.stack(pred_features), axis=0)
+        # Loss is minimized, and we need to maximize variance, so using the inverse
+        loss = 1 / torch.mean(disagreement)
+        # loss = self.rollout.calculate_backprop_loss()
+        return loss, {"loss/backprop_through_reward_loss": loss}
 
     def dynamics_loss(self):
         dyn_prediction_loss = 0
