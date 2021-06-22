@@ -345,7 +345,7 @@ class PpoOptimizer(object):
 
         return info
 
-    def collect_rewards(self, normalize=False):
+    def collect_rewards(self, normalize=True):
         """Outputs a torch Tensor"""
         if normalize:  # default=True
             discounted_rewards = [
