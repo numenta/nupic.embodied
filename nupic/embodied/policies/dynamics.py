@@ -201,7 +201,7 @@ class Dynamics(object):
         do_loss = do(loss)
         return do_loss  # vector with mse for each feature
 
-    def calculate_loss(self, obs, last_obs, acs):
+    def predict_features(self, obs, last_obs, acs):
         """
         Forward pass of the dynamics model
 
@@ -217,7 +217,7 @@ class Dynamics(object):
         Returns
         -------
         array
-            losses. shape = [n_env, nsteps_per_seg, feature_dim]
+            predictions. shape = [n_env, nsteps_per_seg, feature_dim]
 
         """
         n_chunks = 8  # TODO: make this a hyperparameter?
@@ -263,31 +263,32 @@ class Dynamics(object):
 
         return predictions
 
-    def predict_features(self, obs, last_obs, acs):
+    def predict_features_mb(self, obs, last_obs, acs):
         """
-        Forward pass of the dynamics model
+        Forward pass of the dynamics model on a minibatch (no slicing)
 
         Parameters
         ----------
         obs : array
-            batch of observations. shape = [n_env, nsteps_per_seg, W, H, C].
+            batch of observations. shape = [envs_per_batch, nsteps_per_seg, W, H, C].
         last_obs : array
-            batch of last observations. shape = [n_env, 1, W, H, C].
+            batch of last observations. shape = [envs_per_batch, 1, W, H, C].
         acs : array
-            batch of actions. shape = [n_env, nsteps_per_seg]
+            batch of actions. shape = [envs_per_batch, nsteps_per_seg]
 
         Returns
         -------
         array
-            losses. shape = [n_env, nsteps_per_seg, feature_dim]
+            predictions. shape = [envs_per_batch, nsteps_per_seg, feature_dim]
 
         """
         # update the policy features and the auxiliary task features
         self.auxiliary_task.policy.update_features(obs, acs)
         self.auxiliary_task.update_features(obs, last_obs)
-        # updating the features
+        # get the updated features
         self.update_features()
-        # get the loss from the loss model corresponding with the new features
-        pred_features = self.get_predictions()
 
-        return pred_features
+        # get the prediction from the model corresponding with the new features
+        predictions = self.get_predictions()
+
+        return predictions

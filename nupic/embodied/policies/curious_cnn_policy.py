@@ -164,8 +164,8 @@ class CnnPolicy(object):
             Current observations.
             ob.shape = [nenvs, H, W, C] during rollout when calling get_ac_value_nlp()
 
-            ob.shape = [1, n_steps_per_seg, H, W, C] when called from calculate_loss in
-            dynamics module (dynamics.calculate_loss() at end of rollout).
+            ob.shape = [1, n_steps_per_seg, H, W, C] when called from predict_features
+            in dynamics module (dynamics.predict_features() at end of rollout).
 
         ac : array or None
             Batch of actions (at end of rollout, otherwise None).
