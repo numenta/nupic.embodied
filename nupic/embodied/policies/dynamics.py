@@ -103,7 +103,6 @@ class Dynamics(object):
         # Add parameters of loss net to optimized parameters
         self.param_list.extend(self.dynamics_net.parameters())
 
-
     def get_predictions(self, ac, features):
         """Get the current prediction of the dynamics model.
 
@@ -138,7 +137,7 @@ class Dynamics(object):
         Returns
         -------
         array
-            Returns the mean squared difference between the output and the next features.
+            Returns the mean squared difference between the output and next features.
 
         """
         return torch.mean((predicted_state - next_features) ** 2, -1)
@@ -169,7 +168,6 @@ class Dynamics(object):
         do_loss = do(loss)
         return do_loss  # vector with mse for each feature
 
-
     # def predict_features(self, auxiliary_task):
     #     """
     #     Deprecated: remove it
@@ -197,7 +195,7 @@ class Dynamics(object):
 
     #     def get_slice(i):
     #         """Get slice number i of chunksize n/n_chunks. So eg if we have 64 envs
-    #         and 8 chunks then the chunksize is 8 and the first slice is 0:8, the second
+    #         and 8 chunks then the chunksize is 8 and the first slice is 0:8,the second
     #         8:16, the third 16:24, ...
 
     #         Parameters

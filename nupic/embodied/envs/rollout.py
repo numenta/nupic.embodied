@@ -27,6 +27,7 @@ import torch
 
 from nupic.embodied.utils.torch import env_output_to_tensor, to_numpy
 
+
 class Rollout(object):
     """Collect rollouts of experiences in the environments and process them.
 

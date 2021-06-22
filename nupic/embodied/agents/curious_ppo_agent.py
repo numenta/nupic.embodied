@@ -30,14 +30,11 @@ from nupic.embodied.envs.rollout import Rollout
 from nupic.embodied.envs.vec_env import ShmemVecEnv as VecEnv
 from nupic.embodied.utils.model_parts import flatten_dims
 from nupic.embodied.utils.mpi import mpi_moments
+from nupic.embodied.utils.torch import convert_log_to_numpy, to_numpy
 from nupic.embodied.utils.utils import (
     RunningMeanStd,
     explained_variance,
     get_mean_and_std,
-)
-from nupic.embodied.utils.torch import (
-    convert_log_to_numpy,
-    to_numpy,
 )
 
 
@@ -541,9 +538,8 @@ class PpoOptimizer(object):
             "loss/auxiliary_task": aux_loss
         }
 
-
     def update_auxiliary_task(self, acs, obs, last_obs, return_next_features=True):
-          # Update the auxiliary task
+        # Update the auxiliary task
         self.auxiliary_task.policy.update_features(obs, acs)
         self.auxiliary_task.update_features(obs, last_obs)
 

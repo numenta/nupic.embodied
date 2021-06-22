@@ -29,7 +29,6 @@ from nupic.embodied.utils.model_parts import (
     small_deconvnet,
     unflatten_first_dim,
 )
-from nupic.embodied.utils.torch import to_tensor
 
 
 class FeatureExtractor(object):
