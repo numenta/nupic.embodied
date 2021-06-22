@@ -186,7 +186,7 @@ class Dynamics(object):
         assert x.shape[:-1] == ac.shape[:-1]
 
         # forward pass of actions and features in dynamics net
-        x = self.dynamics_net(x.to(self.device), ac.to(self.device))
+        x = self.dynamics_net(x, ac)
 
         # reshape
         x = unflatten_first_dim(x, sh)  # [1, nsteps_per_seg, feature_dim]
