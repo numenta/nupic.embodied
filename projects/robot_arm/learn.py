@@ -99,6 +99,9 @@ class Trainer(object):
         }[hyperparameter["feat_learning"]]
 
         # Initialize the feature extractor
+        # policy, feature_extractor, dynamics
+
+
         self.feature_extractor = self.feature_extractor_class(
             policy=self.policy,
             features_shared_with_policy=False,
@@ -114,12 +117,14 @@ class Trainer(object):
         for i in range(num_dynamics):
             self.dynamics_list.append(
                 self.dynamics_class(
-                    auxiliary_task=self.feature_extractor,
+                    # auxiliary_task=self.feature_extractor,
+                    hidden_dim=self.feature_extractor.hidden_dim,
+                    ac_space=self.feature_extractor.ac_space,
+                    ob_mean=self.feature_extractor.ob_mean,
+                    ob_std=self.feature_extractor.ob_std,
                     feature_dim=hyperparameter["feature_dim"],
                     device=self.device,
                     scope="dynamics_{}".format(i),
-                    # whether to use the variance or the prediction error for the reward
-                    use_disagreement=use_disagreement,
                 )
             )
 
@@ -152,6 +157,9 @@ class Trainer(object):
             debugging=hyperparameter["debugging"],
             dynamics_list=self.dynamics_list,
             dyn_loss_weight=hyperparameter["dyn_loss_weight"],
+            auxiliary_task=self.feature_extractor,
+            # whether to use the variance or the prediction error for the reward
+            use_disagreement=use_disagreement,
             backprop_through_reward=hyperparameter["backprop_through_reward"],
         )
 
@@ -190,7 +198,7 @@ class Trainer(object):
             print("No statistics file found. Creating new one.")
             path_name = path_name + "/"
             os.makedirs(os.path.dirname(path_name))
-            self.ob_mean, self.ob_std = random_agent_ob_mean_std(env, nsteps=10000)
+            self.ob_mean, self.ob_std = random_agent_ob_mean_std(env, nsteps=100) # 10000)
             np.save(
                 path_name + "/ob_mean.npy",
                 self.ob_mean,

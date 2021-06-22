@@ -170,10 +170,7 @@ class Rollout(object):
         self.ep_infos_new = []
         for _ in range(self.nsteps):
             self.rollout_step()
-        print("--------------------calculate reward-----------------------------------")
-        self.calculate_reward()
-        print("-------------------------done------------------------------------------")
-        self.update_info()
+        return self.buf_acs, self.buf_obs, self.buf_obs_last
 
     def load_from_buffer(self, idxs):
         """
@@ -187,64 +184,7 @@ class Rollout(object):
         last_obs = self.buf_obs_last[idxs]
         return acs, rews, neglogprobs, obs, last_obs
 
-    def calculate_backprop_loss(self):
-        """
-        Calculates the reward from the output of teh dynamics models and the external
-        rewards.
-
-        """
-
-        pred_features = []
-        # Get output from all dynamics models (featurewise)
-        # shape=[num_dynamics, num_envs, n_steps_per_seg, feature_dim]
-
-        # Forward pass per dynamic model
-        # TODO: parallelize this loop! Can use Ray, torch.mp, etc
-        # TODO: update buffer to minibatch content?
-        # This is what takes longer. Could we just store the disagreement in the buffer
-        # during rollout?
-        for idx, dynamics in enumerate(self.dynamics_list):
-            print(f"Running dynamics model: {idx+1}/{len(self.dynamics_list)}")
-            pred_features.append(
-                dynamics.predict_features(
-                    obs=self.buf_obs, last_obs=self.buf_obs_last, acs=self.buf_acs
-                )
-            )
-
-        # Get variance over dynamics models
-        # shape pre var = n_dynamic_models, n_envs, n_steps_per_seg, feature_dim
-        # shape post var = n_envs, n_steps_per_seg, feature_dim
-        disagreement = torch.var(torch.stack(pred_features), axis=0)
-
-        # Loss is minimized, and we need to maximize variance, so using the inverse
-        loss = 1 / torch.mean(disagreement)
-        return loss
-
-    def calculate_reward(self):
-        """Calculates the reward from the output of the dynamics models and the external
-        rewards.
-
-        """
-        net_output = []
-        # Get output from all dynamics models (featurewise)
-        # shape=[num_dynamics, num_envs, n_steps_per_seg, feature_dim]
-
-        # If use_disagreement=False this will be the prediction error and the reward
-        # is then the variance over prediction error.
-        for idx, dynamics in enumerate(self.dynamics_list):
-            print(f"Running dynamics model: {idx+1}/{len(self.dynamics_list)}")
-            net_output.append(
-                dynamics.predict_features(
-                    obs=self.buf_obs, last_obs=self.buf_obs_last, acs=self.buf_acs
-                )
-            )
-        # Get variance over dynamics models
-        # shape=[n_envs, n_steps_per_seg, feature_dim]
-        net_output = torch.stack(net_output)
-        disagreement = torch.var(net_output, axis=0)
-        # Get reward by mean along features
-        # shape=[n_envs, n_steps_per_seg]
-        disagreement_reward = torch.mean(disagreement, axis=-1)
+    def update_buffer_rewards(self, disagreement_reward):
 
         # Fill reward buffer with the new rewards
         self.buf_rewards[:] = self.reward_function(
@@ -304,6 +244,11 @@ class Rollout(object):
                         nextobs
                     )
                     self.buf_vpred_last[sli] = next_vpreds
+
+    def update_buffer_post_step(self, disagreement_reward):
+        """All post step update buffer activities"""
+        self.update_buffer_rewards(disagreement_reward)
+        self.update_info()
 
     def update_info(self):
         """If there is episode info (like stats at the end of an episode) save them."""

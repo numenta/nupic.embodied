@@ -35,10 +35,6 @@ class Dynamics(object):
     ----------
     auxiliary_task : FeatureExtractor
         Feature extractor used to get and learn features.
-    use_disagreement : bool
-        If loss should be calculated from the variance over dynamics model features.
-        If false, the loss is the variance over the error of state features and next
-        state features between the different dynamics models.
     feature_dim : int
         Number of neurons in the feature network layers.
     scope : str
@@ -78,21 +74,21 @@ class Dynamics(object):
 
     def __init__(
         self,
-        auxiliary_task,
-        use_disagreement,
+        hidden_dim,
+        ac_space,
+        ob_mean,
+        ob_std,
         device,
         feature_dim=None,
         scope="dynamics",
     ):
         self.scope = scope
-        self.auxiliary_task = auxiliary_task
-        self.hidden_dim = self.auxiliary_task.hidden_dim
+        self.hidden_dim = hidden_dim
         self.feature_dim = feature_dim
-        self.ac_space = self.auxiliary_task.ac_space
-        self.ob_mean = self.auxiliary_task.ob_mean
-        self.ob_std = self.auxiliary_task.ob_std
+        self.ac_space = ac_space
+        self.ob_mean = ob_mean
+        self.ob_std = ob_std
         self.param_list = []
-        self.use_disagreement = use_disagreement
         self.features_model = None
         self.device = device
 
@@ -107,31 +103,16 @@ class Dynamics(object):
         # Add parameters of loss net to optimized parameters
         self.param_list.extend(self.dynamics_net.parameters())
 
-        self.features = None
-        self.next_features = None
-        self.ac = None
-        self.ob = None
 
-    def update_features(self):
-        """Get features from the feature network."""
-        # get the features with detach -> no gradient will go from here
-        self.features = self.auxiliary_task.features.detach()
-        self.next_features = self.auxiliary_task.next_features.detach()
-        self.ac = self.auxiliary_task.ac
-        self.ob = self.auxiliary_task.ob
-
-    def get_predictions(self):
+    def get_predictions(self, ac, features):
         """Get the current prediction of the dynamics model.
 
         Returns
         -------
         array
-            If use_disagreement=True returns the output of the loss network, otherwise
-            the mean squared difference between the output and the next features.
-
+            Returns the output of the dynamics network
         """
         # TODO: refactor this function, too many shape transformations in ac, confusing
-        ac = self.ac
         sh = ac.shape  # = [1, nsteps_per_seg]
         ac = flatten_dims(ac, len(self.ac_space.shape))  # shape = [nsteps_per_seg]
         # Turn actions into one hot encoding
@@ -139,48 +120,6 @@ class Dynamics(object):
             1, ac.unsqueeze(1).type(torch.int64), 1
         )  # shape = [nsteps_per_seg, ac_space.n]
 
-        features = self.features
-        sh = features.shape  # [1, nsteps_per_seg, feature_dim]
-        x = flatten_dims(features, 1)  # [nsteps_per_seg, feature_dim]
-        assert x.shape[:-1] == ac.shape[:-1]
-
-        # forward pass of actions and features in dynamics net
-        x = self.dynamics_net(x.to(self.device), ac.to(self.device))
-
-        # reshape
-        x = unflatten_first_dim(x, sh)  # [1, nsteps_per_seg, feature_dim]
-        if self.use_disagreement:
-            # Return output from dynamics network
-            # (shape=[1, nsteps_per_seg, next_feature_dim])
-            return x
-        else:
-            # Take the mean-squared diff between out features (input was current
-            # features and action) and next features (shape=[1, nsteps_per_seg])
-            next_features = self.next_features
-            return torch.mean((x - next_features) ** 2, -1)
-
-    def get_predictions_partial(self):
-        """Get the loss of the dynamics model with dropout. No use_disagreement is
-        calculated here because the dynamics models are trained using the prediction
-        error. The disagreement is only used as a reward signal for the policy.
-        Dropout is added to the loss to enforce some variance between models while still
-        using all of the data.
-
-        Returns
-        -------
-        array
-            Mean squared difference between the output and the next features.
-
-        """
-        ac = self.ac
-        sh = ac.shape  # = [1, nsteps_per_seg]
-        ac = flatten_dims(ac, len(self.ac_space.shape))  # shape = [nsteps_per_seg]
-        # Turn actions into one hot encoding
-        ac = torch.zeros(ac.shape + (self.ac_space.n,)).scatter_(
-            1, ac.unsqueeze(1).type(torch.int64), 1
-        )  # shape = [nsteps_per_seg, ac_space.n]
-
-        features = self.features
         sh = features.shape  # [1, nsteps_per_seg, feature_dim]
         x = flatten_dims(features, 1)  # [nsteps_per_seg, feature_dim]
         assert x.shape[:-1] == ac.shape[:-1]
@@ -190,105 +129,106 @@ class Dynamics(object):
 
         # reshape
         x = unflatten_first_dim(x, sh)  # [1, nsteps_per_seg, feature_dim]
+
+        return x
+
+    def get_prediction_error(self, predicted_state, next_features):
+        """Get the current prediction of the dynamics model.
+
+        Returns
+        -------
+        array
+            Returns the mean squared difference between the output and the next features.
+
+        """
+        return torch.mean((predicted_state - next_features) ** 2, -1)
+
+    def get_predictions_partial(self, ac, features, next_features):
+        """Get the loss of the dynamics model with dropout. The dynamics models are trained
+        using the prediction error. The disagreement is only used as a reward signal for
+        the policy. Dropout is added to the loss to enforce some variance between models
+        while still using all of the data.
+
+        Returns
+        -------
+        array
+            Mean squared difference between the output and the next features.
+
+        """
+
+        x = self.get_predictions(ac, features)
+
         # Take the mean-squared diff between out features (input was current
         # features and action) and next features (shape=[1, nsteps_per_seg])
-        next_features = self.next_features
         loss = torch.mean((x - next_features) ** 2, -1)  # mean over frames
         # Apply dropout here to ensure variability between dynamics models. This is done
         # instead of bootstrapping the samples so that all samples can be used to train
         # every model.
+
         do = torch.nn.Dropout(p=0.2)
         do_loss = do(loss)
         return do_loss  # vector with mse for each feature
 
-    def predict_features(self, obs, last_obs, acs):
-        """
-        Forward pass of the dynamics model
 
-        Parameters
-        ----------
-        obs : array
-            batch of observations. shape = [n_env, nsteps_per_seg, W, H, C].
-        last_obs : array
-            batch of last observations. shape = [n_env, 1, W, H, C].
-        acs : array
-            batch of actions. shape = [n_env, nsteps_per_seg]
+    # def predict_features(self, auxiliary_task):
+    #     """
+    #     Deprecated: remove it
+    #     Forward pass of the dynamics model
 
-        Returns
-        -------
-        array
-            predictions. shape = [n_env, nsteps_per_seg, feature_dim]
+    #     Parameters
+    #     ----------
+    #     obs : array
+    #         batch of observations. shape = [n_env, nsteps_per_seg, W, H, C].
+    #     last_obs : array
+    #         batch of last observations. shape = [n_env, 1, W, H, C].
+    #     acs : array
+    #         batch of actions. shape = [n_env, nsteps_per_seg]
 
-        """
-        n_chunks = 8  # TODO: make this a hyperparameter?
-        n = obs.shape[0]
-        chunk_size = n // n_chunks
-        assert n % n_chunks == 0
+    #     Returns
+    #     -------
+    #     array
+    #         predictions. shape = [n_env, nsteps_per_seg, feature_dim]
 
-        def get_slice(i):
-            """Get slice number i of chunksize n/n_chunks. So eg if we have 64 envs
-            and 8 chunks then the chunksize is 8 and the first slice is 0:8, the second
-            8:16, the third 16:24, ...
+    #     """
+    #     n_chunks = 8  # TODO: make this a hyperparameter?
+    #     n = obs.shape[0]
+    #     chunk_size = n // n_chunks
+    #     assert n % n_chunks == 0
 
-            Parameters
-            ----------
-            i : int
-                slice number.
+    #     def get_slice(i):
+    #         """Get slice number i of chunksize n/n_chunks. So eg if we have 64 envs
+    #         and 8 chunks then the chunksize is 8 and the first slice is 0:8, the second
+    #         8:16, the third 16:24, ...
 
-            Returns
-            -------
-            slice
-                slice to specify which part of teh observations to process.
+    #         Parameters
+    #         ----------
+    #         i : int
+    #             slice number.
 
-            """
-            return slice(i * chunk_size, (i + 1) * chunk_size)
+    #         Returns
+    #         -------
+    #         slice
+    #             slice to specify which part of teh observations to process.
 
-        predictions = []
+    #         """
+    #         return slice(i * chunk_size, (i + 1) * chunk_size)
 
-        for i in range(n_chunks):
-            # process the current slice of observations
-            ob = obs[get_slice(i)]
-            last_ob = last_obs[get_slice(i)]
-            ac = acs[get_slice(i)]
-            # update the policy features and the auxiliary task features
-            self.auxiliary_task.policy.update_features(ob, ac)
-            self.auxiliary_task.update_features(ob, last_ob)
-            # get the updated features
-            self.update_features()
+    #     predictions = []
 
-            # get the prediction from the model corresponding with the new features
-            predictions.append(self.get_predictions())
+    #     for i in range(n_chunks):
+    #         # process the current slice of observations
+    #         ob = obs[get_slice(i)]
+    #         last_ob = last_obs[get_slice(i)]
+    #         ac = acs[get_slice(i)]
+    #         # update the policy features and the auxiliary task features
+    #         # self.auxiliary_task.policy.update_features(ob, ac)
+    #         # self.auxiliary_task.update_features(ob, last_ob)
+    #         # get the updated features
+    #         self.update_features(auxiliary_task)
 
-        predictions = torch.cat(predictions, 0)
+    #         # get the prediction from the model corresponding with the new features
+    #         predictions.append(self.get_predictions())
 
-        return predictions
+    #     predictions = torch.cat(predictions, 0)
 
-    def predict_features_mb(self, obs, last_obs, acs):
-        """
-        Forward pass of the dynamics model on a minibatch (no slicing)
-
-        Parameters
-        ----------
-        obs : array
-            batch of observations. shape = [envs_per_batch, nsteps_per_seg, W, H, C].
-        last_obs : array
-            batch of last observations. shape = [envs_per_batch, 1, W, H, C].
-        acs : array
-            batch of actions. shape = [envs_per_batch, nsteps_per_seg]
-
-        Returns
-        -------
-        array
-            predictions. shape = [envs_per_batch, nsteps_per_seg, feature_dim]
-
-        """
-        # update the policy features and the auxiliary task features
-        self.auxiliary_task.policy.update_features(obs, acs)
-        self.auxiliary_task.update_features(obs, last_obs)
-        # get the updated features
-        self.update_features()
-
-        # get the prediction from the model corresponding with the new features
-        predictions = self.get_predictions()
-
-        return predictions
+    #     return predictions

@@ -38,7 +38,6 @@ from nupic.embodied.utils.utils import (
 from nupic.embodied.utils.torch import (
     convert_log_to_numpy,
     to_numpy,
-    to_tensor,
 )
 
 
@@ -90,6 +89,10 @@ class PpoOptimizer(object):
         After how many steps should a video of the training be logged.
     dynamics_list : [Dynamics]
         List of dynamics models to use for internal reward calculation.
+    use_disagreement : bool
+        If loss should be calculated from the variance over dynamics model features.
+        If false, the loss is the variance over the error of state features and next
+        state features between the different dynamics models.
     dyn_loss_weight: float
         Weighting of the dynamic loss in the total loss.
 
@@ -129,6 +132,8 @@ class PpoOptimizer(object):
         debugging,
         dynamics_list,
         dyn_loss_weight,
+        auxiliary_task,
+        use_disagreement,
         backprop_through_reward=False,
     ):
         self.dynamics_list = dynamics_list
@@ -156,6 +161,8 @@ class PpoOptimizer(object):
         self.debugging = debugging
         self.time_trained_so_far = 0
         self.dyn_loss_weight = dyn_loss_weight
+        self.auxiliary_task = auxiliary_task
+        self.use_disagreement = use_disagreement
         self.backprop_through_reward = backprop_through_reward
 
     def start_interaction(self, env_fns, dynamics_list, nlump=1):
@@ -174,7 +181,7 @@ class PpoOptimizer(object):
         # Specify parameters that should be optimized
         # auxiliary task params is the same for all dynamic models
         policy_param_list = [*self.policy.param_list]
-        dynamics_param_list = [*self.dynamics_list[0].auxiliary_task.param_list]
+        dynamics_param_list = [*self.auxiliary_task.param_list]
         for dynamic in self.dynamics_list:
             dynamics_param_list.extend(dynamic.param_list)
 
@@ -440,7 +447,7 @@ class PpoOptimizer(object):
         self.optimizer.zero_grad()
         # TODO: aux task could be skipped if not using aux task
         aux_loss, aux_loss_info = self.auxiliary_loss(acs, obs, last_obs)
-        dyn_loss, dyn_loss_info = self.dynamics_loss()  # forward
+        dyn_loss, dyn_loss_info = self.dynamics_loss(acs, obs, last_obs)  # forward
         policy_loss, loss_info = self.ppo_loss(
             acs, neglogprobs, advantages, returns
         )  # forward
@@ -462,7 +469,7 @@ class PpoOptimizer(object):
 
         self.dynamics_optimizer.zero_grad()
         aux_loss, aux_loss_info = self.auxiliary_loss(acs, obs, last_obs)
-        dyn_loss, dyn_loss_info = self.dynamics_loss()
+        dyn_loss, dyn_loss_info = self.dynamics_loss(acs, obs, last_obs)
         total_dyn_loss = aux_loss + dyn_loss
         total_dyn_loss.backward()
         self.dynamics_optimizer.step()
@@ -520,18 +527,18 @@ class PpoOptimizer(object):
         # Using first element in dynamics list is sufficient bc all dynamics
         # models have the same auxiliary task model and features
         # TODO: should the feature model be independent of dynamics?
-        self.dynamics_list[0].auxiliary_task.update_features(obs, last_obs)
+        self.auxiliary_task.update_features(obs, last_obs)
         # Get the loss and variance of the feature model
         aux_loss = torch.mean(
-            self.dynamics_list[0].auxiliary_task.get_loss()
+            self.auxiliary_task.get_loss()
         )
         # Take variance over steps -> [feature_dim] vars -> average
         # This is the average variance in a feature over time
         feature_var = torch.mean(
-            torch.var(self.dynamics_list[0].auxiliary_task.features, [0, 1])
+            torch.var(self.auxiliary_task.features, [0, 1])
         )
         feature_var_2 = torch.mean(
-            torch.var(self.dynamics_list[0].auxiliary_task.features, [2])
+            torch.var(self.auxiliary_task.features, [2])
         )
         return aux_loss, {
             "phi/feature_var_ax01": feature_var,
@@ -539,45 +546,81 @@ class PpoOptimizer(object):
             "loss/auxiliary_task": aux_loss
         }
 
-    def backprop_loss(self, acs, obs, last_obs):
-        pred_features = []
-        # Get output from all dynamics models (featurewise)
-        # shape=[num_dynamics, num_envs, n_steps_per_seg, feature_dim]
 
+    def update_auxiliary_task(self, acs, obs, last_obs, return_next_features=True):
+          # Update the auxiliary task
+        self.auxiliary_task.policy.update_features(obs, acs)
+        self.auxiliary_task.update_features(obs, last_obs)
+
+        # Gather the data from auxiliary task
+        features = self.auxiliary_task.features.detach()
+        ac = self.auxiliary_task.ac
+        next_features = None
+        if return_next_features:
+            next_features = self.auxiliary_task.next_features.detach()
+
+        return ac, features, next_features
+
+
+    def calculate_disagreement(self, acs, obs, last_obs):
         # Forward pass per dynamic model
-        # TODO: parallelize this loop! Can use Ray, torch.mp, etc
-        # TODO: This is what takes longer. Could we just store the disagreement in the
-        # buffer during rollout?
+        ac, features, next_features = self.update_auxiliary_task(
+            acs, obs, last_obs, return_next_features=not self.use_disagreement
+        )
 
+        # Get predictions
+        predictions = []
+        # Get output from all dynamics models (featurewise)
         for idx, dynamics in enumerate(self.dynamics_list):
             print(f"Running dynamics model: {idx+1}/{len(self.dynamics_list)}")
-            pred_features.append(
-                dynamics.predict_features_mb(obs=obs, last_obs=last_obs, acs=acs)
-            )
+            # If using disagreement, prediiction is the next state
+            # shape=[num_dynamics, num_envs, n_steps_per_seg, feature_dim]
+            prediction = dynamics.get_predictions(ac=ac, features=features)
+            if next_features is not None:
+                # If not using disagreement, prediction is the error
+                # shape=[num_dynamics, num_envs, n_steps_per_seg]
+                prediction = dynamics.get_prediction_error(prediction, next_features)
+            predictions.append(prediction)
 
         # Get variance over dynamics models
-        disagreement = torch.var(torch.stack(pred_features), axis=0)
+        disagreement = torch.var(torch.stack(predictions), axis=0)
+        return disagreement
+
+    def calculate_reward(self, acs, obs, last_obs):
+        """Calculates the reward from the output of the dynamics models and the external
+        rewards.
+        """
+
+        disagreement = self.calculate_disagreement(acs, obs, last_obs)
+        disagreement_reward = torch.mean(disagreement, axis=-1)
+        return disagreement_reward
+
+    def backprop_loss(self, acs, obs, last_obs):
+        """
+        TODO: parallelize this loop! Can use Ray, torch.mp, etc
+        TODO: This is what takes longer. Could we just store the disagreement in the
+        buffer during rollout?
+        """
+
+        disagreement = self.calculate_disagreement(acs, obs, last_obs)
         # Loss is minimized, and we need to maximize variance, so using the inverse
         loss = 1 / torch.mean(disagreement)
-        # loss = self.rollout.calculate_backprop_loss()
         return loss, {"loss/backprop_through_reward_loss": loss}
 
-    def dynamics_loss(self):
+    def dynamics_loss(self, acs, obs, last_obs):
         dyn_prediction_loss = 0
+        ac, features, next_features = self.update_auxiliary_task(
+            acs, obs, last_obs, return_next_features=True
+        )
+
         for idx, dynamic in enumerate(self.dynamics_list):
             print(
                 f"Getting dynamics model prediction error: {idx+1}/{len(self.dynamics_list)}"
             )
-            # Get the features of the observations in the dynamics model (just
-            # gets features from the auxiliary model)
-            dynamic.update_features()
-            # Put features into dynamics model and get loss
-            # (if use_disagreement just returns features, therefore the
-            # partial loss is used for optimizing and loging)
-            # disagreement.append(torch.mean(np.var(dynamic.get_loss(),axis=0)))
-
             # Put features into dynamics model and get partial loss (dropout)
-            dyn_prediction_loss += torch.mean(dynamic.get_predictions_partial())
+            dyn_prediction_loss += torch.mean(dynamic.get_predictions_partial(
+                ac, features, next_features
+            ))
 
         # Divide by number of models so the number of dynamic models doesn't impact
         # the total loss. Multiply by a weight that can be defined by the user
@@ -660,8 +703,12 @@ class PpoOptimizer(object):
 
         """
         # Collect rollout
-        print("Collecting Rollout")
-        self.rollout.collect_rollout()
+        print("--------------------collecting rollout----------------------------------")
+        acs, obs, last_obs = self.rollout.collect_rollout()
+        print("--------------------calculate reward-----------------------------------")
+        disagreement_reward = self.calculate_reward(acs, obs, last_obs)
+        print("-------------------------done------------------------------------------")
+        self.rollout.update_buffer_post_step(disagreement_reward)
 
         # Calculate reward or loss
         update_info = self.update()
