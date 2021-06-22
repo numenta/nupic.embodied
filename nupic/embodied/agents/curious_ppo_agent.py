@@ -599,17 +599,15 @@ class PpoOptimizer(object):
         # Get the value estimate of the policies value head
         vpred = self.policy.vpred
         # Calculate the msq difference between value estimate and return
-        vf_loss = 0.5 * torch.mean(
-            (vpred.squeeze() - returns) ** 2
-        )
+        vf_loss = 0.5 * torch.mean((vpred.squeeze() - returns.detach()) ** 2)
         # Put old neglogprobs from buffer into tensor
         neglogprobs_old = flatten_dims(neglogprobs, 0)
         # Calculate exp difference between old nlp and neglogprobs_new
         # neglogprobs: negative log probability of the action (old)
         # neglogprobs_new: negative log probability of the action (new)
-        ratio = torch.exp(neglogprobs_old - neglogprobs_new.squeeze())
+        ratio = torch.exp(neglogprobs_old.detach() - neglogprobs_new.squeeze())
         # Put advantages and negative advantages into tensors
-        advantages = flatten_dims(advantages, 0)
+        advantages = flatten_dims(advantages.detach(), 0)
         neg_advantages = -advantages
         # Calculate policy gradient loss. Once multiplied with original ratio
         # between old and new policy probs (1 if identical) and once with
