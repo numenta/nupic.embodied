@@ -377,7 +377,7 @@ class PpoOptimizer(object):
     def load_returns(self, idxs):
         return self.buf_advantages[idxs], self.buf_returns[idxs]
 
-    def update(self):
+    def learn(self):
         """Calculate losses and update parameters based on current rollout.
 
         Returns
@@ -444,10 +444,14 @@ class PpoOptimizer(object):
     ):
         """Regular update step in exploration by disagreement using PPO"""
 
+        acs, features, next_features = self.update_auxiliary_task(
+            acs, obs, last_obs, return_next_features=True
+        )
+
         self.optimizer.zero_grad()
         # TODO: aux task could be skipped if not using aux task
-        aux_loss, aux_loss_info = self.auxiliary_loss(acs, obs, last_obs)
-        dyn_loss, dyn_loss_info = self.dynamics_loss(acs, obs, last_obs)  # forward
+        aux_loss, aux_loss_info = self.auxiliary_loss()
+        dyn_loss, dyn_loss_info = self.dynamics_loss(acs, features, next_features)
         policy_loss, loss_info = self.ppo_loss(
             acs, neglogprobs, advantages, returns
         )  # forward
@@ -465,17 +469,26 @@ class PpoOptimizer(object):
         """
         Update when using backpropagation through rewards instead of PPO
         Alternate between steps to the dynamics loss and the policy loss
+        TODO: do we need two update auxiliary tasks in this 2-stage training loop?
         """
 
+        acs, features, next_features = self.update_auxiliary_task(
+            acs, obs, last_obs, return_next_features=True
+        )
+
         self.dynamics_optimizer.zero_grad()
-        aux_loss, aux_loss_info = self.auxiliary_loss(acs, obs, last_obs)
-        dyn_loss, dyn_loss_info = self.dynamics_loss(acs, obs, last_obs)
+        aux_loss, aux_loss_info = self.auxiliary_loss()
+        dyn_loss, dyn_loss_info = self.dynamics_loss(acs, features, next_features)
         total_dyn_loss = aux_loss + dyn_loss
         total_dyn_loss.backward()
         self.dynamics_optimizer.step()
 
+        acs, features, next_features = self.update_auxiliary_task(
+            acs, obs, last_obs, return_next_features=not self.use_disagreement
+        )
+
         self.policy_optimizer.zero_grad()
-        policy_loss, loss_info = self.backprop_loss(acs, obs, last_obs)
+        policy_loss, loss_info = self.backprop_loss(acs, features, next_features)
         policy_loss.backward()
         self.policy_optimizer.step()
 
@@ -515,31 +528,13 @@ class PpoOptimizer(object):
 
         return info
 
-    def auxiliary_loss(self, acs, obs, last_obs):
-        # Update features of the policy network to minibatch obs and acs
-        # TODO: No need to update features if there is no aux task. When there is a task
-        # I think we also don't need to update the policy features, just policy.ac and
-        # policy.ob (at least as long we don't share features with policy) This saves a
-        # forward pass.
-        self.policy.update_features(obs, acs)
-
-        # Update features of the auxiliary network to minibatch obs and acs
-        # Using first element in dynamics list is sufficient bc all dynamics
-        # models have the same auxiliary task model and features
-        # TODO: should the feature model be independent of dynamics?
-        self.auxiliary_task.update_features(obs, last_obs)
+    def auxiliary_loss(self):
         # Get the loss and variance of the feature model
-        aux_loss = torch.mean(
-            self.auxiliary_task.get_loss()
-        )
+        aux_loss = torch.mean(self.auxiliary_task.get_loss())
         # Take variance over steps -> [feature_dim] vars -> average
         # This is the average variance in a feature over time
-        feature_var = torch.mean(
-            torch.var(self.auxiliary_task.features, [0, 1])
-        )
-        feature_var_2 = torch.mean(
-            torch.var(self.auxiliary_task.features, [2])
-        )
+        feature_var = torch.mean(torch.var(self.auxiliary_task.features, [0, 1]))
+        feature_var_2 = torch.mean(torch.var(self.auxiliary_task.features, [2]))
         return aux_loss, {
             "phi/feature_var_ax01": feature_var,
             "phi/feature_var_ax2": feature_var_2,
@@ -561,12 +556,10 @@ class PpoOptimizer(object):
 
         return ac, features, next_features
 
-
-    def calculate_disagreement(self, acs, obs, last_obs):
-        # Forward pass per dynamic model
-        ac, features, next_features = self.update_auxiliary_task(
-            acs, obs, last_obs, return_next_features=not self.use_disagreement
-        )
+    def calculate_disagreement(self, acs, features, next_features):
+        """ If next features is defined, return prediction error.
+        Otherwise returns predictions i.e. dynamics model last layer output
+        """
 
         # Get predictions
         predictions = []
@@ -575,7 +568,7 @@ class PpoOptimizer(object):
             print(f"Running dynamics model: {idx+1}/{len(self.dynamics_list)}")
             # If using disagreement, prediiction is the next state
             # shape=[num_dynamics, num_envs, n_steps_per_seg, feature_dim]
-            prediction = dynamics.get_predictions(ac=ac, features=features)
+            prediction = dynamics.get_predictions(ac=acs, features=features)
             if next_features is not None:
                 # If not using disagreement, prediction is the error
                 # shape=[num_dynamics, num_envs, n_steps_per_seg]
@@ -586,40 +579,39 @@ class PpoOptimizer(object):
         disagreement = torch.var(torch.stack(predictions), axis=0)
         return disagreement
 
-    def calculate_reward(self, acs, obs, last_obs):
+    def calculate_rewards(self, acs, obs, last_obs):
         """Calculates the reward from the output of the dynamics models and the external
         rewards.
         """
 
-        disagreement = self.calculate_disagreement(acs, obs, last_obs)
+        acs, features, next_features = self.update_auxiliary_task(
+            acs, obs, last_obs, return_next_features=not self.use_disagreement
+        )
+
+        disagreement = self.calculate_disagreement(acs, features, next_features)
         disagreement_reward = torch.mean(disagreement, axis=-1)
         return disagreement_reward
 
-    def backprop_loss(self, acs, obs, last_obs):
+    def backprop_loss(self, acs, features, next_features):
         """
         TODO: parallelize this loop! Can use Ray, torch.mp, etc
         TODO: This is what takes longer. Could we just store the disagreement in the
         buffer during rollout?
         """
 
-        disagreement = self.calculate_disagreement(acs, obs, last_obs)
+        disagreement = self.calculate_disagreement(acs, features, next_features)
         # Loss is minimized, and we need to maximize variance, so using the inverse
         loss = 1 / torch.mean(disagreement)
         return loss, {"loss/backprop_through_reward_loss": loss}
 
-    def dynamics_loss(self, acs, obs, last_obs):
+    def dynamics_loss(self, acs, features, next_features):
         dyn_prediction_loss = 0
-        ac, features, next_features = self.update_auxiliary_task(
-            acs, obs, last_obs, return_next_features=True
-        )
 
         for idx, dynamic in enumerate(self.dynamics_list):
-            print(
-                f"Getting dynamics model prediction error: {idx+1}/{len(self.dynamics_list)}"
-            )
+            print(f"Getting dynamics model prediction error: {idx+1}/{len(self.dynamics_list)}")  # noqa: E501
             # Put features into dynamics model and get partial loss (dropout)
             dyn_prediction_loss += torch.mean(dynamic.get_predictions_partial(
-                ac, features, next_features
+                acs, features, next_features
             ))
 
         # Divide by number of models so the number of dynamic models doesn't impact
@@ -703,20 +695,22 @@ class PpoOptimizer(object):
 
         """
         # Collect rollout
-        print("--------------------collecting rollout----------------------------------")
+        print("--------------------collect rollout------------------------------------")
         acs, obs, last_obs = self.rollout.collect_rollout()
+
         print("--------------------calculate reward-----------------------------------")
-        disagreement_reward = self.calculate_reward(acs, obs, last_obs)
-        print("-------------------------done------------------------------------------")
-        self.rollout.update_buffer_post_step(disagreement_reward)
+        disagreement_reward = self.calculate_rewards(acs, obs, last_obs)
+        self.rollout.update_buffer_pre_step(disagreement_reward)
 
-        # Calculate reward or loss
-        update_info = self.update()
-        # convert_to_numpy
+        print("--------------------gradient steps-------------------------------------")
+        update_info = self.learn()
+
+        print("---------------------log statistics-----------------------------------")
         convert_log_to_numpy(update_info)
-
-        # Update stepcount
         self.step_count = self.start_step + self.rollout.step_count
+
+        print("-------------------------done------------------------------------------")
+
         # Return the update statistics for logging
         return {"update": update_info}
 

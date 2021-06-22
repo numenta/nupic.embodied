@@ -245,7 +245,7 @@ class Rollout(object):
                     )
                     self.buf_vpred_last[sli] = next_vpreds
 
-    def update_buffer_post_step(self, disagreement_reward):
+    def update_buffer_pre_step(self, disagreement_reward):
         """All post step update buffer activities"""
         self.update_buffer_rewards(disagreement_reward)
         self.update_info()
