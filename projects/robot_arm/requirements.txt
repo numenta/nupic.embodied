@@ -19,18 +19,8 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-"""General requirements shared by all nupic.embodied projects"""
-
-awscli
-boto3
-jupyter
-matplotlib
-numpy
-pandas
-# TODO: update ray yaml file
-ray[tune]==0.8.3  # version which is compatible with the yaml file
-sigopt
-tabulate
-wandb
-torch
-torchvision
+# Requirements specific to learning by disagreement project
+gym[atari]
+git+git://github.com/openai/baselines@master
+real_robots==0.1.21  # will install gym, if not installed
+stable_baselines3

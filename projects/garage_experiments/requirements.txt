@@ -19,18 +19,12 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-"""General requirements shared by all nupic.embodied projects"""
+""" Requirements specific to garage + metaworld project """
 
-awscli
-boto3
-jupyter
-matplotlib
-numpy
-pandas
-# TODO: update ray yaml file
-ray[tune]==0.8.3  # version which is compatible with the yaml file
-sigopt
-tabulate
-wandb
-torch
-torchvision
+# Install nupic.torch and nupic.tensorflow directly from github master branch
+# nupic.torch @ git+https://github.com/numenta/nupic.torch.git
+# nupic.research @ git+https://github.com/numenta/nupic.research.git
+
+mujoco-py<2.1,>=2.0  # does this version needs to be fixed? will metaworld require it?
+metaworld @ git+https://github.com/rlworkgroup/metaworld.git@cfd837e31d65c9d2b62b7240c68a26b04a9166d9
+garage @ git+https://github.com/rlworkgroup/

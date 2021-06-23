@@ -162,15 +162,13 @@ class PpoOptimizer(object):
         self.use_disagreement = use_disagreement
         self.backprop_through_reward = backprop_through_reward
 
-    def start_interaction(self, env_fns, dynamics_list, nlump=1):
+    def start_interaction(self, env_fns, nlump=1):
         """Set up environments and initialize everything.
 
         Parameters
         ----------
         env_fns : [envs]
             List of environments (functions), optionally with wrappers etc.
-        dynamics_list : [Dynamics]
-            List of dynamics models.
         nlump : int
             ..
 
@@ -215,7 +213,7 @@ class PpoOptimizer(object):
             policy=self.policy,
             int_rew_coeff=self.int_coeff,
             ext_rew_coeff=self.ext_coeff,
-            dynamics_list=dynamics_list,
+            dynamics_list=self.dynamics_list,
         )
 
         def empty_tensor(shape):

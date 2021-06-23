@@ -41,35 +41,46 @@ from nupic.embodied.utils.utils import random_agent_ob_mean_std
 class Trainer(object):
     def __init__(
         self,
+        exp_name,
         make_env,
-        hyperparameter,
-        num_timesteps,
-        envs_per_process,
-        num_dynamics,
-        use_disagreement,
         device,
+        logging_args,
+        env_args,
+        trainer_args,
+        learner_args,
+        debugging=False
     ):
-        self.make_env = make_env
-        self.hyperparameter = hyperparameter
-        self.envs_per_process = envs_per_process
-        self.num_timesteps = num_timesteps
-        self.device = device
         self.wandb_id = None
         self.wandb_run = None
-        self._set_env_vars()
+        self.exp_name = exp_name
+        self.num_timesteps = trainer_args.num_timesteps
+        self.model_save_freq = logging_args.model_save_freq
+        envs, ob_space, ac_space, ob_mean, ob_std = self.init_environments(
+            make_env,
+            env_name=env_args.env,
+            resize_obs=env_args.resize_obs,
+            envs_per_process=env_args.env_per_process
+        )
+
+        # Params required to save the model later
+        self.save_params = dict(
+            debugging=debugging,
+            norm_rew=learner_args.norm_rew,
+            feat_learning=trainer_args.feat_learning
+        )
 
         # Initialize the PPO policy for action selection
         self.policy = CnnPolicy(
             scope="policy",
-            device=self.device,
-            ob_space=self.ob_space,
-            ac_space=self.ac_space,
-            feature_dim=hyperparameter["feature_dim"],
-            hidden_dim=hyperparameter["policy_hidden_dim"],
-            ob_mean=self.ob_mean,
-            ob_std=self.ob_std,
-            layernormalize=False,
-            nonlinear=torch.nn.LeakyReLU,
+            device=device,
+            ob_space=ob_space,
+            ac_space=ac_space,
+            feature_dim=trainer_args.feature_dim,
+            hidden_dim=trainer_args.policy_hidden_dim,
+            ob_mean=ob_mean,
+            ob_std=ob_std,
+            layernormalize=trainer_args.policy_layernorm,
+            nonlinear=trainer_args.policy_nonlinearity,
         )
 
         """
@@ -89,35 +100,29 @@ class Trainer(object):
             "idf": InverseDynamics,
             "vaesph": partial(VAE, spherical_obs=True),
             "vaenonsph": partial(VAE, spherical_obs=False),
-        }[hyperparameter["feat_learning"]]
-
-        # Initialize the feature extractor
-        # policy, feature_extractor, dynamics
-
+        }[trainer_args.feat_learning]
 
         self.feature_extractor = self.feature_extractor_class(
             policy=self.policy,
-            features_shared_with_policy=False,
-            device=self.device,
-            feature_dim=hyperparameter["feature_dim"],
-            layernormalize=hyperparameter["layernorm"],
+            device=device,
+            layernormalize=trainer_args.fextractor_layernorm,
+            feature_dim=trainer_args.feature_dim,
+            features_shared_with_policy=trainer_args.features_shared_with_policy
         )
 
-        self.dynamics_class = Dynamics
-        self.num_dynamics = num_dynamics
+        self.num_dynamics = trainer_args.num_dynamics
 
         # Create a list of dynamics models. Their disagreement is used for learning.
         self.dynamics_list = []
-        for i in range(num_dynamics):
+        for i in range(self.num_dynamics):
             self.dynamics_list.append(
-                self.dynamics_class(
-                    # auxiliary_task=self.feature_extractor,
-                    hidden_dim=self.feature_extractor.hidden_dim,
-                    ac_space=self.feature_extractor.ac_space,
-                    ob_mean=self.feature_extractor.ob_mean,
-                    ob_std=self.feature_extractor.ob_std,
-                    feature_dim=hyperparameter["feature_dim"],
-                    device=self.device,
+                trainer_args.dynamics_class(
+                    hidden_dim=trainer_args.policy_hidden_dim,  # TODO: verify
+                    ac_space=ac_space,
+                    ob_mean=ob_mean,
+                    ob_std=ob_std,
+                    feature_dim=trainer_args.feature_dim,
+                    device=device,
                     scope="dynamics_{}".format(i),
                 )
             )
@@ -125,49 +130,24 @@ class Trainer(object):
         # Initialize the agent.
         self.agent = PpoOptimizer(
             scope="ppo",
-            device=self.device,
-            ob_space=self.ob_space,
-            ac_space=self.ac_space,
-            policy=self.policy,  # change to policy
-            use_done=hyperparameter["use_done"],  # don't use the done information
-            gamma=hyperparameter["gamma"],  # discount factor
-            lam=hyperparameter["lambda"],  # discount factor for advantage
-            nepochs=hyperparameter["nepochs"],
-            nminibatches=hyperparameter["nminibatches"],
-            lr=hyperparameter["lr"],
-            cliprange=0.1,  # clipping policy gradient
-            nsteps_per_seg=hyperparameter[
-                "nsteps_per_seg"
-            ],  # number of steps in each environment before taking a learning step
-            nsegs_per_env=hyperparameter[
-                "nsegs_per_env"
-            ],  # how often to repeat before doing an update, 1
-            entropy_coef=hyperparameter["entropy_coef"],  # entropy
-            normrew=hyperparameter["norm_rew"],  # whether to normalize reward
-            normadv=hyperparameter["norm_adv"],  # whether to normalize advantage
-            ext_coeff=hyperparameter["ext_coeff"],  # weight of the environment reward
-            int_coeff=hyperparameter["int_coeff"],  # weight of the disagreement reward
-            vlog_freq=hyperparameter["video_log_freq"],
-            debugging=hyperparameter["debugging"],
+            device=device,
+            ob_space=ob_space,
+            ac_space=ac_space,
+            policy=self.policy,
+            vlog_freq=logging_args.video_log_freq,
+            debugging=logging_args.debugging,
             dynamics_list=self.dynamics_list,
-            dyn_loss_weight=hyperparameter["dyn_loss_weight"],
             auxiliary_task=self.feature_extractor,
-            # whether to use the variance or the prediction error for the reward
-            use_disagreement=use_disagreement,
-            backprop_through_reward=hyperparameter["backprop_through_reward"],
+            **learner_args
         )
 
-        self.agent.start_interaction(
-            self.envs,
-            nlump=hyperparameter["nlumps"],
-            dynamics_list=self.dynamics_list,
-        )
+        self.agent.start_interaction(envs, nlump=trainer_args.nlumps)
 
-    def _set_env_vars(self):
+    def init_environments(self, make_env, env_name, resize_obs, envs_per_process):
         """Set environment variables.
 
         Checks whether average observations have already been calculated (currently just
-        for robt arm environment) and if yes loads it. Otherwise it calculates these
+        for robot arm environment) and if yes loads it. Otherwise it calculates these
         statistics with a random agent.
         Currently nsteps is set to 100 to save time during debugging. Set this higher
         for experiments and save them to save time.
@@ -175,43 +155,45 @@ class Trainer(object):
         """
         print("Create environment to collect statistics.")
         env = self.make_env(0)
-        self.ob_space, self.ac_space = env.observation_space, env.action_space
+        ob_space, ac_space = env.observation_space, env.action_space
 
-        print("observation space: " + str(self.ob_space))
-        print("action space: " + str(self.ac_space))
+        print("observation space: " + str(ob_space))
+        print("action space: " + str(ac_space))
 
         try:
-            path_name = "./statistics/" + self.hyperparameter["env"]
-            if self.hyperparameter["resize_obs"] > 0:
-                path_name = path_name + "_" + str(self.hyperparameter["resize_obs"])
+            path_name = "./statistics/" + env_name
+            if resize_obs > 0:
+                path_name = path_name + "_" + str(resize_obs)
             print("loading environment statistics from " + path_name)
 
-            self.ob_mean = np.load(path_name + "/ob_mean.npy")
-            self.ob_std = np.load(path_name + "/ob_std.npy")
+            ob_mean = np.load(path_name + "/ob_mean.npy")
+            ob_std = np.load(path_name + "/ob_std.npy")
         except FileNotFoundError:
             print("No statistics file found. Creating new one.")
             path_name = path_name + "/"
             os.makedirs(os.path.dirname(path_name))
-            self.ob_mean, self.ob_std = random_agent_ob_mean_std(env, nsteps=100)
+            ob_mean, ob_std = random_agent_ob_mean_std(env, nsteps=100)
             np.save(
                 path_name + "/ob_mean.npy",
-                self.ob_mean,
+                ob_mean,
             )
             np.save(
                 path_name + "/ob_std.npy",
-                self.ob_std,
+                ob_std,
             )
             print("Saved environment statistics.")
         print(
             "observation stats: "
-            + str(np.mean(self.ob_mean))
+            + str(np.mean(ob_mean))
             + " std: "
-            + str(self.ob_std)
+            + str(ob_std)
         )
 
         del env
         print("done.")
-        self.envs = [partial(self.make_env, i) for i in range(self.envs_per_process)]
+        envs = [partial(make_env, i) for i in range(envs_per_process)]
+
+        return envs, ob_space, ac_space, ob_mean, ob_std
 
     def save_models(self, final=False):
         state_dicts = {
@@ -226,25 +208,25 @@ class Trainer(object):
             "total_secs": self.agent.total_secs,
             "best_ext_ret": self.agent.rollout.best_ext_return,
         }
-        if self.hyperparameter["feat_learning"] == "idf":
+        if self.save_params["feat_learning"] == "idf":
             state_dicts["idf_fc"] = self.feature_extractor.fc.state_dict()
-        elif self.hyperparameter["feat_learning"] == "vaesph":
+        elif self.save_params["feat_learning"] == "vaesph":
             state_dicts[
                 "decoder_model"
             ] = self.feature_extractor.decoder_model.state_dict()
             state_dicts["scale"] = self.feature_extractor.scale
-        elif self.hyperparameter["feat_learning"] == "vaenonsph":
+        elif self.save_params["feat_learning"] == "vaenonsph":
             state_dicts[
                 "decoder_model"
             ] = self.feature_extractor.decoder_model.state_dict()
 
-        if self.hyperparameter["norm_rew"]:
+        if self.save_params["norm_rew"]:
             state_dicts["tracked_reward"] = self.agent.reward_forward_filter.rewems
             state_dicts["reward_stats_mean"] = self.agent.reward_stats.mean
             state_dicts["reward_stats_var"] = self.agent.reward_stats.var
             state_dicts["reward_stats_count"] = self.agent.reward_stats.count
 
-        if not self.hyperparameter["debugging"]:
+        if not self.save_params["debugging"]:
             state_dicts["wandb_id"] = wandb.run.id
 
         for i in range(self.num_dynamics):
@@ -253,17 +235,17 @@ class Trainer(object):
             ].dynamics_net.state_dict()
 
         if final:
-            model_path = "./models/" + self.hyperparameter["exp_name"]
+            model_path = "./models/" + self.exp_name
             torch.save(state_dicts, model_path + "/model.pt")
             print("Saved final model at " + model_path + "/model.pt")
-            if not self.hyperparameter["debugging"]:
-                artifact = wandb.Artifact(self.hyperparameter["exp_name"], type="model")
+            if not self.save_params["debugging"]:
+                artifact = wandb.Artifact(self.exp_name, type="model")
                 artifact.add_file(model_path + "/model.pt")
                 self.wandb_run.log_artifact(artifact)
                 # self.wandb_run.join()
                 print("Model saved as artifact to wandb. Wait until sync is finished.")
         else:
-            model_path = "./models/" + self.hyperparameter["exp_name"] + "/checkpoints"
+            model_path = "./models/" + self.exp_name + "/checkpoints"
             torch.save(
                 state_dicts, model_path + "/model" + str(self.agent.step_count) + ".pt"
             )
@@ -275,14 +257,12 @@ class Trainer(object):
                 + ".pt"
             )
 
-    def load_models(self):
-        if self.hyperparameter["download_model_from"] != "":
-            artifact = self.wandb_run.use_artifact(
-                self.hyperparameter["download_model_from"], type="model"
-            )
+    def load_models(self, download_model_from=None):
+        if download_model_from is not None:
+            artifact = self.wandb_run.use_artifact(download_model_from, type="model")
             model_path = artifact.download()
         else:
-            model_path = "./models/" + self.hyperparameter["exp_name"]
+            model_path = "./models/" + self.exp_name
         print("Loading model from " + str(model_path + "/model.pt"))
         checkpoint = torch.load(model_path + "/model.pt")
 
@@ -304,25 +284,25 @@ class Trainer(object):
         self.agent.time_trained_so_far = checkpoint["total_secs"]
         self.agent.rollout.best_ext_return = checkpoint["best_ext_ret"]
 
-        if self.hyperparameter["feat_learning"] == "idf":
+        if self.save_params["feat_learning"] == "idf":
             self.feature_extractor.fc.load_state_dict(checkpoint["idf_fc"])
-        elif self.hyperparameter["feat_learning"] == "vaesph":
+        elif self.save_params["feat_learning"] == "vaesph":
             self.feature_extractor.decoder_model.load_state_dict(
                 checkpoint["decoder_model"]
             )
             self.feature_extractor.scale = checkpoint["scale"]
-        elif self.hyperparameter["feat_learning"] == "vaenonsph":
+        elif self.save_params["feat_learning"] == "vaenonsph":
             self.feature_extractor.decoder_model.load_state_dict(
                 checkpoint["decoder_model"]
             )
 
-        if self.hyperparameter["norm_rew"]:
+        if self.save_params["norm_rew"]:
             self.agent.reward_forward_filter.rewems = checkpoint["tracked_reward"]
             self.agent.reward_stats.mean = checkpoint["reward_stats_mean"]
             self.agent.reward_stats.var = checkpoint["reward_stats_var"]
             self.agent.reward_stats.count = checkpoint["reward_stats_count"]
 
-        if not self.hyperparameter["debugging"]:
+        if not self.save_params["debugging"]:
             self.wandb_id = checkpoint["wandb_id"]
         print("Model successfully loaded.")
 
@@ -354,8 +334,8 @@ class Trainer(object):
 
             # Save intermediate model at specified save frequency
             if (
-                self.hyperparameter["model_save_freq"] >= 0
-                and self.agent.n_updates % self.hyperparameter["model_save_freq"] == 0
+                self.model_save_freq >= 0
+                and self.agent.n_updates % self.model_save_freq == 0
             ):
                 print(
                     str(self.agent.n_updates) + " updates - saving intermediate model."
