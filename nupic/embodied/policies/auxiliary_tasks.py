@@ -29,7 +29,6 @@ from nupic.embodied.utils.model_parts import (
     small_deconvnet,
     unflatten_first_dim,
 )
-from nupic.embodied.utils.torch import to_tensor
 
 
 class FeatureExtractor(object):
@@ -127,7 +126,7 @@ class FeatureExtractor(object):
         self.ac = None
         self.ob = None
 
-    def update_features(self, obs, last_obs):
+    def update_features(self, acs, obs, last_obs):
         """Get features from feature model and set self.features and self.next_features.
         Also sets self.ac to the last actions at end of rollout..
 
@@ -139,7 +138,10 @@ class FeatureExtractor(object):
             Previous observations.
 
         """
+        self.ob, self.ac = obs, acs
+
         if self.features_shared_with_policy:
+            self.policy.update_features(obs, acs)
             # Get features corresponding with the observation from the policy network
             self.features = self.policy.flat_features
             last_features = self.policy.get_features(last_obs)
@@ -152,8 +154,6 @@ class FeatureExtractor(object):
         # concatenate the last and current features
         self.next_features = torch.cat([self.features[:, 1:], last_features], 1)
 
-        self.ac = self.policy.ac
-        self.ob = self.policy.ob
 
     def get_features(self, obs):
         """Get features from the feature network.

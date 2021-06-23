@@ -136,6 +136,7 @@ class CnnPolicy(object):
             torch.nn.ReLU(),
         ).to(self.device)
         # policy and value function head of the policy network.
+        # TODO: remove the per tensor to device calls, send the entire network instead
         self.pd_head = torch.nn.Linear(self.hidden_dim, pdparamsize).to(self.device)
         self.vf_head = torch.nn.Linear(self.hidden_dim, 1).to(self.device)
 
