@@ -25,7 +25,7 @@ awscli
 boto3
 jupyter
 matplotlib
-numpy
+numpy>=1.21.0
 pandas
 # TODO: update ray yaml file
 ray[tune]==0.8.3  # version which is compatible with the yaml file

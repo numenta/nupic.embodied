@@ -20,7 +20,5 @@
 #
 # ------------------------------------------------------------------------------
 # Requirements specific to learning by disagreement project
-gym[atari]
-git+git://github.com/openai/baselines@master
 real_robots==0.1.21  # will install gym, if not installed
 stable_baselines3
