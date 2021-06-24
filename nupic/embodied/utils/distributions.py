@@ -20,8 +20,6 @@
 #
 # ------------------------------------------------------------------------------
 
-# from baselines.common.distributions import make_pdtype
-# could also consider using from source
 # TODO: remove functions not used. Adapt all remaining ones to torch
 # TODO: define undefined names: MultiCategoricalPd, DiagGaussianPd, BernoulliPd
 

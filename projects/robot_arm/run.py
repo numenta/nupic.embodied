@@ -33,7 +33,7 @@ import torch
 import wandb
 from gym.wrappers import ResizeObservation
 
-from baselines.bench import Monitor
+from stable_baselines3.common.monitor import Monitor
 from trainer import Trainer
 
 from parser import create_cmd_parser, create_exp_parser
