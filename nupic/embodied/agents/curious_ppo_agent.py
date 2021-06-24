@@ -439,7 +439,7 @@ class PpoOptimizer(object):
     ):
         """Regular update step in exploration by disagreement using PPO"""
 
-        acs, features, next_features = self.update_auxiliary_task(
+        features, next_features = self.update_auxiliary_task(
             acs, obs, last_obs, return_next_features=True
         )
 
@@ -467,7 +467,7 @@ class PpoOptimizer(object):
         TODO: do we need two update auxiliary tasks in this 2-stage training loop?
         """
 
-        acs, features, next_features = self.update_auxiliary_task(
+        features, next_features = self.update_auxiliary_task(
             acs, obs, last_obs, return_next_features=True
         )
 
@@ -478,7 +478,7 @@ class PpoOptimizer(object):
         total_dyn_loss.backward()
         self.dynamics_optimizer.step()
 
-        acs, features, next_features = self.update_auxiliary_task(
+        features, next_features = self.update_auxiliary_task(
             acs, obs, last_obs, return_next_features=not self.use_disagreement
         )
 
@@ -538,17 +538,15 @@ class PpoOptimizer(object):
 
     def update_auxiliary_task(self, acs, obs, last_obs, return_next_features=True):
         # Update the auxiliary task
-        self.auxiliary_task.policy.update_features(obs, acs)
-        self.auxiliary_task.update_features(obs, last_obs)
+        self.auxiliary_task.update_features(acs, obs, last_obs)
 
         # Gather the data from auxiliary task
         features = self.auxiliary_task.features.detach()
-        ac = self.auxiliary_task.ac
         next_features = None
         if return_next_features:
             next_features = self.auxiliary_task.next_features.detach()
 
-        return ac, features, next_features
+        return features, next_features
 
     def calculate_disagreement(self, acs, features, next_features):
         """ If next features is defined, return prediction error.
@@ -578,7 +576,7 @@ class PpoOptimizer(object):
         rewards.
         """
 
-        acs, features, next_features = self.update_auxiliary_task(
+        features, next_features = self.update_auxiliary_task(
             acs, obs, last_obs, return_next_features=not self.use_disagreement
         )
 
