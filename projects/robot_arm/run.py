@@ -34,6 +34,7 @@ import wandb
 from gym.wrappers import ResizeObservation
 
 from stable_baselines3.common.monitor import Monitor
+# TODO: check if Monitor from stable_baselines3 is same as baselines Monitor
 from trainer import Trainer
 
 from parser import create_cmd_parser, create_exp_parser
@@ -145,7 +146,7 @@ if __name__ == "__main__":
 
     print("Initializing Trainer.")
 
-    if torch.cuda.is_available() and run_args.gpu:
+    if torch.cuda.is_available() and not run_args.cpu:
         print("GPU detected")
         dev_name = "cuda:0"
         torch.set_default_tensor_type("torch.cuda.FloatTensor")
@@ -169,7 +170,7 @@ if __name__ == "__main__":
     if run_args.load and len(run_args.download_model_from) == 0:
         # If the model is not downloaded from wandb we want to load the checkpoint first
         # to get the previous wandb_id to resume logging with that.
-        trainer.load_models()
+        trainer.load_models(debugging=run_args.debugging)
 
     # Initialize wandb for logging (if not debugging)
     unrolled_config = {}
@@ -223,9 +224,12 @@ if __name__ == "__main__":
                     log_freq=model_stats_log_freq,
                 )
 
+    # TODO: debugging is used accross all code - is there a better way of defining it
+    # instead of message passing from one object to another? Maybe as a global constant?
+
     if run_args.load and len(run_args.download_model_from) > 0:
         # TODO: Figure out how to continue logging when loading an artifact
-        trainer.load_models(run_args.download_model_from)
+        trainer.load_models(debugging=run_args.debugging, run_args.download_model_from)
 
     model_path = "./models/" + run_args.exp_name
     if logging_args.model_save_freq >= 0:
@@ -238,6 +242,6 @@ if __name__ == "__main__":
         print("Model finished training.")
     except KeyboardInterrupt:
         print("Training interrupted.")
-        trainer.save_models(final=True)
+        trainer.save_models(debugging=run_args.debugging, final=True)
         if not run_args.debugging:
             run.finish()

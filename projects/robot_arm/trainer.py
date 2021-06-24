@@ -61,13 +61,12 @@ class Trainer(object):
 
         # Params required to save the model later
         self.save_params = dict(
-            debugging=debugging,
             norm_rew=learner_args.norm_rew,
             feat_learning=trainer_args.feat_learning
         )
 
         # Initialize the PPO policy for action selection
-        self.policy = CnnPolicy(
+        self.policy = trainer_args.policy_class(
             scope="policy",
             device=device,
             ob_space=ob_space,
@@ -194,7 +193,7 @@ class Trainer(object):
 
         return envs, ob_space, ac_space, ob_mean, ob_std
 
-    def save_models(self, final=False):
+    def save_models(self, debugging=False, final=False):
         state_dicts = {
             "feature_extractor": self.feature_extractor.features_model.state_dict(),
             "policy_features": self.policy.features_model.state_dict(),
@@ -225,7 +224,7 @@ class Trainer(object):
             state_dicts["reward_stats_var"] = self.agent.reward_stats.var
             state_dicts["reward_stats_count"] = self.agent.reward_stats.count
 
-        if not self.save_params["debugging"]:
+        if not debugging:
             state_dicts["wandb_id"] = wandb.run.id
 
         for i in range(self.num_dynamics):
@@ -237,7 +236,7 @@ class Trainer(object):
             model_path = "./models/" + self.exp_name
             torch.save(state_dicts, model_path + "/model.pt")
             print("Saved final model at " + model_path + "/model.pt")
-            if not self.save_params["debugging"]:
+            if not debugging:
                 artifact = wandb.Artifact(self.exp_name, type="model")
                 artifact.add_file(model_path + "/model.pt")
                 self.wandb_run.log_artifact(artifact)
@@ -256,7 +255,7 @@ class Trainer(object):
                 + ".pt"
             )
 
-    def load_models(self, download_model_from=None):
+    def load_models(self, debugging=False, download_model_from=None):
         if download_model_from is not None:
             artifact = self.wandb_run.use_artifact(download_model_from, type="model")
             model_path = artifact.download()
@@ -301,7 +300,7 @@ class Trainer(object):
             self.agent.reward_stats.var = checkpoint["reward_stats_var"]
             self.agent.reward_stats.count = checkpoint["reward_stats_count"]
 
-        if not self.save_params["debugging"]:
+        if not debugging:
             self.wandb_id = checkpoint["wandb_id"]
         print("Model successfully loaded.")
 

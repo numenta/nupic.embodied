@@ -6,6 +6,7 @@ from typing import Callable, Literal
 from dataclasses import dataclass, field
 from nupic.embodied.policies.dynamics import Dynamics
 from helper_functions import DataClassArgumentParser
+from nupic.embodied.policies.curious_cnn_policy import CnnPolicy
 
 from experiments import CONFIGS
 
@@ -51,6 +52,7 @@ class TrainerArguments:
     features_shared_with_policy: bool = False
     policy_layernorm: bool = False
     policy_hidden_dim: int = 512
+    policy_class: Callable = CnnPolicy
     policy_nonlinearity: Callable = torch.nn.LeakyReLU
     dynamics_class: Callable = Dynamics
 
@@ -73,7 +75,7 @@ class LearnerArguments:
     nsteps_per_seg: int = 128
     nsegs_per_env: int = 1
     backprop_through_reward: bool = False
-    use_disagreement: bool = False
+    use_disagreement: bool = True
 
 
 def create_exp_parser():
@@ -109,7 +111,7 @@ def create_cmd_parser():
         help="Option to use when debugging so not every test run is logged."
     )
     parser.add_argument(
-        "-g", "--gpu", action="store_true", default=False,
-        help="Whether or not to use GPU if available"
+        "-c", "--cpu", action="store_true", default=False,
+        help="Whether to use CPU even if GPU is available"
     )
     return parser
