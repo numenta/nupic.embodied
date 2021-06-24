@@ -38,6 +38,8 @@ from trainer import Trainer
 
 from parser import create_cmd_parser, create_exp_parser
 
+from experiments import CONFIGS
+
 
 def make_env_all_params(rank, args):
     """Initialize the environment and apply wrappers.
@@ -56,8 +58,7 @@ def make_env_all_params(rank, args):
 
     """
     if args.env_kind == "atari":
-        from baselines.common.atari_wrappers import FrameStack, NoopResetEnv
-
+        from stable_baselines3.common.atari_wrappers.atari_wrappers import NoopResetEnv
         from nupic.embodied.envs.wrappers import (
             AddRandomStateToInfo,
             ExtraTimeLimit,
@@ -65,6 +66,7 @@ def make_env_all_params(rank, args):
             MontezumaInfoWrapper,
             ProcessFrame84,
             StickyActionEnv,
+            FrameStack
         )
         env = gym.make(args.env)
         assert "NoFrameskip" in env.spec.id
@@ -94,10 +96,10 @@ def make_env_all_params(rank, args):
         env = REALRobotEnv(objects=3, action_type="cartesian")
         env = CartesianControlDiscrete(
             env,
-            crop_obs=args["crop_obs"],
-            repeat=args["act_repeat"],
-            touch_reward=args["touch_reward"],
-            random_force=args["random_force"],
+            crop_obs=args.crop_obs,
+            repeat=args.act_repeat,
+            touch_reward=args.touch_reward,
+            random_force=args.random_force,
         )
         if args.resize_obs > 0:
             env = ResizeObservation(env, args.resize_obs)
@@ -134,8 +136,8 @@ if __name__ == "__main__":
 
     # Parse from config dictionary
     exp_parser = create_exp_parser()
-    args = exp_parser.parse_dict(run_args.exp_name)
-    logging_args, env_args, trainer_args, learner_args = args
+    exp_args = exp_parser.parse_dict(CONFIGS[run_args.exp_name])
+    logging_args, env_args, trainer_args, learner_args = exp_args
 
     print("Setting up Environment.")
 
@@ -170,6 +172,10 @@ if __name__ == "__main__":
         trainer.load_models()
 
     # Initialize wandb for logging (if not debugging)
+    unrolled_config = {}
+    for args in exp_args:
+        for k, v in args.__dict__.items():
+            unrolled_config[k] = v
     if not run_args.debugging:
         run = wandb.init(
             project="embodiedAI",
@@ -177,7 +183,7 @@ if __name__ == "__main__":
             id=trainer.wandb_id,
             group=logging_args.group,
             notes=logging_args.notes,
-            config=args,
+            config=unrolled_config,
             resume="allow",
         )
         if wandb.run.resumed:

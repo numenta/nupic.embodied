@@ -67,9 +67,9 @@ class PpoOptimizer(object):
         PPO clipping parameter.
     nminibatches : int
         Number of minibatches.
-    normrew : bool
+    norm_rew : bool
         Whether to apply the RewardForwardFilter and normalize rewards.
-    normadv : bool
+    norm_adv : bool
         Whether to normalize the advantages.
     use_done : bool
         Whether to take into account new episode (done=True) in the advantage
@@ -118,8 +118,8 @@ class PpoOptimizer(object):
         lr,
         cliprange,
         nminibatches,
-        normrew,
-        normadv,
+        norm_rew,
+        norm_adv,
         use_done,
         ext_coeff,
         int_coeff,
@@ -148,8 +148,8 @@ class PpoOptimizer(object):
         self.nminibatches = nminibatches
         self.gamma = gamma
         self.lam = lam
-        self.normrew = normrew
-        self.normadv = normadv
+        self.norm_rew = norm_rew
+        self.norm_adv = norm_adv
         self.use_done = use_done
         self.entropy_coef = entropy_coef
         self.ext_coeff = ext_coeff
@@ -223,7 +223,7 @@ class PpoOptimizer(object):
         self.buf_advantages = empty_tensor((nenvs, self.rollout.nsteps))
         self.buf_returns = empty_tensor((nenvs, self.rollout.nsteps))
 
-        if self.normrew:  # if normalize reward, defaults to True
+        if self.norm_rew:  # if normalize reward, defaults to True
             # Sum up and discount rewards
             self.reward_forward_filter = RewardForwardFilter(self.gamma)
             # Initialize running mean and std tracker
@@ -382,7 +382,7 @@ class PpoOptimizer(object):
 
         """
         print("Calculate Statistics")
-        rews = self.collect_rewards(normalize=self.normrew)
+        rews = self.collect_rewards(normalize=self.norm_rew)
 
         # Calculate advantages using the current rewards and value estimates
         self.calculate_advantages(
@@ -393,7 +393,7 @@ class PpoOptimizer(object):
         to_report = Counter()
 
         # TODO: we are logging buf_advantages before normalizing, is that correct?
-        if self.normadv:  # defaults to True
+        if self.norm_adv:  # defaults to True
             # normalize advantages
             m, s = get_mean_and_std(self.buf_advantages)
             self.buf_advantages = (self.buf_advantages - m) / (s + 1e-7)
@@ -584,6 +584,7 @@ class PpoOptimizer(object):
 
         disagreement = self.calculate_disagreement(acs, features, next_features)
         disagreement_reward = torch.mean(disagreement, axis=-1)
+
         return disagreement_reward
 
     def backprop_loss(self, acs, features, next_features):

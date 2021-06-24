@@ -56,10 +56,7 @@ class Trainer(object):
         self.num_timesteps = trainer_args.num_timesteps
         self.model_save_freq = logging_args.model_save_freq
         envs, ob_space, ac_space, ob_mean, ob_std = self.init_environments(
-            make_env,
-            env_name=env_args.env,
-            resize_obs=env_args.resize_obs,
-            envs_per_process=env_args.env_per_process
+            make_env, env_args
         )
 
         # Params required to save the model later
@@ -117,7 +114,7 @@ class Trainer(object):
         for i in range(self.num_dynamics):
             self.dynamics_list.append(
                 trainer_args.dynamics_class(
-                    hidden_dim=trainer_args.policy_hidden_dim,  # TODO: verify
+                    hidden_dim=trainer_args.policy_hidden_dim,
                     ac_space=ac_space,
                     ob_mean=ob_mean,
                     ob_std=ob_std,
@@ -135,15 +132,15 @@ class Trainer(object):
             ac_space=ac_space,
             policy=self.policy,
             vlog_freq=logging_args.video_log_freq,
-            debugging=logging_args.debugging,
+            debugging=debugging,
             dynamics_list=self.dynamics_list,
             auxiliary_task=self.feature_extractor,
-            **learner_args
+            **learner_args.__dict__
         )
 
         self.agent.start_interaction(envs, nlump=trainer_args.nlumps)
 
-    def init_environments(self, make_env, env_name, resize_obs, envs_per_process):
+    def init_environments(self, make_env, env_args):
         """Set environment variables.
 
         Checks whether average observations have already been calculated (currently just
@@ -154,16 +151,16 @@ class Trainer(object):
 
         """
         print("Create environment to collect statistics.")
-        env = self.make_env(0)
-        ob_space, ac_space = env.observation_space, env.action_space
+        sample_env = make_env(0)
+        ob_space, ac_space = sample_env.observation_space, sample_env.action_space
 
         print("observation space: " + str(ob_space))
         print("action space: " + str(ac_space))
 
         try:
-            path_name = "./statistics/" + env_name
-            if resize_obs > 0:
-                path_name = path_name + "_" + str(resize_obs)
+            path_name = "./statistics/" + env_args.env
+            if env_args.resize_obs > 0:
+                path_name = path_name + "_" + str(env_args.resize_obs)
             print("loading environment statistics from " + path_name)
 
             ob_mean = np.load(path_name + "/ob_mean.npy")
@@ -172,7 +169,9 @@ class Trainer(object):
             print("No statistics file found. Creating new one.")
             path_name = path_name + "/"
             os.makedirs(os.path.dirname(path_name))
-            ob_mean, ob_std = random_agent_ob_mean_std(env, nsteps=100)
+            ob_mean, ob_std = random_agent_ob_mean_std(
+                sample_env, nsteps=env_args.nsteps_to_collect_statistics
+            )
             np.save(
                 path_name + "/ob_mean.npy",
                 ob_mean,
@@ -189,9 +188,9 @@ class Trainer(object):
             + str(ob_std)
         )
 
-        del env
+        del sample_env
         print("done.")
-        envs = [partial(make_env, i) for i in range(envs_per_process)]
+        envs = [partial(make_env, i) for i in range(env_args.envs_per_process)]
 
         return envs, ob_space, ac_space, ob_mean, ob_std
 

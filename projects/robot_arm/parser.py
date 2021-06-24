@@ -24,6 +24,7 @@ class EnvironmentArguments:
         default="BreakoutNoFrameskip-v4",
         metadata={"help": "environment ID"}
     )
+    env_kind: Literal["atari", "mario", "retro_multi", "roboarm"] = "atari"
     resize_obs: int = field(
         default=0,
         metadata={"help": "With current CNN possible sizes are "
@@ -37,7 +38,7 @@ class EnvironmentArguments:
     touch_reward: bool = False
     random_force: bool = False
     envs_per_process: int = 128
-
+    nsteps_to_collect_statistics: int = 10000
 
 @dataclass
 class TrainerArguments:
@@ -60,7 +61,6 @@ class LearnerArguments:
     ext_coeff: float = 0.0
     int_coeff: float = 1.0
     dyn_loss_weight: float = 1.0
-    feature_dim: int = 512
     lam: float = 0.95
     gamma: float = 0.99
     norm_adv: int = 1
