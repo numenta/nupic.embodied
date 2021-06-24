@@ -38,6 +38,7 @@ backprop_debug.update(
     backprop_through_reward=True,
     group="TestBackprop",
     notes="Testing backprop experiments",
+    use_disagreement=True,  # currently not working when set to False
 )
 
 # Debug experiment only, but eztended to Atari
