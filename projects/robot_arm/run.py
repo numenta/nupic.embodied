@@ -140,6 +140,10 @@ if __name__ == "__main__":
     exp_args = exp_parser.parse_dict(CONFIGS[run_args.exp_name])
     logging_args, env_args, trainer_args, learner_args = exp_args
 
+    # Option to give a new wandb run name to the same experiment settings
+    if run_args.wandb_run_name != "":
+        run_args.exp_name = run_args.wandb_run_name
+
     print("Setting up Environment.")
 
     make_env = partial(make_env_all_params, args=env_args)
@@ -178,6 +182,7 @@ if __name__ == "__main__":
         for k, v in args.__dict__.items():
             unrolled_config[k] = v
     if not run_args.debugging:
+        # TODO: Resume wandb logging is not working
         run = wandb.init(
             project="embodiedAI",
             name=run_args.exp_name,
