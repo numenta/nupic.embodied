@@ -78,8 +78,8 @@ ppo_debug_robot.update(
     touch_reward=True,
     random_force=True,
     ppo_through_reward=False,
-    group="Testppo",
-    notes="Testing ppo experiments",
+    group="Implementation",
+    notes="Testing ppo experiments on robotarm",
     use_disagreement=True,  # currently not working when set to False
     dynamics_class=CustomDynamics,
     policy_class=CnnPolicyWithBackwardHooks,
@@ -90,6 +90,8 @@ ppo_debug_atari = deepcopy(ppo_base)
 ppo_debug_atari.update(
     envs_per_process=8,
     ppo_through_reward=False,
+    group="Implementation",
+    notes="Testing ppo experiments on atari",
 )
 
 # Export configurations in this file

@@ -401,12 +401,14 @@ class PpoOptimizer(object):
         # Update the networks & get losses for nepochs * nminibatches
         print("Update the models")
         for idx in range(self.nepochs):
-            print(f"Starting epoch: {idx+1}/{self.nepochs}")
+            if self.debugging:
+                print(f"Starting epoch: {idx+1}/{self.nepochs}")
             env_idxs = np.random.permutation(self.nenvs * self.nsegs_per_env)
             total_segs = self.nenvs * self.nsegs_per_env
             for idx, start in enumerate(range(0, total_segs, self.envs_per_batch)):
-                print(f"Starting batch: {idx+1}/{total_segs//self.envs_per_batch}")
-                minibatch_idxs = env_idxs[start:start + self.envs_per_batch]
+                if self.debugging:
+                    print(f"Starting batch: {idx+1}/{total_segs//self.envs_per_batch}")
+                minibatch_idxs = env_idxs[start : start + self.envs_per_batch]
 
                 # Get rollout experiences for current minibatch
                 acs, rews, neglogprobs, obs, last_obs = self.rollout.load_from_buffer(
@@ -549,7 +551,7 @@ class PpoOptimizer(object):
         return features, next_features
 
     def calculate_disagreement(self, acs, features, next_features):
-        """ If next features is defined, return prediction error.
+        """If next features is defined, return prediction error.
         Otherwise returns predictions i.e. dynamics model last layer output
         """
 
@@ -557,7 +559,8 @@ class PpoOptimizer(object):
         predictions = []
         # Get output from all dynamics models (featurewise)
         for idx, dynamics in enumerate(self.dynamics_list):
-            print(f"Running dynamics model: {idx+1}/{len(self.dynamics_list)}")
+            if self.debugging:
+                print(f"Running dynamics model: {idx+1}/{len(self.dynamics_list)}")
             # If using disagreement, prediiction is the next state
             # shape=[num_dynamics, num_envs, n_steps_per_seg, feature_dim]
             prediction = dynamics.get_predictions(ac=acs, features=features)
@@ -601,7 +604,10 @@ class PpoOptimizer(object):
         dyn_prediction_loss = 0
 
         for idx, dynamic in enumerate(self.dynamics_list):
-            print(f"Getting dynamics model prediction error: {idx+1}/{len(self.dynamics_list)}")  # noqa: E501
+            if self.debugging:
+                print(
+                    f"Getting dynamics model prediction error: {idx+1}/{len(self.dynamics_list)}"
+                )  # noqa: E501
             # Put features into dynamics model and get partial loss (dropout)
             dyn_prediction_loss += torch.mean(dynamic.get_predictions_partial(
                 acs, features, next_features
