@@ -59,7 +59,7 @@ def make_env_all_params(rank, args):
 
     """
     if args.env_kind == "atari":
-        from stable_baselines3.common.atari_wrappers.atari_wrappers import NoopResetEnv
+        from stable_baselines3.common.atari_wrappers import NoopResetEnv
         from nupic.embodied.envs.wrappers import (
             AddRandomStateToInfo,
             ExtraTimeLimit,
@@ -229,7 +229,10 @@ if __name__ == "__main__":
 
     if run_args.load and len(run_args.download_model_from) > 0:
         # TODO: Figure out how to continue logging when loading an artifact
-        trainer.load_models(debugging=run_args.debugging, run_args.download_model_from)
+        trainer.load_models(
+            debugging=run_args.debugging,
+            download_model_from=run_args.download_model_from,
+        )
 
     model_path = "./models/" + run_args.exp_name
     if logging_args.model_save_freq >= 0:
