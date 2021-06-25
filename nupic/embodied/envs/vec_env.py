@@ -9,7 +9,7 @@ from multiprocessing import Pipe, Array, Process
 
 import gym
 import numpy as np
-from baselines import logger
+from stable_baselines3.common import logger
 
 _NP_TO_CT = {
     np.float32: ctypes.c_float,

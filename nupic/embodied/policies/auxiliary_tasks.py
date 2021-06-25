@@ -97,8 +97,8 @@ class FeatureExtractor(object):
         self.hidden_dim = policy.hidden_dim
         self.ob_space = policy.ob_space
         self.ac_space = policy.ac_space
-        self.ob_mean = self.policy.ob_mean
-        self.ob_std = self.policy.ob_std
+        self.ob_mean = policy.ob_mean
+        self.ob_std = policy.ob_std
         self.device = device
 
         self.features_shared_with_policy = features_shared_with_policy

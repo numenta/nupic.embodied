@@ -25,6 +25,7 @@ from collections import deque
 from copy import copy
 
 import gym
+from gym import spaces
 import numpy as np
 from PIL import Image
 import pybullet
@@ -39,6 +40,42 @@ def unwrap(env):
         return unwrap(env.leg_env)
     else:
         return env
+
+
+class FrameStack(gym.Wrapper):
+    def __init__(self, env, k):
+        """Stack k last frames.
+        Returns lazy array, which is much more memory efficient.
+        See Also
+        --------
+        baselines.common.atari_wrappers.LazyFrames
+
+        TODO: can we replace this for VecFrameStack from stable_baselines3?
+        """
+        gym.Wrapper.__init__(self, env)
+        self.k = k
+        self.frames = deque([], maxlen=k)
+        shp = env.observation_space.shape
+        self.observation_space = spaces.Box(
+            low=0, high=255, shape=(shp[:-1] + (shp[-1] * k,)),
+            dtype=env.observation_space.dtype
+        )
+
+    def reset(self):
+        ob = self.env.reset()
+        for _ in range(self.k):
+            self.frames.append(ob)
+        return self._get_ob()
+
+    def step(self, action):
+        ob, reward, done, info = self.env.step(action)
+        self.frames.append(ob)
+        return self._get_ob(), reward, done, info
+
+    def _get_ob(self):
+        assert len(self.frames) == self.k
+        return LazyFrames(list(self.frames))
+
 
 
 class MaxAndSkipEnv(gym.Wrapper):
@@ -281,7 +318,6 @@ class FrameSkip(gym.Wrapper):
 def make_mario_env(crop=True, frame_stack=True, clip_rewards=False):
     assert clip_rewards is False
     import retro
-    from baselines.common.atari_wrappers import FrameStack
 
     # gym.undo_logger_setup()
     env = retro.make("SuperMarioBros-Nes", "Level1-1")
@@ -351,7 +387,6 @@ class NoReward(gym.Wrapper):
 def make_multi_pong(frame_stack=True):
     import gym
     import retro
-    from baselines.common.atari_wrappers import FrameStack
 
     gym.undo_logger_setup()
     game_env = env = retro.make("Pong-Atari2600", players=2)
