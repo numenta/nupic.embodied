@@ -24,7 +24,7 @@ Base Disagreement Experiment configuration.
 
 disagreement_base = dict()
 
+ppo_base = dict()
+
 # Export configurations in this file
-CONFIGS = dict(
-    disagreement_base=disagreement_base,
-)
+CONFIGS = dict(disagreement_base=disagreement_base, ppo_base=ppo_base)

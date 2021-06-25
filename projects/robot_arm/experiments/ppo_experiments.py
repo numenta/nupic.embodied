@@ -19,14 +19,12 @@
 #
 
 """
-Backprop through rewards experiments.
+ppo through rewards experiments.
 """
 
 from copy import deepcopy
 
-from .base import disagreement_base
-
-import torch
+from .base import ppo_base
 
 from nupic.embodied.policies.dynamics import Dynamics
 
@@ -71,32 +69,32 @@ def backward_hook(m, i, o):
 
 
 # Debug experiment only
-backprop_debug_robot = deepcopy(disagreement_base)
-backprop_debug_robot.update(
+ppo_debug_robot = deepcopy(ppo_base)
+ppo_debug_robot.update(
     envs_per_process=8,
     num_timesteps=10000,  # 100000 actual number of steps should be higher
     env_kind="roboarm",
     env="RRA",
     touch_reward=True,
     random_force=True,
-    backprop_through_reward=True,
-    group="TestBackprop",
-    notes="Testing backprop experiments",
+    ppo_through_reward=False,
+    group="Testppo",
+    notes="Testing ppo experiments",
     use_disagreement=True,  # currently not working when set to False
     dynamics_class=CustomDynamics,
     policy_class=CnnPolicyWithBackwardHooks,
 )
 
-# Debug backpropagating disagreement in atari breakout
-backprop_debug_atari = deepcopy(disagreement_base)
-backprop_debug_atari.update(
+# Debug PPO in atari breakout
+ppo_debug_atari = deepcopy(ppo_base)
+ppo_debug_atari.update(
     envs_per_process=8,
-    backprop_through_reward=True,
+    ppo_through_reward=False,
 )
 
 # Export configurations in this file
 CONFIGS = dict(
-    backprop_debug_robot=backprop_debug_robot,
-    backprop_debug_atari=backprop_debug_atari,
+    ppo_debug_robot=ppo_debug_robot,
+    ppo_debug_atari=ppo_debug_atari,
     # ppo_debug_atari=ppo_debug_atari,
 )
