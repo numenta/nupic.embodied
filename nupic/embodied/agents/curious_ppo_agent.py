@@ -450,7 +450,7 @@ class PpoOptimizer(object):
         aux_loss, aux_loss_info = self.auxiliary_loss()
         dyn_loss, dyn_loss_info = self.dynamics_loss(acs, features, next_features)
         policy_loss, loss_info = self.ppo_loss(
-            acs, neglogprobs, advantages, returns
+            obs, acs, neglogprobs, advantages, returns
         )  # forward
         total_loss = aux_loss + dyn_loss + policy_loss
         total_loss.backward()
@@ -622,10 +622,12 @@ class PpoOptimizer(object):
             "loss/dyn_prediction_loss": dyn_prediction_loss
         }
 
-    def ppo_loss(self, acs, neglogprobs, advantages, returns, *args):
+    def ppo_loss(self, obs, acs, neglogprobs, advantages, returns, *args):
 
         # Reshape actions and put in tensor
         acs = flatten_dims(acs, len(self.ac_space.shape))
+        # Update the logits of the newest policy corresponding to the current obs & acs
+        self.policy.update_features(obs, acs)
         # Get the negative log probs of the actions under the policy
         neglogprobs_new = self.policy.pd.neglogp(acs.type(torch.LongTensor))
         # Get the entropy of the current policy
