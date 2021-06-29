@@ -142,7 +142,7 @@ if __name__ == "__main__":
 
     # Option to give a new wandb run name to the same experiment settings
     if run_args.wandb_run_name != "":
-        run_args.exp_name = run_args.wandb_run_name
+        run_args.wandb_run_name = run_args.exp_name
 
     print("Setting up Environment.")
 
