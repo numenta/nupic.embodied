@@ -2,7 +2,8 @@ import argparse
 
 import torch.nn
 
-from typing import Callable, Literal
+from typing import Callable
+from typing_extensions import Literal
 from dataclasses import dataclass, field
 from nupic.embodied.policies.dynamics import Dynamics
 from helper_functions import DataClassArgumentParser
