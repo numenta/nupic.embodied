@@ -42,6 +42,46 @@ def unwrap(env):
         return env
 
 
+class LazyFrames(object):
+    def __init__(self, frames):
+        """
+        from https://github.com/openai/baselines/blob/ea25b9e8b234e6ee1bca43083f8f3cf974
+        143998/baselines/common/atari_wrappers.py#L229
+
+        This object ensures that common frames between the observations are only stored once.
+        It exists purely to optimize memory usage which can be huge for DQN's 1M frames replay
+        buffers.
+        This object should only be converted to numpy array before being passed to the model.
+        You'd not believe how complex the previous solution was."""
+        self._frames = frames
+        self._out = None
+
+    def _force(self):
+        if self._out is None:
+            self._out = np.concatenate(self._frames, axis=-1)
+            self._frames = None
+        return self._out
+
+    def __array__(self, dtype=None):
+        out = self._force()
+        if dtype is not None:
+            out = out.astype(dtype)
+        return out
+
+    def __len__(self):
+        return len(self._force())
+
+    def __getitem__(self, i):
+        return self._force()[i]
+
+    def count(self):
+        frames = self._force()
+        return frames.shape[frames.ndim - 1]
+
+    def frame(self, i):
+        return self._force()[..., i]
+
+
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames.

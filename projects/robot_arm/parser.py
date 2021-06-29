@@ -41,11 +41,12 @@ class EnvironmentArguments:
     envs_per_process: int = 128
     nsteps_to_collect_statistics: int = 10000
 
+
 @dataclass
 class TrainerArguments:
     nlumps: int = 1
     num_dynamics: int = 5
-    num_timesteps: int = 1024
+    num_timesteps: int = 1000000
     feat_learning: Literal["none", "idf", "vaesph", "vaenonsph"] = "none"
     fextractor_layernorm: bool = True
     feature_dim: int = 512
@@ -95,23 +96,37 @@ def create_cmd_parser():
     )
     # Run options
     parser.add_argument(
-        "-e", "--exp_name", help="Experiment to run",
-        choices=list(CONFIGS.keys())
+        "-e", "--exp_name", help="Experiment to run", choices=list(CONFIGS.keys())
     )
     parser.add_argument(
-        "-l", "--load", action="store_true", default=False,
-        help="Specify --load to load an existing model (needs to have same exp_name)"
+        "-n", "--wandb_run_name", default="", help="Name of the wandb run"
     )
     parser.add_argument(
-        "-m", "--download_model_from", type=str, default="",
-        help="Download a model from a wandb artifact (specify path)"
+        "-l",
+        "--load",
+        action="store_true",
+        default=False,
+        help="Specify --load to load an existing model (needs to have same exp_name)",
     )
     parser.add_argument(
-        "-d", "--debugging", action="store_true", default=False,
-        help="Option to use when debugging so not every test run is logged."
+        "-m",
+        "--download_model_from",
+        type=str,
+        default="",
+        help="Download a model from a wandb artifact (specify path)",
     )
     parser.add_argument(
-        "-c", "--cpu", action="store_true", default=False,
-        help="Whether to use CPU even if GPU is available"
+        "-d",
+        "--debugging",
+        action="store_true",
+        default=False,
+        help="Option to use when debugging so not every test run is logged.",
+    )
+    parser.add_argument(
+        "-c",
+        "--cpu",
+        action="store_true",
+        default=False,
+        help="Whether to use CPU even if GPU is available",
     )
     return parser

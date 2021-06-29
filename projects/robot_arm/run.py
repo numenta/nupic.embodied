@@ -59,7 +59,7 @@ def make_env_all_params(rank, args):
 
     """
     if args.env_kind == "atari":
-        from stable_baselines3.common.atari_wrappers.atari_wrappers import NoopResetEnv
+        from stable_baselines3.common.atari_wrappers import NoopResetEnv
         from nupic.embodied.envs.wrappers import (
             AddRandomStateToInfo,
             ExtraTimeLimit,
@@ -140,6 +140,10 @@ if __name__ == "__main__":
     exp_args = exp_parser.parse_dict(CONFIGS[run_args.exp_name])
     logging_args, env_args, trainer_args, learner_args = exp_args
 
+    # Option to give a new wandb run name to the same experiment settings
+    if run_args.wandb_run_name != "":
+        run_args.wandb_run_name = run_args.exp_name
+
     print("Setting up Environment.")
 
     make_env = partial(make_env_all_params, args=env_args)
@@ -178,6 +182,7 @@ if __name__ == "__main__":
         for k, v in args.__dict__.items():
             unrolled_config[k] = v
     if not run_args.debugging:
+        # TODO: Resume wandb logging is not working
         run = wandb.init(
             project="embodiedAI",
             name=run_args.exp_name,
@@ -229,7 +234,10 @@ if __name__ == "__main__":
 
     if run_args.load and len(run_args.download_model_from) > 0:
         # TODO: Figure out how to continue logging when loading an artifact
-        trainer.load_models(debugging=run_args.debugging, run_args.download_model_from)
+        trainer.load_models(
+            debugging=run_args.debugging,
+            download_model_from=run_args.download_model_from,
+        )
 
     model_path = "./models/" + run_args.exp_name
     if logging_args.model_save_freq >= 0:

@@ -20,6 +20,7 @@
 # ----------------------------------------------------------------------
 
 from .base import CONFIGS as BASE
+from .ppo_experiments import CONFIGS as PPO
 from .backprop_through_reward import CONFIGS as BACKPROP_THROUGH_REWARD
 
 """
@@ -31,3 +32,4 @@ __all__ = ["CONFIGS"]
 CONFIGS = dict()
 CONFIGS.update(BASE)
 CONFIGS.update(BACKPROP_THROUGH_REWARD)
+CONFIGS.update(PPO)
