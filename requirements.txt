@@ -19,7 +19,6 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-"""General requirements shared by all nupic.embodied projects"""
 
 awscli
 boto3
@@ -27,8 +26,10 @@ jupyter
 matplotlib
 numpy>=1.21.0
 pandas
-# TODO: update ray yaml file
-ray[tune]==0.8.3  # version which is compatible with the yaml file
+# TODO: update ray yaml file and change ray version to latest
+ray==0.8.3  # version which is compatible with the yaml file
+tabulate  # required for ray 0.8.3
+tensorboardX  # required for ray 0.8.3
 sigopt
 tabulate
 wandb
