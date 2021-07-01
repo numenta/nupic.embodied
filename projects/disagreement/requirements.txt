@@ -21,5 +21,6 @@
 # ------------------------------------------------------------------------------
 # Requirements specific to learning by disagreement project
 opencv-python
-real_robots==0.1.21  # will install gym, if not installed
+gym[atari]==0.18.0  # fixing version due to bugs in latest
+real_robots==0.1.21
 stable_baselines3
