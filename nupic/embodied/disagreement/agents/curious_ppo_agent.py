@@ -26,12 +26,12 @@ import numpy as np
 import torch
 import wandb
 
-from nupic.embodied.envs.rollout import Rollout
-from nupic.embodied.envs.vec_env import ShmemVecEnv as VecEnv
+from nupic.embodied.disagreement.envs import Rollout, ShmemVecEnv as VecEnv
+
 from nupic.embodied.utils.model_parts import flatten_dims
 from nupic.embodied.utils.mpi import mpi_moments
 from nupic.embodied.utils.torch import convert_log_to_numpy, to_numpy
-from nupic.embodied.utils.utils import (
+from nupic.embodied.utils.misc import (
     RunningMeanStd,
     explained_variance,
     get_mean_and_std,
@@ -134,7 +134,6 @@ class PpoOptimizer(object):
         backprop_through_reward=False,
     ):
         self.dynamics_list = dynamics_list
-        self.n_updates = 0
         self.scope = scope
         self.device = device
         self.ob_space = ob_space
@@ -156,11 +155,14 @@ class PpoOptimizer(object):
         self.int_coeff = int_coeff
         self.vlog_freq = vlog_freq
         self.debugging = debugging
-        self.time_trained_so_far = 0
         self.dyn_loss_weight = dyn_loss_weight
         self.auxiliary_task = auxiliary_task
         self.use_disagreement = use_disagreement
         self.backprop_through_reward = backprop_through_reward
+
+        self.n_updates = 0
+        self.total_secs = 0
+        self.time_trained_so_far = 0
 
     def start_interaction(self, env_fns, nlump=1):
         """Set up environments and initialize everything.
