@@ -19,3 +19,4 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
+from .trainer import Trainer
