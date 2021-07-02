@@ -164,10 +164,7 @@ if __name__ == "__main__":
     else:
         checkpoint_dir = os.path.join(os.environ["CHECKPOINT_DIR"], "robot_arm")
 
-    model_dir = os.path.join(
-        checkpoint_dir, f"{run_args.exp_name}_{logging_args.project_id}")
-    if not os.path.exists(model_dir):
-        os.makedirs(model_dir)
+    
 
     trainer = Trainer(
         # TODO: should we set exp_name used in wandb.artifact() to wandb_run_name?
@@ -181,10 +178,17 @@ if __name__ == "__main__":
         debugging=run_args.debugging
     )
 
-    if run_args.load and len(run_args.download_model_from) == 0:
+    if len(run_args.load) > 0 and len(run_args.download_model_from) == 0:
         # If the model is not downloaded from wandb we want to load the checkpoint first
         # to get the previous wandb_id to resume logging with that.
-        trainer.load_models(debugging=run_args.debugging)
+        trainer.load_models(debugging=run_args.debugging, model_dir=os.path.join(checkpoint_dir, run_args.load))
+        logging_args.project_id = run_args.load.split('_')[-1]
+        print("Using loaded Project ID " + logging_args.project_id)
+
+    model_dir = os.path.join(
+        checkpoint_dir, f"{run_args.exp_name}_{logging_args.project_id}")
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
 
     # Initialize wandb for logging (if not debugging)
     unrolled_config = {}
@@ -195,7 +199,7 @@ if __name__ == "__main__":
         # TODO: Resume wandb logging is not working
         run = wandb.init(
             project="embodiedAI",
-            name=run_args.exp_name,
+            name=run_args.exp_name + logging_args.project_id,
             id=trainer.wandb_id,
             group=logging_args.group,
             notes=logging_args.notes,
@@ -240,7 +244,7 @@ if __name__ == "__main__":
     # TODO: debugging is used accross all code - is there a better way of defining it
     # instead of message passing from one object to another? Maybe as a global constant?
 
-    if run_args.load and len(run_args.download_model_from) > 0:
+    if len(run_args.load) > 0 and len(run_args.download_model_from) > 0:
         trainer.load_models(
             debugging=run_args.debugging,
             download_model_from=run_args.download_model_from,

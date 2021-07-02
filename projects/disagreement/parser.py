@@ -105,9 +105,8 @@ def create_cmd_parser():
     parser.add_argument(
         "-l",
         "--load",
-        action="store_true",
-        default=False,
-        help="Specify --load to load an existing model (needs to have same exp_name)",
+        default="",
+        help="Specify name of the model to load (if empty, new run starts)",
     )
     parser.add_argument(
         "-m",
