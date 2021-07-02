@@ -19,3 +19,5 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
+from .rollout import Rollout
+from .vec_env import ShmemVecEnv

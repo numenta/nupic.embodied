@@ -26,9 +26,7 @@ from copy import deepcopy
 
 from .base import ppo_base
 
-from nupic.embodied.policies.dynamics import Dynamics
-
-from nupic.embodied.policies.curious_cnn_policy import CnnPolicy
+from nupic.embodied.disagreement.policies import Dynamics, CnnPolicy
 
 # On hooks: https://blog.paperspace.com/pytorch-hooks-gradient-clipping-debugging/
 

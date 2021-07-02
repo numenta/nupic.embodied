@@ -1,13 +1,13 @@
 import argparse
 
 import torch.nn
+import numpy as np
 
 from typing import Callable
 from typing_extensions import Literal
 from dataclasses import dataclass, field
-from nupic.embodied.policies.dynamics import Dynamics
-from helper_functions import DataClassArgumentParser
-from nupic.embodied.policies.curious_cnn_policy import CnnPolicy
+from nupic.embodied.disagreement.policies import Dynamics, CnnPolicy
+from nupic.embodied.utils.parser_utils import DataClassArgumentParser
 
 from experiments import CONFIGS
 
@@ -18,7 +18,7 @@ class LoggingArguments:
     video_log_freq: int = -1  # frequencies in num_updates (not time_steps)
     model_save_freq: int = -1
     detailed_wandb_logging: bool = False
-
+    project_id: str = str(np.random.randint(10e10))
 
 @dataclass
 class EnvironmentArguments:

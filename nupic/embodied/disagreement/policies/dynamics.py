@@ -22,7 +22,7 @@
 
 import torch
 
-from nupic.embodied.models import DynamicsNet
+from nupic.embodied.disagreement.models import DynamicsNet
 from nupic.embodied.utils.model_parts import flatten_dims, unflatten_first_dim
 
 
@@ -110,6 +110,7 @@ class Dynamics(object):
         -------
         array
             Returns the output of the dynamics network
+        TODO: reimplement chunking
         """
         # TODO: refactor this function, too many shape transformations in ac, confusing
         sh = ac.shape  # = [1, nsteps_per_seg]
@@ -167,66 +168,3 @@ class Dynamics(object):
         do = torch.nn.Dropout(p=0.2)
         do_loss = do(loss)
         return do_loss  # vector with mse for each feature
-
-    # def predict_features(self, auxiliary_task):
-    #     """
-    #     Deprecated: remove it
-    #     Forward pass of the dynamics model
-
-    #     Parameters
-    #     ----------
-    #     obs : array
-    #         batch of observations. shape = [n_env, nsteps_per_seg, W, H, C].
-    #     last_obs : array
-    #         batch of last observations. shape = [n_env, 1, W, H, C].
-    #     acs : array
-    #         batch of actions. shape = [n_env, nsteps_per_seg]
-
-    #     Returns
-    #     -------
-    #     array
-    #         predictions. shape = [n_env, nsteps_per_seg, feature_dim]
-
-    #     """
-    #     n_chunks = 8  # TODO: make this a hyperparameter?
-    #     n = obs.shape[0]
-    #     chunk_size = n // n_chunks
-    #     assert n % n_chunks == 0
-
-    #     def get_slice(i):
-    #         """Get slice number i of chunksize n/n_chunks. So eg if we have 64 envs
-    #         and 8 chunks then the chunksize is 8 and the first slice is 0:8,the second
-    #         8:16, the third 16:24, ...
-
-    #         Parameters
-    #         ----------
-    #         i : int
-    #             slice number.
-
-    #         Returns
-    #         -------
-    #         slice
-    #             slice to specify which part of teh observations to process.
-
-    #         """
-    #         return slice(i * chunk_size, (i + 1) * chunk_size)
-
-    #     predictions = []
-
-    #     for i in range(n_chunks):
-    #         # process the current slice of observations
-    #         ob = obs[get_slice(i)]
-    #         last_ob = last_obs[get_slice(i)]
-    #         ac = acs[get_slice(i)]
-    #         # update the policy features and the auxiliary task features
-    #         # self.auxiliary_task.policy.update_features(ob, ac)
-    #         # self.auxiliary_task.update_features(ob, last_ob)
-    #         # get the updated features
-    #         self.update_features(auxiliary_task)
-
-    #         # get the prediction from the model corresponding with the new features
-    #         predictions.append(self.get_predictions())
-
-    #     predictions = torch.cat(predictions, 0)
-
-    #     return predictions

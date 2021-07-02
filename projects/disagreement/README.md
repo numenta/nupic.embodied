@@ -15,7 +15,9 @@ To install nupic.embodied from source, on nupic.embodied root run: `pip install 
 
 To install robot_arm specific requirements, on projects/robot_arm run: `pip install -r requirements.txt`
 
-For proper logging, make sure to set your `WANDB_API_KEY` environment variable. See [wandbdoc](https://docs.wandb.ai/guides/track/advanced/environment-variables). If you don't have an account, create (a free) one to get an API key.
+For proper logging, make sure to set your `WANDB_API_KEY=<my_api_key>` and `WANDB_DIR=<path_to_log_directory>` environment variables. The path set in `WANDB_DIR` needs write permission for the user running the script, so make sure to set the correct permissions (for linux, use the `chmod +rwx <path_to_log_directory>` command.) See [wandbdoc](https://docs.wandb.ai/guides/track/advanced/environment-variables) for more details. If you don't have an account, create (a free) one to get an API key.
+
+To save models, set the `CHECKPOINT_DIR=<path_to_checkpointing_directory>`. As before, mae sure to set write permission for the user running the script.
 
 ### Execution
 

@@ -20,15 +20,35 @@
 #
 # ------------------------------------------------------------------------------
 
+import gym
 import itertools
+import numpy as np
+import pybullet
 from collections import deque
 from copy import copy
-
-import gym
 from gym import spaces
-import numpy as np
 from PIL import Image
-import pybullet
+
+# List wrappers available
+__all__ = [
+    "AddRandomStateToInfo",
+    "CartesianControlDiscrete",
+    "ExtraTimeLimit",
+    "FrameStack",
+    "LazyFrames",
+    "LimitedDiscreteActions",
+    "MarioXReward",
+    "MaxAndSkipEnv",
+    "MontezumaInfoWrapper",
+    "NoReward",
+    "OneChannel",
+    "ProcessFrame84",
+    "RetroALEActions",
+    "StickyActionEnv",
+    "WrapRobot",
+    "make_mario_env",
+    "make_multi_pong",
+]
 
 
 def unwrap(env):

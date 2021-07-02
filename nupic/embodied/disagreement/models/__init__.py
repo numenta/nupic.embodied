@@ -19,7 +19,4 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-# Requirements specific to learning by disagreement project
-opencv-python
-real_robots==0.1.21  # will install gym, if not installed
-stable_baselines3
+from .dynamic_networks import DynamicsNet

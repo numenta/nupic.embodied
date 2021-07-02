@@ -24,22 +24,19 @@
 # Code from https://github.com/qqadssp/Pytorch-Large-Scale-Curiosity
 # and https://github.com/pathak22/exploration-by-disagreement
 
-import argparse
 import os
 from functools import partial
+from parser import create_cmd_parser, create_exp_parser
 
 import gym
 import torch
 import wandb
 from gym.wrappers import ResizeObservation
-
-from stable_baselines3.common.monitor import Monitor
 # TODO: check if Monitor from stable_baselines3 is same as baselines Monitor
-from trainer import Trainer
-
-from parser import create_cmd_parser, create_exp_parser
+from stable_baselines3.common.monitor import Monitor
 
 from experiments import CONFIGS
+from nupic.embodied.disagreement import Trainer
 
 
 def make_env_all_params(rank, args):
@@ -60,14 +57,15 @@ def make_env_all_params(rank, args):
     """
     if args.env_kind == "atari":
         from stable_baselines3.common.atari_wrappers import NoopResetEnv
-        from nupic.embodied.envs.wrappers import (
+
+        from nupic.embodied.disagreement.envs.wrappers import (
             AddRandomStateToInfo,
             ExtraTimeLimit,
+            FrameStack,
             MaxAndSkipEnv,
             MontezumaInfoWrapper,
             ProcessFrame84,
             StickyActionEnv,
-            FrameStack
         )
         env = gym.make(args.env)
         assert "NoFrameskip" in env.spec.id
@@ -85,15 +83,15 @@ def make_env_all_params(rank, args):
             env = MontezumaInfoWrapper(env)
         env = AddRandomStateToInfo(env)
     elif args.env_kind == "mario":
-        from nupic.embodied.envs.wrappers import make_mario_env
+        from nupic.embodied.disagreement.envs.wrappers import make_mario_env
         env = make_mario_env()
     elif args.env_kind == "retro_multi":
-        from nupic.embodied.envs.wrappers import make_multi_pong
+        from nupic.embodied.disagreement.envs.wrappers import make_multi_pong
         env = make_multi_pong()
     elif args.env_kind == "roboarm":
         from real_robots.envs import REALRobotEnv
 
-        from nupic.embodied.envs.wrappers import CartesianControlDiscrete
+        from nupic.embodied.disagreement.envs.wrappers import CartesianControlDiscrete
         env = REALRobotEnv(objects=3, action_type="cartesian")
         env = CartesianControlDiscrete(
             env,
@@ -160,7 +158,19 @@ if __name__ == "__main__":
     device = torch.device(dev_name)
     print("device: " + str(device))
 
+    # Verify if checkpoint dir is given and define dir where model will be savedd
+    if "CHECKPOINT_DIR" not in os.environ:
+        raise KeyError("Environment variable CHECKPOINT_DIR not found, required.")
+    else:
+        checkpoint_dir = os.path.join(os.environ["CHECKPOINT_DIR"], "robot_arm")
+
+    model_dir = os.path.join(
+        checkpoint_dir, f"{run_args.exp_name}_{logging_args.project_id}")
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+
     trainer = Trainer(
+        # TODO: should we set exp_name used in wandb.artifact() to wandb_run_name?
         exp_name=run_args.exp_name,
         make_env=make_env,
         device=device,
@@ -194,10 +204,8 @@ if __name__ == "__main__":
         )
         if wandb.run.resumed:
             print(
-                "resuming wandb logging at step "
-                + str(wandb.run.step)
-                + " with run id "
-                + str(wandb.run.id)
+                f"resuming wandb logging at step {wandb.run.step}"
+                f" with run id {wandb.run.id}"
             )
         trainer.wandb_run = run
 
@@ -233,23 +241,21 @@ if __name__ == "__main__":
     # instead of message passing from one object to another? Maybe as a global constant?
 
     if run_args.load and len(run_args.download_model_from) > 0:
-        # TODO: Figure out how to continue logging when loading an artifact
         trainer.load_models(
             debugging=run_args.debugging,
             download_model_from=run_args.download_model_from,
+            model_dir=model_dir
         )
-
-    model_path = "./models/" + run_args.exp_name
-    if logging_args.model_save_freq >= 0:
-        model_path = model_path + "/checkpoints"
-    if not os.path.exists(model_path):
-        os.makedirs(model_path)
 
     try:
         trainer.train(debugging=run_args.debugging)
-        print("Model finished training.")
+        print("Experiment finished training.")
     except KeyboardInterrupt:
         print("Training interrupted.")
-        trainer.save_models(debugging=run_args.debugging, final=True)
+        trainer.save_models(
+            debugging=run_args.debugging,
+            final=True,
+            model_dir=model_dir
+        )
         if not run_args.debugging:
             run.finish()

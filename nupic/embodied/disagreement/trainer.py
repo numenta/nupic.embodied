@@ -27,16 +27,20 @@ import numpy as np
 import torch
 import wandb
 
-from nupic.embodied.agents.curious_ppo_agent import PpoOptimizer
-from nupic.embodied.policies.auxiliary_tasks import (
+from nupic.embodied.disagreement.agents import PpoOptimizer
+from nupic.embodied.disagreement.policies import (
     VAE,
     FeatureExtractor,
     InverseDynamics,
 )
-from nupic.embodied.policies.curious_cnn_policy import CnnPolicy
-from nupic.embodied.policies.dynamics import Dynamics
-from nupic.embodied.utils.utils import random_agent_ob_mean_std
+from nupic.embodied.utils.misc import random_agent_ob_mean_std
 
+FEATURE_EXTRACTOR_CLASS_MAPPING = {
+    "none": FeatureExtractor,
+    "idf": InverseDynamics,
+    "vaesph": partial(VAE, spherical_obs=True),
+    "vaenonsph": partial(VAE, spherical_obs=False),
+}
 
 class Trainer(object):
     def __init__(
@@ -50,19 +54,14 @@ class Trainer(object):
         learner_args,
         debugging=False
     ):
+        self.exp_name = exp_name
         self.wandb_id = None
         self.wandb_run = None
-        self.exp_name = exp_name
+        self.feat_learning = trainer_args.feat_learning
         self.num_timesteps = trainer_args.num_timesteps
         self.model_save_freq = logging_args.model_save_freq
         envs, ob_space, ac_space, ob_mean, ob_std = self.init_environments(
             make_env, env_args
-        )
-
-        # Params required to save the model later
-        self.save_params = dict(
-            norm_rew=learner_args.norm_rew,
-            feat_learning=trainer_args.feat_learning
         )
 
         # Initialize the PPO policy for action selection
@@ -91,12 +90,8 @@ class Trainer(object):
                 decoder. Additionally a scaling factor is applied..
         vaenonsph: Same as vaesph but without the scaling factor.
         """
-        self.feature_extractor_class = {
-            "none": FeatureExtractor,
-            "idf": InverseDynamics,
-            "vaesph": partial(VAE, spherical_obs=True),
-            "vaenonsph": partial(VAE, spherical_obs=False),
-        }[trainer_args.feat_learning]
+        self.feature_extractor_class = \
+            FEATURE_EXTRACTOR_CLASS_MAPPING[trainer_args.feat_learning]
 
         self.feature_extractor = self.feature_extractor_class(
             policy=self.policy,
@@ -193,115 +188,119 @@ class Trainer(object):
 
         return envs, ob_space, ac_space, ob_mean, ob_std
 
-    def save_models(self, debugging=False, final=False):
-        state_dicts = {
+    def save_models(self, debugging=False, final=False, model_dir=None):
+
+        state_dicts = sds = {
             "feature_extractor": self.feature_extractor.features_model.state_dict(),
             "policy_features": self.policy.features_model.state_dict(),
             "policy_hidden": self.policy.pd_hidden.state_dict(),
             "policy_pd_head": self.policy.pd_head.state_dict(),
             "policy_vf_head": self.policy.vf_head.state_dict(),
-            "optimizer": self.agent.optimizer.state_dict(),
             "step_count": self.agent.step_count,
             "n_updates": self.agent.n_updates,
             "total_secs": self.agent.total_secs,
             "best_ext_ret": self.agent.rollout.best_ext_return,
         }
-        if self.save_params["feat_learning"] == "idf":
-            state_dicts["idf_fc"] = self.feature_extractor.fc.state_dict()
-        elif self.save_params["feat_learning"] == "vaesph":
-            state_dicts[
-                "decoder_model"
-            ] = self.feature_extractor.decoder_model.state_dict()
-            state_dicts["scale"] = self.feature_extractor.scale
-        elif self.save_params["feat_learning"] == "vaenonsph":
-            state_dicts[
-                "decoder_model"
-            ] = self.feature_extractor.decoder_model.state_dict()
 
-        if self.save_params["norm_rew"]:
-            state_dicts["tracked_reward"] = self.agent.reward_forward_filter.rewems
-            state_dicts["reward_stats_mean"] = self.agent.reward_stats.mean
-            state_dicts["reward_stats_var"] = self.agent.reward_stats.var
-            state_dicts["reward_stats_count"] = self.agent.reward_stats.count
+        if self.agent.backprop_through_reward:
+            sds["policy_optimizer"] = self.agent.policy_optimizer.state_dict()
+            sds["dynamics_optimizer"] = self.agent.dynamics_optimizer.state_dict()
+        else:
+            sds["optimizer"] = self.agent.optimizer.state_dict()
+
+        if self.feat_learning == "idf":
+            sds["idf_fc"] = self.feature_extractor.fc.state_dict()
+        elif self.feat_learning == "vaesph":
+            sds["decoder_model"] = self.feature_extractor.decoder_model.state_dict()
+            sds["scale"] = self.feature_extractor.scale
+        elif self.feat_learning == "vaenonsph":
+            sds["decoder_model"] = self.feature_extractor.decoder_model.state_dict()
+
+        if self.agent.norm_rew:
+            sds["tracked_reward"] = self.agent.reward_forward_filter.rewems
+            sds["reward_stats_mean"] = self.agent.reward_stats.mean
+            sds["reward_stats_var"] = self.agent.reward_stats.var
+            sds["reward_stats_count"] = self.agent.reward_stats.count
 
         if not debugging:
-            state_dicts["wandb_id"] = wandb.run.id
+            sds["wandb_id"] = wandb.run.id
 
         for i in range(self.num_dynamics):
-            state_dicts["dynamics_model_" + str(i)] = self.dynamics_list[
-                i
-            ].dynamics_net.state_dict()
+            sds[f"dynamics_model_{i}"] = self.dynamics_list[i].dynamics_net.state_dict()
 
         if final:
-            model_path = "./models/" + self.exp_name
-            torch.save(state_dicts, model_path + "/model.pt")
-            print("Saved final model at " + model_path + "/model.pt")
+            model_path = os.path.join(model_dir, "model.pt")
+            torch.save(state_dicts, model_path)
+            print(f"Saved final model at {model_path}")
             if not debugging:
                 artifact = wandb.Artifact(self.exp_name, type="model")
-                artifact.add_file(model_path + "/model.pt")
+                artifact.add_file(model_path)
                 self.wandb_run.log_artifact(artifact)
-                # self.wandb_run.join()
+                # self.wandb_run.join()  # TODO: remove it?
                 print("Model saved as artifact to wandb. Wait until sync is finished.")
         else:
-            model_path = "./models/" + self.exp_name + "/checkpoints"
-            torch.save(
-                state_dicts, model_path + "/model" + str(self.agent.step_count) + ".pt"
-            )
-            print(
-                "Saved intermediate model at "
-                + model_path
-                + "/model"
-                + str(self.agent.step_count)
-                + ".pt"
-            )
+            model_dir = os.path.join(model_dir, "checkpoints")
+            if not os.path.exists(model_dir):
+                os.makedirs(model_dir)
+            model_path = os.path.join(model_dir, f"model{self.agent.step_count}.pt")
 
-    def load_models(self, debugging=False, download_model_from=None):
+            torch.save(state_dicts, model_path)
+            print("Saved intermediate model at {model_path}")
+
+    def load_models(self, debugging=False, download_model_from=None, model_dir=None):
+        """
+        Load existing model to continue training
+
+        TODO: Figure out how to continue logging when loading an artifact
+        TODO: If loading from checkpoint will fail - need to look for latest
+        """
+
         if download_model_from is not None:
             artifact = self.wandb_run.use_artifact(download_model_from, type="model")
             model_path = artifact.download()
         else:
-            model_path = "./models/" + self.exp_name
-        print("Loading model from " + str(model_path + "/model.pt"))
-        checkpoint = torch.load(model_path + "/model.pt")
+            model_path = os.path.join(model_dir, "model.pt")
+        print(f"Loading model from {model_path}")
+        checkpoint = cp = torch.load(model_path)  # noqa: F841
 
-        self.feature_extractor.features_model.load_state_dict(
-            checkpoint["feature_extractor"]
-        )
-        self.policy.features_model.load_state_dict(checkpoint["policy_features"])
-        self.policy.pd_hidden.load_state_dict(checkpoint["policy_hidden"])
-        self.policy.pd_head.load_state_dict(checkpoint["policy_pd_head"])
-        self.policy.vf_head.load_state_dict(checkpoint["policy_vf_head"])
-        self.agent.optimizer.load_state_dict(checkpoint["optimizer"])
+        self.feature_extractor.features_model.load_state_dict(cp["feature_extractor"])
+        self.policy.features_model.load_state_dict(cp["policy_features"])
+        self.policy.pd_hidden.load_state_dict(cp["policy_hidden"])
+        self.policy.pd_head.load_state_dict(cp["policy_pd_head"])
+        self.policy.vf_head.load_state_dict(cp["policy_vf_head"])
+
+        if self.agent.backprop_through_reward:
+            self.agent.policy_optimizer.load_state_dict(cp["policy_optimizer"])
+            self.agent.dynamics_optimizer.load_state_dict(cp["dynamics_optimizer"])
+        else:
+            self.agent.optimizer.load_state_dict(cp["optimizer"])
+
         for i in range(self.num_dynamics):
             self.dynamics_list[i].dynamics_net.load_state_dict(
-                checkpoint["dynamics_model_" + str(i)]
+                cp[f"dynamics_model_{i}"]
             )
-        print("starting at step " + str(checkpoint["step_count"]))
-        self.agent.start_step = checkpoint["step_count"]
-        self.agent.n_updates = checkpoint["n_updates"]
-        self.agent.time_trained_so_far = checkpoint["total_secs"]
-        self.agent.rollout.best_ext_return = checkpoint["best_ext_ret"]
+        print("starting at step " + str(cp["step_count"]))
+        self.agent.start_step = cp["step_count"]
+        self.agent.n_updates = cp["n_updates"]
+        self.agent.time_trained_so_far = cp["total_secs"]
+        self.agent.rollout.best_ext_return = cp["best_ext_ret"]
 
-        if self.save_params["feat_learning"] == "idf":
-            self.feature_extractor.fc.load_state_dict(checkpoint["idf_fc"])
-        elif self.save_params["feat_learning"] == "vaesph":
-            self.feature_extractor.decoder_model.load_state_dict(
-                checkpoint["decoder_model"]
-            )
-            self.feature_extractor.scale = checkpoint["scale"]
-        elif self.save_params["feat_learning"] == "vaenonsph":
-            self.feature_extractor.decoder_model.load_state_dict(
-                checkpoint["decoder_model"]
-            )
+        if self.feat_learning == "idf":
+            self.feature_extractor.fc.load_state_dict(cp["idf_fc"])
+        elif self.feat_learning == "vaesph":
+            self.feature_extractor.decoder_model.load_state_dict(cp["decoder_model"])
+            self.feature_extractor.scale = cp["scale"]
+        elif self.feat_learning == "vaenonsph":
+            self.feature_extractor.decoder_model.load_state_dict(cp["decoder_model"])
 
         if self.save_params["norm_rew"]:
-            self.agent.reward_forward_filter.rewems = checkpoint["tracked_reward"]
-            self.agent.reward_stats.mean = checkpoint["reward_stats_mean"]
-            self.agent.reward_stats.var = checkpoint["reward_stats_var"]
-            self.agent.reward_stats.count = checkpoint["reward_stats_count"]
+            self.agent.reward_forward_filter.rewems = cp["tracked_reward"]
+            self.agent.reward_stats.mean = cp["reward_stats_mean"]
+            self.agent.reward_stats.var = cp["reward_stats_var"]
+            self.agent.reward_stats.count = cp["reward_stats_count"]
 
         if not debugging:
-            self.wandb_id = checkpoint["wandb_id"]
+            self.wandb_id = cp["wandb_id"]
         print("Model successfully loaded.")
 
     def train(self, debugging=False):
