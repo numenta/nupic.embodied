@@ -26,6 +26,7 @@ import torch
 
 from nupic.embodied.utils.distributions import make_pdtype
 from nupic.embodied.utils.model_parts import small_convnet, unflatten_first_dim
+from nupic.embodied.utils.torch import to_tensor
 
 
 class CnnPolicy(object):
@@ -102,8 +103,8 @@ class CnnPolicy(object):
             )
         self.layernormalize = layernormalize
         self.nonlinear = nonlinear
-        self.ob_mean = ob_mean
-        self.ob_std = ob_std
+        self.ob_mean = to_tensor(ob_mean)   # convert to tensor
+        self.ob_std = to_tensor(ob_std)  # convert to tensor
         self.ob_space = ob_space
         self.ac_space = ac_space
         # Get the type of probabiliyt distribution to use dependng on the environments
