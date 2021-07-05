@@ -199,7 +199,7 @@ if __name__ == "__main__":
         # TODO: Resume wandb logging is not working
         run = wandb.init(
             project="embodiedAI",
-            name=run_args.exp_name + logging_args.project_id,
+            name=run_args.exp_name + "_" + logging_args.project_id,
             id=trainer.wandb_id,
             group=logging_args.group,
             notes=logging_args.notes,
