@@ -293,7 +293,7 @@ class Trainer(object):
         elif self.feat_learning == "vaenonsph":
             self.feature_extractor.decoder_model.load_state_dict(cp["decoder_model"])
 
-        if self.save_params["norm_rew"]:
+        if self.agent.norm_rew:
             self.agent.reward_forward_filter.rewems = cp["tracked_reward"]
             self.agent.reward_stats.mean = cp["reward_stats_mean"]
             self.agent.reward_stats.var = cp["reward_stats_var"]
