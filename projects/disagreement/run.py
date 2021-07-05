@@ -162,7 +162,7 @@ if __name__ == "__main__":
     if "CHECKPOINT_DIR" not in os.environ:
         raise KeyError("Environment variable CHECKPOINT_DIR not found, required.")
     else:
-        checkpoint_dir = os.path.join(os.environ["CHECKPOINT_DIR"], "robot_arm")
+        checkpoint_dir = os.path.join(os.environ["CHECKPOINT_DIR"], "disagreement")
 
     
 
