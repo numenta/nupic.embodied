@@ -42,6 +42,7 @@ FEATURE_EXTRACTOR_CLASS_MAPPING = {
     "vaenonsph": partial(VAE, spherical_obs=False),
 }
 
+
 class Trainer(object):
     def __init__(
         self,
