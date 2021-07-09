@@ -11,6 +11,7 @@ from nupic.embodied.utils.parser_utils import DataClassArgumentParser
 
 from experiments import CONFIGS
 
+
 @dataclass
 class LoggingArguments:
     group: str = ""
@@ -19,6 +20,7 @@ class LoggingArguments:
     model_save_freq: int = -1
     detailed_wandb_logging: bool = False
     project_id: str = str(np.random.randint(10e10))
+
 
 @dataclass
 class EnvironmentArguments:
