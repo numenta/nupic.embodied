@@ -19,4 +19,4 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-from .trainer import Trainer
+from .trainer import Trainer, ProfilerMixin

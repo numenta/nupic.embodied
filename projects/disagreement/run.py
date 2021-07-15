@@ -36,7 +36,6 @@ from gym.wrappers import ResizeObservation
 from stable_baselines3.common.monitor import Monitor
 
 from experiments import CONFIGS
-from nupic.embodied.disagreement import Trainer
 
 
 def make_env_all_params(rank, args):
@@ -165,7 +164,9 @@ if __name__ == "__main__":
         else:
             checkpoint_dir = os.path.join(os.environ["CHECKPOINT_DIR"], "disagreement")
 
-    trainer = Trainer(
+    trainer_class = trainer_args.trainer_class
+
+    trainer = trainer_class(
         # TODO: should we set exp_name used in wandb.artifact() to wandb_run_name?
         exp_name=run_args.exp_name,
         make_env=make_env,
@@ -253,7 +254,7 @@ if __name__ == "__main__":
         )
 
     try:
-        trainer.train(debugging=run_args.debugging)
+        trainer.train(debugging=run_args.debugging, model_dir=model_dir)
         print("Experiment finished training.")
     except KeyboardInterrupt:
         print("Training interrupted.")

@@ -30,6 +30,8 @@ import torch
 
 from nupic.embodied.disagreement.policies import Dynamics, CnnPolicy
 
+from nupic.embodied.disagreement import Trainer, ProfilerMixin
+
 
 # On hooks: https://blog.paperspace.com/pytorch-hooks-gradient-clipping-debugging/
 
@@ -69,6 +71,10 @@ def backward_hook(m, i, o):
     print("\n")
 
 
+class TrainerWithProfiler(ProfilerMixin, Trainer):
+    pass
+
+
 # Debug experiment only
 backprop_debug_robot = deepcopy(disagreement_base)
 backprop_debug_robot.update(
@@ -82,8 +88,11 @@ backprop_debug_robot.update(
     group="TestBackprop",
     notes="Testing backprop experiments",
     use_disagreement=True,  # currently not working when set to False
-    dynamics_class=CustomDynamics,
-    policy_class=CnnPolicyWithBackwardHooks,
+    # dynamics_class=CustomDynamics,
+    # policy_class=CnnPolicyWithBackwardHooks,
+    trainer_class=TrainerWithProfiler,
+    nsteps_per_seg=8,
+    project_id="profiler_test3"
 )
 
 # Debug backpropagating disagreement in atari breakout

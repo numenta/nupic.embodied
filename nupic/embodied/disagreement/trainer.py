@@ -304,7 +304,10 @@ class Trainer(object):
             self.wandb_id = cp["wandb_id"]
         print("Model successfully loaded.")
 
-    def train(self, debugging=False):
+    def step(self):
+        return self.agent.step()
+
+    def train(self, debugging=False, model_dir=None):
         """Training loop for the agent.
 
         Keeps learning until num_timesteps is reached.
@@ -313,7 +316,7 @@ class Trainer(object):
 
         print("# of timesteps: " + str(self.num_timesteps))
         while True:
-            info = self.agent.step()
+            info = self.step()
             print("------------------------------------------")
             print(
                 "Step count: "
@@ -347,3 +350,33 @@ class Trainer(object):
                 break
         print("Stopped interaction")
         self.agent.stop_interaction()
+
+
+class ProfilerMixin():
+
+    def train(self, debugging=False, model_dir=None):
+
+        profiler_path = os.path.join(model_dir, "profiler")
+        print("Profiler path: ", profiler_path)
+
+        trace_handler = torch.profiler.tensorboard_trace_handler(profiler_path)
+        profiler_args = dict(
+            on_trace_ready=trace_handler,
+            schedule=torch.profiler.schedule(wait=1, warmup=1, active=1),
+            with_stack=True,
+            # with_trace=False,
+            profile_memory=True
+        )
+
+        with torch.profiler.profile(**profiler_args) as prof:
+            self._profiler = prof
+            super().train(debugging=debugging)
+
+        # TODO: are we using this?
+        self._profiler.export_chrome_trace(profiler_path)
+
+    def step(self):
+        info = self.agent.step()
+        print("********* Taking a profiler step")
+        self._profiler.step()
+        return info
