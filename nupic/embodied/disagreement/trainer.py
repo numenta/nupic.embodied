@@ -34,6 +34,7 @@ from nupic.embodied.disagreement.policies import (
     InverseDynamics,
 )
 from nupic.embodied.utils.misc import random_agent_ob_mean_std
+from nupic.embodied.utils.mem_profiling import get_tensors
 
 FEATURE_EXTRACTOR_CLASS_MAPPING = {
     "none": FeatureExtractor,
@@ -352,6 +353,14 @@ class Trainer(object):
         self.agent.stop_interaction()
 
 
+class MemUsageMixin():
+
+    def step(self):
+        print("********* Mem usage prior to step")
+        print_overall_mem_usage(self.agent.step_count)
+        torch.cuda.empty_cache()  # added to test, doesn't help
+        return self.agent.step()
+
 class ProfilerMixin():
 
     def train(self, debugging=False, model_dir=None):
@@ -380,3 +389,19 @@ class ProfilerMixin():
         print("********* Taking a profiler step")
         self._profiler.step()
         return info
+
+
+def print_overall_mem_usage(step):
+    total_cpu, total_cuda = 0, 0
+    for obj in get_tensors():
+        if obj.device.type == "cpu":
+            total_cpu += obj.element_size() * obj.nelement()
+        elif obj.device.type == "cuda":
+            total_cuda += obj.element_size() * obj.nelement()
+        else:
+            print(f"Device: {obj.device.type}")
+
+    print(
+        f"step {step}, mem cpu {total_cpu / (1024**3):.4f} GB, "
+        f"mem gpu {total_cuda / (1024**3):.4f}"
+    )

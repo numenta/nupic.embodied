@@ -30,7 +30,7 @@ import torch
 
 from nupic.embodied.disagreement.policies import Dynamics, CnnPolicy
 
-from nupic.embodied.disagreement import Trainer, ProfilerMixin
+from nupic.embodied.disagreement import Trainer, MemUsageMixin
 
 
 # On hooks: https://blog.paperspace.com/pytorch-hooks-gradient-clipping-debugging/
@@ -71,7 +71,7 @@ def backward_hook(m, i, o):
     print("\n")
 
 
-class TrainerWithProfiler(ProfilerMixin, Trainer):
+class TrainerWithProfiler(MemUsageMixin, Trainer):
     pass
 
 
