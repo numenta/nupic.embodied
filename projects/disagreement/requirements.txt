@@ -27,3 +27,4 @@ stable_baselines3
 tensorboard==2.0.2
 tensorboardX==1.8
 torch-tb-profiler==0.2.1
+pytorchviz   # requires: brew install pytorchviz
