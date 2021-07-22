@@ -121,7 +121,7 @@ class Trainer(object):
             )
 
         # Initialize the agent.
-        self.agent = PpoOptimizer(
+        self.agent = trainer_args.agent_class(
             scope="ppo",
             device=device,
             ob_space=ob_space,
