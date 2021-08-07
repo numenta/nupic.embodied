@@ -36,7 +36,6 @@ from gym.wrappers import ResizeObservation
 from stable_baselines3.common.monitor import Monitor
 
 from experiments import CONFIGS
-from nupic.embodied.disagreement import Trainer
 
 
 def make_env_all_params(rank, args):
@@ -164,9 +163,9 @@ if __name__ == "__main__":
     else:
         checkpoint_dir = os.path.join(os.environ["CHECKPOINT_DIR"], "disagreement")
 
-    
+    trainer_class = trainer_args.trainer_class
 
-    trainer = Trainer(
+    trainer = trainer_class(
         # TODO: should we set exp_name used in wandb.artifact() to wandb_run_name?
         exp_name=run_args.exp_name,
         make_env=make_env,
@@ -181,14 +180,15 @@ if __name__ == "__main__":
     if len(run_args.load) > 0 and len(run_args.download_model_from) == 0:
         # If the model is not downloaded from wandb we want to load the checkpoint first
         # to get the previous wandb_id to resume logging with that.
-        trainer.load_models(debugging=run_args.debugging, model_dir=os.path.join(checkpoint_dir, run_args.load))
+        trainer.load_models(debugging=run_args.debugging,
+                            model_dir=os.path.join(checkpoint_dir, run_args.load))
         logging_args.project_id = run_args.load.split('_')[-1]
         print("Using loaded Project ID " + logging_args.project_id)
 
     model_dir = os.path.join(
-        checkpoint_dir, f"{run_args.exp_name}_{logging_args.project_id}")
-    if not os.path.exists(model_dir):
-        os.makedirs(model_dir)
+        checkpoint_dir,
+        f"{run_args.exp_name}_{logging_args.project_id}"
+    )
 
     # Initialize wandb for logging (if not debugging)
     unrolled_config = {}
@@ -196,6 +196,9 @@ if __name__ == "__main__":
         for k, v in args.__dict__.items():
             unrolled_config[k] = v
     if not run_args.debugging:
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+
         # TODO: Resume wandb logging is not working
         run = wandb.init(
             project="embodiedAI",
@@ -252,14 +255,16 @@ if __name__ == "__main__":
         )
 
     try:
-        trainer.train(debugging=run_args.debugging)
+        trainer.train(debugging=run_args.debugging, model_dir=model_dir)
         print("Experiment finished training.")
     except KeyboardInterrupt:
         print("Training interrupted.")
-        trainer.save_models(
-            debugging=run_args.debugging,
-            final=True,
-            model_dir=model_dir
-        )
+        if not run_args.debugging:
+            # Don't save models when debugging
+            trainer.save_models(
+                debugging=run_args.debugging,
+                final=True,
+                model_dir=model_dir
+            )
         if not run_args.debugging:
             run.finish()

@@ -34,6 +34,7 @@ from nupic.embodied.disagreement.policies import (
     InverseDynamics,
 )
 from nupic.embodied.utils.misc import random_agent_ob_mean_std
+from nupic.embodied.utils.mem_profiling import get_tensors
 
 FEATURE_EXTRACTOR_CLASS_MAPPING = {
     "none": FeatureExtractor,
@@ -41,6 +42,7 @@ FEATURE_EXTRACTOR_CLASS_MAPPING = {
     "vaesph": partial(VAE, spherical_obs=True),
     "vaenonsph": partial(VAE, spherical_obs=False),
 }
+
 
 class Trainer(object):
     def __init__(
@@ -119,7 +121,7 @@ class Trainer(object):
             )
 
         # Initialize the agent.
-        self.agent = PpoOptimizer(
+        self.agent = trainer_args.agent_class(
             scope="ppo",
             device=device,
             ob_space=ob_space,
@@ -303,7 +305,10 @@ class Trainer(object):
             self.wandb_id = cp["wandb_id"]
         print("Model successfully loaded.")
 
-    def train(self, debugging=False):
+    def step(self):
+        return self.agent.step()
+
+    def train(self, debugging=False, model_dir=None):
         """Training loop for the agent.
 
         Keeps learning until num_timesteps is reached.
@@ -312,7 +317,7 @@ class Trainer(object):
 
         print("# of timesteps: " + str(self.num_timesteps))
         while True:
-            info = self.agent.step()
+            info = self.step()
             print("------------------------------------------")
             print(
                 "Step count: "
@@ -346,3 +351,57 @@ class Trainer(object):
                 break
         print("Stopped interaction")
         self.agent.stop_interaction()
+
+
+class MemUsageMixin():
+
+    def step(self):
+        print("********* Mem usage prior to step")
+        print_overall_mem_usage(self.agent.step_count)
+        torch.cuda.empty_cache()  # added to test, doesn't help
+        return self.agent.step()
+
+class ProfilerMixin():
+
+    def train(self, debugging=False, model_dir=None):
+
+        profiler_path = os.path.join(model_dir, "profiler")
+        print("Profiler path: ", profiler_path)
+
+        trace_handler = torch.profiler.tensorboard_trace_handler(profiler_path)
+        profiler_args = dict(
+            on_trace_ready=trace_handler,
+            schedule=torch.profiler.schedule(wait=1, warmup=1, active=1),
+            with_stack=True,
+            # with_trace=False,
+            profile_memory=True
+        )
+
+        with torch.profiler.profile(**profiler_args) as prof:
+            self._profiler = prof
+            super().train(debugging=debugging)
+
+        # TODO: are we using this?
+        self._profiler.export_chrome_trace(profiler_path)
+
+    def step(self):
+        info = self.agent.step()
+        print("********* Taking a profiler step")
+        self._profiler.step()
+        return info
+
+
+def print_overall_mem_usage(step):
+    total_cpu, total_cuda = 0, 0
+    for obj in get_tensors():
+        if obj.device.type == "cpu":
+            total_cpu += obj.element_size() * obj.nelement()
+        elif obj.device.type == "cuda":
+            total_cuda += obj.element_size() * obj.nelement()
+        else:
+            print(f"Device: {obj.device.type}")
+
+    print(
+        f"step {step}, mem cpu {total_cpu / (1024**3):.4f} GB, "
+        f"mem gpu {total_cuda / (1024**3):.4f}"
+    )

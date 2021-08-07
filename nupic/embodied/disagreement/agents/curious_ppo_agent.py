@@ -574,6 +574,7 @@ class PpoOptimizer(object):
 
         # Get variance over dynamics models
         disagreement = torch.var(torch.stack(predictions), axis=0)
+
         return disagreement
 
     def calculate_rewards(self, acs, obs, last_obs):
