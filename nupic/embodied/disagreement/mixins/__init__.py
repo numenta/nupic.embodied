@@ -20,18 +20,4 @@
 #
 # ------------------------------------------------------------------------------
 
-awscli
-boto3
-jupyter
-matplotlib
-numpy>=1.21.0
-pandas
-# TODO: update ray yaml file and change ray version to latest
-ray  # ==0.8.3  # version which is compatible with the yaml file
-tabulate  # required for ray 0.8.3
-tensorboardX  # required for ray 0.8.3
-sigopt
-tabulate
-wandb
-torch
-torchvision
+from .view_graph import ViewGraph

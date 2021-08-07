@@ -8,6 +8,8 @@ from typing_extensions import Literal
 from dataclasses import dataclass, field
 from nupic.embodied.disagreement.policies import Dynamics, CnnPolicy
 from nupic.embodied.utils.parser_utils import DataClassArgumentParser
+from nupic.embodied.disagreement import Trainer
+from nupic.embodied.disagreement.agents import PpoOptimizer
 
 from experiments import CONFIGS
 
@@ -59,6 +61,8 @@ class TrainerArguments:
     policy_class: Callable = CnnPolicy
     policy_nonlinearity: Callable = torch.nn.LeakyReLU
     dynamics_class: Callable = Dynamics
+    trainer_class: Callable = Trainer
+    agent_class: Callable = PpoOptimizer
 
 
 @dataclass

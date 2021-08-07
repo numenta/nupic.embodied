@@ -20,18 +20,35 @@
 #
 # ------------------------------------------------------------------------------
 
-awscli
-boto3
-jupyter
-matplotlib
-numpy>=1.21.0
-pandas
-# TODO: update ray yaml file and change ray version to latest
-ray  # ==0.8.3  # version which is compatible with the yaml file
-tabulate  # required for ray 0.8.3
-tensorboardX  # required for ray 0.8.3
-sigopt
-tabulate
-wandb
-torch
-torchvision
+from torchviz import make_dot
+from matplotlib import pyplot as plt
+
+
+class ViewGraph(object):
+    """
+    Mixin to PPOOptimizer (agent) to allow visualization of disagreement
+    computational graph
+    """
+
+    def calculate_disagreement(self, acs, features, next_features):
+        """If next features is defined, return prediction error.
+        Otherwise returns predictions i.e. dynamics model last layer output
+        """
+
+        disagreement = super().calculate_disagreement(acs, features, next_features)
+
+        model = self.dynamics_list[0].dynamics_net
+
+        print("********************")
+        print("Making and saving plot")
+        dot = make_dot(
+            disagreement,
+            params=dict(model.named_parameters()),
+            show_attrs=True,
+            show_saved=True
+        )
+        dot.format = "png"
+        dot.render()
+        # plt.savefig("disagreement_comp_graph.png")
+
+        return disagreement

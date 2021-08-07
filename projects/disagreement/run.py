@@ -36,7 +36,6 @@ from gym.wrappers import ResizeObservation
 from stable_baselines3.common.monitor import Monitor
 
 from experiments import CONFIGS
-from nupic.embodied.disagreement import Trainer
 
 
 def make_env_all_params(rank, args):
@@ -158,14 +157,15 @@ if __name__ == "__main__":
     device = torch.device(dev_name)
     print("device: " + str(device))
 
-    if not run_args.debugging:
-        # Verify if checkpoint dir is given and define dir where model will be savedd
-        if "CHECKPOINT_DIR" not in os.environ:
-            raise KeyError("Environment variable CHECKPOINT_DIR not found, required.")
-        else:
-            checkpoint_dir = os.path.join(os.environ["CHECKPOINT_DIR"], "disagreement")
+    # Verify if checkpoint dir is given and define dir where model will be savedd
+    if "CHECKPOINT_DIR" not in os.environ:
+        raise KeyError("Environment variable CHECKPOINT_DIR not found, required.")
+    else:
+        checkpoint_dir = os.path.join(os.environ["CHECKPOINT_DIR"], "disagreement")
 
-    trainer = Trainer(
+    trainer_class = trainer_args.trainer_class
+
+    trainer = trainer_class(
         # TODO: should we set exp_name used in wandb.artifact() to wandb_run_name?
         exp_name=run_args.exp_name,
         make_env=make_env,
@@ -185,15 +185,17 @@ if __name__ == "__main__":
         logging_args.project_id = run_args.load.split('_')[-1]
         print("Using loaded Project ID " + logging_args.project_id)
 
+    model_dir = os.path.join(
+        checkpoint_dir,
+        f"{run_args.exp_name}_{logging_args.project_id}"
+    )
+
     # Initialize wandb for logging (if not debugging)
     unrolled_config = {}
     for args in exp_args:
         for k, v in args.__dict__.items():
             unrolled_config[k] = v
     if not run_args.debugging:
-        model_dir = os.path.join(checkpoint_dir,
-                                 f"{run_args.exp_name}_{logging_args.project_id}")
-
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
 
@@ -253,7 +255,7 @@ if __name__ == "__main__":
         )
 
     try:
-        trainer.train(debugging=run_args.debugging)
+        trainer.train(debugging=run_args.debugging, model_dir=model_dir)
         print("Experiment finished training.")
     except KeyboardInterrupt:
         print("Training interrupted.")
