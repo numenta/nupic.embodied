@@ -20,4 +20,4 @@
 #
 # ------------------------------------------------------------------------------
 
-from .view_graph import ViewGraph
+# from .view_graph import ViewGraph
