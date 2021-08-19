@@ -29,7 +29,7 @@ from torch.distributions.independent import Independent
 from garage.torch.distributions import TanhNormal
 from garage.torch.modules import MultiHeadedMLPModule, MLPModule
 from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer
-from nupic.embodied.models.dendrite_mlp import CustomDendriticMLP
+from nupic.embodied.multitask.models.dendrite_mlp import CustomDendriticMLP
 
 class GaussianMLPBaseModule(nn.Module):
     """Base of GaussianMLPModel. Adapted from:

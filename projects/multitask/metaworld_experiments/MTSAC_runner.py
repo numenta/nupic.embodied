@@ -1,3 +1,24 @@
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
 """MTSAC implementation based on Metaworld. Benchmarked on MT10.
 https://arxiv.org/pdf/1910.10897.pdf
 
@@ -18,13 +39,15 @@ from garage.envs import normalize
 from garage.experiment import deterministic
 from garage.experiment.task_sampler import MetaWorldTaskSampler
 from garage.replay_buffer import PathBuffer
-from garage.sampler import DefaultWorker, EvalWorker
+# EvalWorker not available in latest version of garage, can't find a commit
+# where it was available
+from garage.sampler import DefaultWorker # , EvalWorker
 from garage.torch import set_gpu_mode
 from garage.trainer import Trainer
 from time import time
 
-from nupic.embodied.samplers.gpu_sampler import RaySampler
-from nupic.embodied.algos.custom_mtsac import CustomMTSAC
+from nupic.embodied.multitask.samplers.gpu_sampler import RaySampler
+from nupic.embodied.multitask.algos.custom_mtsac import CustomMTSAC
 from nupic.embodied.utils.garage_utils import (
     create_policy_net,
     create_qf_net,
@@ -102,7 +125,7 @@ def mem_report():
 @click.option("-w", "--use_wandb", default="True")
 @click.option("-g", "--gpu", is_flag=True, default=False)
 @wrap_experiment(snapshot_mode="none", name_parameters="passed", name="test_run",
-                 log_dir=os.environ["LOG_DIR"] or None, archive_launch_repo=False)
+                 log_dir=os.environ["CHECKPOINT_DIR"] or None, archive_launch_repo=False)
 def mtsac_metaworld_mt10(
     ctxt=None, *, experiment_name, config_pth, seed, use_wandb, gpu
 ):
@@ -238,6 +261,7 @@ def mtsac_metaworld_mt10(
         wandb_logging=use_wandb,
         evaluation_frequency=params["general_setting"]["evaluation_frequency"],
     )
+
     print("Created algo")
 
     mtsac.to(device=device)

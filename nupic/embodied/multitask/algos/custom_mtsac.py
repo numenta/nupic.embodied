@@ -28,7 +28,7 @@ from garage import StepType
 from garage.torch.algos.mtsac import MTSAC
 from time import time
 
-from nupic.embodied.algos.custom_sac import CustomSAC
+from nupic.embodied.multitask.algos.custom_sac import CustomSAC
 from nupic.embodied.utils.garage_utils import log_multitask_performance
 
 
@@ -72,8 +72,9 @@ class CustomMTSAC(MTSAC, CustomSAC):
             replay_buffer=replay_buffer,
             env_spec=env_spec,
             sampler=sampler,
-            test_sampler=test_sampler,
-            train_task_sampler=train_task_sampler,
+            # TODO: can't find parent class with compatible signature
+            # test_sampler=test_sampler,
+            # train_task_sampler=train_task_sampler,
             num_tasks=num_tasks,
             gradient_steps_per_itr=gradient_steps_per_itr,
             max_episode_length_eval=max_episode_length_eval,
@@ -92,6 +93,9 @@ class CustomMTSAC(MTSAC, CustomSAC):
             num_evaluation_episodes=num_evaluation_episodes,
             task_update_frequency=task_update_frequency
         )
+        # Added samplers as local attributes since required in methods defined below
+        self._test_sampler = test_sampler
+        self._train_task_sampler = train_task_sampler
         self._wandb_logging = wandb_logging
         self._evaluation_frequency = evaluation_frequency
 

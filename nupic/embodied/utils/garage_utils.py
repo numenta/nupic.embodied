@@ -1,20 +1,52 @@
-from dowel import tabular
-from garage.np import discount_cumsum
-from garage import EpisodeBatch, StepType
-import numpy as np
-from collections import defaultdict
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
 import json
-from nupic.embodied.policies import GaussianMLPPolicy, GaussianDendriticMLPPolicy
-from nupic.embodied.value_functions import GaussianMLPValueFunction, GaussianDendriticValueFunction
-from nupic.embodied.q_functions import ContinuousDendriteMLPQFunction
-from garage.torch.q_functions import ContinuousMLPQFunction
-from nupic.research.frameworks.dendrites import BiasingDendriticLayer, AbsoluteMaxGatingDendriticLayer, \
-    OneSegmentDendriticLayer, DendriticAbsoluteMaxGate1d
+import numpy as np
 import torch
 import torch.nn.functional as F
+from collections import defaultdict
+from dowel import tabular
+from garage import EpisodeBatch, StepType
+from garage.np import discount_cumsum
 from garage.torch import global_device
 from garage.torch.distributions import TanhNormal
+from garage.torch.q_functions import ContinuousMLPQFunction
 from torch.distributions import Normal
+
+from nupic.embodied.multitask.policies import (
+    GaussianDendriticMLPPolicy,
+    GaussianMLPPolicy,
+)
+from nupic.embodied.multitask.q_functions import ContinuousDendriteMLPQFunction
+from nupic.embodied.multitask.value_functions import (
+    GaussianDendriticValueFunction,
+    GaussianMLPValueFunction,
+)
+from nupic.research.frameworks.dendrites import (
+    AbsoluteMaxGatingDendriticLayer,
+    BiasingDendriticLayer,
+    DendriticAbsoluteMaxGate1d,
+    OneSegmentDendriticLayer,
+)
 
 
 def compute_advantages(discount, gae_lambda, max_episode_length, baselines,

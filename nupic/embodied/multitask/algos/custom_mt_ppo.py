@@ -1,16 +1,43 @@
-from garage.torch.algos import PPO
-from nupic.embodied.utils.garage_utils import log_performance, log_multitask_performance
-import torch
-from dowel import tabular
-from garage.torch._functions import np_to_torch
-from garage.torch import filter_valids
-from garage.np import discount_cumsum
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
+
 import numpy as np
+import torch
 import wandb
+
+from dowel import tabular
+from garage.np import discount_cumsum
+from garage.torch import filter_valids, global_device, prefer_gpu, set_gpu_mode
+from garage.torch._functions import np_to_torch
+from garage.torch.algos import PPO
 from garage.torch.optimizers import OptimizerWrapper
+
+from nupic.embodied.utils.garage_utils import (
+    compute_advantages,
+    log_multitask_performance,
+    log_performance,
+)
 from nupic.torch.modules.sparse_weights import rezero_weights
-from garage.torch import global_device, prefer_gpu, set_gpu_mode
-from nupic.embodied.utils.garage_utils import compute_advantages
+
 
 class CustomMTPPO(PPO):
     """Modified implemenetation of Proximal Policy Optimization (PPO) for Multi-Task settings.

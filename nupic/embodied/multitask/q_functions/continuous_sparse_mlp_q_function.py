@@ -23,7 +23,7 @@
 
 import torch
 
-from nupic.embodied.models import SparseMLP
+from nupic.embodied.multitask.models import SparseMLP
 
 
 class ContinuousSparseMLPQFunction(SparseMLP):

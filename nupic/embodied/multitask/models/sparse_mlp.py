@@ -19,7 +19,7 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-from nupic.embodied.models import MultiHeadedSparseMLP
+from nupic.embodied.multitask.models import MultiHeadedSparseMLP
 
 
 class SparseMLP(MultiHeadedSparseMLP):

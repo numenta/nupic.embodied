@@ -1,26 +1,54 @@
-#!/usr/bin/env python3
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
 """MTSAC implementation based on Metaworld. Benchmarked on MT10.
 https://arxiv.org/pdf/1910.10897.pdf
 """
 import click
 import metaworld
 import numpy as np
-from torch import nn
-from torch.nn import functional as F
-
+import ray
 from garage import wrap_experiment
 from garage.envs import normalize
 from garage.experiment import deterministic
 from garage.experiment.task_sampler import MetaWorldTaskSampler
 from garage.replay_buffer import PathBuffer
-from garage.sampler import FragmentWorker, LocalSampler, RaySampler, VecWorker, MultiprocessingSampler, WorkerFactory
-from nupic.embodied.samplers.single_vecworker_sampler import SingleVecWorkSampler
+from garage.sampler import (
+    FragmentWorker,
+    LocalSampler,
+    MultiprocessingSampler,
+    RaySampler,
+    VecWorker,
+    WorkerFactory,
+)
 from garage.torch import set_gpu_mode
 from garage.torch.algos import MTSAC
 from garage.torch.policies import TanhGaussianMLPPolicy
 from garage.torch.q_functions import ContinuousMLPQFunction
 from garage.trainer import Trainer
-import ray
+from torch import nn
+from torch.nn import functional as F
+
+from nupic.embodied.multitask.samplers.single_vecworker_sampler import SingleVecWorkSampler
+
 
 @click.command()
 @click.option('--seed', 'seed', type=int, default=1)
