@@ -113,42 +113,42 @@ def compute_advantages(discount, gae_lambda, max_episode_length, baselines,
 
 
 def create_policy_net(env_spec, net_params):
-    net_type = net_params["net_type"]
+    net_type = net_params.net_type
     assert net_type in {"MLP", "Dendrite_MLP"}
     if net_type == "MLP":
         net = GaussianMLPPolicy(
             env_spec=env_spec,
-            hidden_sizes=net_params["policy_hidden_sizes"],
-            hidden_nonlinearity=create_nonlinearity(net_params["policy_hidden_nonlinearity"]),
-            output_nonlinearity=create_nonlinearity(net_params["policy_output_nonlinearity"]),
-            min_std=net_params["policy_min_std"],
-            max_std=net_params["policy_max_std"],
-            normal_distribution_cls=create_distribution(net_params["distribution"])
+            hidden_sizes=net_params.policy_hidden_sizes,
+            hidden_nonlinearity=create_nonlinearity(net_params.policy_hidden_nonlinearity),
+            output_nonlinearity=create_nonlinearity(net_params.policy_output_nonlinearity),
+            min_std=net_params.policy_min_std,
+            max_std=net_params.policy_max_std,
+            normal_distribution_cls=create_distribution(net_params.distribution)
         )
     elif net_type == "Dendrite_MLP":
-        dendritic_layer_class = create_dendritic_layer(net_params["dendritic_layer_class"])
+        dendritic_layer_class = create_dendritic_layer(net_params.dendritic_layer_class)
         net = GaussianDendriticMLPPolicy(
             env_spec=env_spec,
-            dim_context=net_params["dim_context"],
-            num_tasks=net_params["num_tasks"],
-            kw=net_params["kw"],
-            hidden_sizes=net_params["hidden_sizes"],
-            num_segments=net_params["num_segments"],
-            kw_percent_on=net_params["kw_percent_on"],
-            context_percent_on=net_params["context_percent_on"],
-            weight_sparsity=net_params["weight_sparsity"],
-            weight_init=net_params["weight_init"],
-            dendrite_init=net_params["dendrite_init"],
+            dim_context=net_params.dim_context,
+            num_tasks=net_params.num_tasks,
+            kw=net_params.kw,
+            hidden_sizes=net_params.hidden_sizes,
+            num_segments=net_params.num_segments,
+            kw_percent_on=net_params.kw_percent_on,
+            context_percent_on=net_params.context_percent_on,
+            weight_sparsity=net_params.weight_sparsity,
+            weight_init=net_params.weight_init,
+            dendrite_init=net_params.dendrite_init,
             dendritic_layer_class=dendritic_layer_class,
-            output_nonlinearity=net_params["output_nonlinearity"],
-            preprocess_module_type=net_params["preprocess_module_type"],
-            preprocess_output_dim=net_params["preprocess_output_dim"],
-            preprocess_kw_percent_on=net_params["kw_percent_on"],
-            representation_module_type=net_params["representation_module_type"],
-            representation_module_dims=net_params["representation_module_dims"],
-            min_std=net_params["policy_min_std"],
-            max_std=net_params["policy_max_std"],
-            normal_distribution_cls=create_distribution(net_params["distribution"])
+            output_nonlinearity=net_params.output_nonlinearity,
+            preprocess_module_type=net_params.preprocess_module_type,
+            preprocess_output_dim=net_params.preprocess_output_dim,
+            preprocess_kw_percent_on=net_params.kw_percent_on,
+            representation_module_type=net_params.representation_module_type,
+            representation_module_dims=net_params.representation_module_dims,
+            min_std=net_params.policy_min_std,
+            max_std=net_params.policy_max_std,
+            normal_distribution_cls=create_distribution(net_params.distribution)
         )
     else:
         raise NotImplementedError
@@ -156,36 +156,36 @@ def create_policy_net(env_spec, net_params):
 
 
 def create_vf_net(env_spec, net_params):
-    net_type = net_params["net_type"]
+    net_type = net_params.net_type
     assert net_type in {"MLP", "Dendrite_MLP"}
     if net_type == "MLP":
         net = GaussianMLPValueFunction(
             env_spec=env_spec,
-            hidden_sizes=net_params["vf_hidden_sizes"],
-            hidden_nonlinearity=create_nonlinearity(net_params["vf_hidden_nonlinearity"]),
-            output_nonlinearity=create_nonlinearity(net_params["vf_output_nonlinearity"]),
+            hidden_sizes=net_params.vf_hidden_sizes,
+            hidden_nonlinearity=create_nonlinearity(net_params.vf_hidden_nonlinearity),
+            output_nonlinearity=create_nonlinearity(net_params.vf_output_nonlinearity),
         )
     elif net_type == "Dendrite_MLP":
-        dendritic_layer_class = create_dendritic_layer(net_params["dendritic_layer_class"])
+        dendritic_layer_class = create_dendritic_layer(net_params.dendritic_layer_class)
         net = GaussianDendriticValueFunction(
             env_spec=env_spec,
-            dim_context=net_params["dim_context"],
-            num_tasks=net_params["num_tasks"],
-            kw=net_params["kw"],
-            hidden_sizes=net_params["hidden_sizes"],
-            num_segments=net_params["num_segments"],
-            kw_percent_on=net_params["kw_percent_on"],
-            context_percent_on=net_params["context_percent_on"],
-            weight_sparsity=net_params["weight_sparsity"],
-            weight_init=net_params["weight_init"],
-            dendrite_init=net_params["dendrite_init"],
+            dim_context=net_params.dim_context,
+            num_tasks=net_params.num_tasks,
+            kw=net_params.kw,
+            hidden_sizes=net_params.hidden_sizes,
+            num_segments=net_params.num_segments,
+            kw_percent_on=net_params.kw_percent_on,
+            context_percent_on=net_params.context_percent_on,
+            weight_sparsity=net_params.weight_sparsity,
+            weight_init=net_params.weight_init,
+            dendrite_init=net_params.dendrite_init,
             dendritic_layer_class=dendritic_layer_class,
-            output_nonlinearity=net_params["output_nonlinearity"],
-            preprocess_module_type=net_params["preprocess_module_type"],
-            preprocess_output_dim=net_params["preprocess_output_dim"],
-            preprocess_kw_percent_on=net_params["preprocess_kw_percent_on"],
-            representation_module_type=net_params["representation_module_type"],
-            representation_module_dims=net_params["representation_module_dims"],
+            output_nonlinearity=net_params.output_nonlinearity,
+            preprocess_module_type=net_params.preprocess_module_type,
+            preprocess_output_dim=net_params.preprocess_output_dim,
+            preprocess_kw_percent_on=net_params.preprocess_kw_percent_on,
+            representation_module_type=net_params.representation_module_type,
+            representation_module_dims=net_params.representation_module_dims,
         )
     else:
         raise NotImplementedError
@@ -193,34 +193,34 @@ def create_vf_net(env_spec, net_params):
 
 
 def create_qf_net(env_spec, net_params):
-    net_type = net_params["net_type"]
+    net_type = net_params.net_type
     assert net_type in {"MLP", "Dendrite_MLP"}
     if net_type == "MLP":
         net = ContinuousMLPQFunction(
             env_spec=env_spec,
-            hidden_sizes=net_params["qf_hidden_sizes"],
-            hidden_nonlinearity=create_nonlinearity(net_params["qf_hidden_nonlinearity"]),
-            output_nonlinearity=create_nonlinearity(net_params["qf_output_nonlinearity"]),
+            hidden_sizes=net_params.qf_hidden_sizes,
+            hidden_nonlinearity=create_nonlinearity(net_params.qf_hidden_nonlinearity),
+            output_nonlinearity=create_nonlinearity(net_params.qf_output_nonlinearity),
         )
     elif net_type == "Dendrite_MLP":
-        dendritic_layer_class = create_dendritic_layer(net_params["dendritic_layer_class"])
+        dendritic_layer_class = create_dendritic_layer(net_params.dendritic_layer_class)
         net = ContinuousDendriteMLPQFunction(
             env_spec=env_spec,
-            hidden_sizes=net_params["hidden_sizes"],
-            num_segments=net_params["num_segments"],
-            dim_context=net_params["dim_context"],
-            kw=net_params["kw"],
-            kw_percent_on=net_params["kw_percent_on"],
-            context_percent_on=net_params["context_percent_on"],
-            weight_sparsity=net_params["weight_sparsity"],
-            weight_init=net_params["weight_init"],
-            dendrite_init=net_params["dendrite_init"],
+            hidden_sizes=net_params.hidden_sizes,
+            num_segments=net_params.num_segments,
+            dim_context=net_params.dim_context,
+            kw=net_params.kw,
+            kw_percent_on=net_params.kw_percent_on,
+            context_percent_on=net_params.context_percent_on,
+            weight_sparsity=net_params.weight_sparsity,
+            weight_init=net_params.weight_init,
+            dendrite_init=net_params.dendrite_init,
             dendritic_layer_class=dendritic_layer_class,
-            output_nonlinearity=net_params["output_nonlinearity"],
-            preprocess_module_type=net_params["preprocess_module_type"],
-            preprocess_output_dim=net_params["preprocess_output_dim"],
-            representation_module_type=net_params["representation_module_type"],
-            representation_module_dims=net_params["representation_module_dims"],
+            output_nonlinearity=net_params.output_nonlinearity,
+            preprocess_module_type=net_params.preprocess_module_type,
+            preprocess_output_dim=net_params.preprocess_output_dim,
+            representation_module_type=net_params.representation_module_type,
+            representation_module_dims=net_params.representation_module_dims,
         )
     else:
         raise NotImplementedError
