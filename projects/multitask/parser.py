@@ -54,8 +54,8 @@ class LoggingArguments:
                     "when log_dir is not defined in experiment config"
                 )
             else:
-                checkpoint_dir = os.path.join(os.environ["CHECKPOINT_DIR"], "multitask")
-                logging.info(f"Defining log_dir as {checkpoint_dir}")
+                self.log_dir = os.path.join(os.environ["CHECKPOINT_DIR"], "multitask")
+                logging.info(f"Defining log_dir as {self.log_dir}")
 
 
 @dataclass
@@ -64,13 +64,15 @@ class ExperimentArguments:
     timesteps: int = 15000000
     cpus_per_worker: float = 0
     gpus_per_worker: float = 0.14
+    do_train: bool = True
+    debug_mode: bool = True
 
 @dataclass
 class TrainingArguments:
     discount: float = 0.99
     eval_episodes: int = 3
     num_buffer_transitions: int = 1e6
-    evaluation_frequency: int = 2
+    evaluation_frequency: int = 10
     task_update_frequency: int = 1
     target_update_tau: float = 5e-3
     buffer_batch_size: int = 2560
@@ -86,7 +88,7 @@ class TrainingArguments:
 @dataclass
 class NetworkArguments:
     net_type: str = "Dendrite_MLP"
-    dim_context: int = 50
+    dim_context: int = 10
     num_tasks: int = 10
     kw: bool = True
     hidden_sizes: Tuple = (2048, 2048)
@@ -109,6 +111,8 @@ class NetworkArguments:
     def __post_init__(self):
         self.policy_min_std = np.exp(self.policy_min_log_std)
         self.policy_max_std = np.exp(self.policy_max_log_std)
+        # TODO: see if we really need an extra dim_context
+        self.dim_context = self.num_tasks
 
 
 def create_exp_parser():
