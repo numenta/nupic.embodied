@@ -63,7 +63,7 @@ import inspect
 
 t0 = time()
 
-@wrap_experiment
+
 def init_experiment(
     ctxt=None,
     *,
@@ -184,7 +184,13 @@ def init_experiment(
     # TODO: add a clarifying comment of what mtsac.to is doing
     mtsac.to()
     trainer.setup(algo=mtsac, env=mt_train_envs)
-    trainer.train(n_epochs=epochs, batch_size=steps_between_updates)
+
+    if experiment_args.do_train:
+        trainer.train(n_epochs=epochs, batch_size=steps_between_updates)
+
+    # Debug mode returns all main classes for inspection
+    if experiment_args.debug_mode:
+        return trainer, env, policy, qf1, qf2, replay_buffer, mtsac
 
 
 if __name__ == "__main__":
@@ -193,7 +199,6 @@ if __name__ == "__main__":
     Example usage:
         python run.py -e experiment_name
     """
-    print(inspect.signature(init_experiment).parameters)
 
     # Parse from command line
     cmd_parser = create_cmd_parser()
@@ -212,7 +217,7 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         handlers=[logging.StreamHandler(sys.stdout)],
-        level=logging.WARN if run_args.verbose else logging.INFO
+        level=logging.DEBUG if run_args.verbose else logging.INFO
     )
 
     # Gives an additional option to define a wandb run name
@@ -221,7 +226,7 @@ if __name__ == "__main__":
 
     # Automatically detects whether or not to use GPU
     use_gpu = torch.cuda.is_available() and not run_args.cpu
-    print(f"Using GPU: {use_gpu}")
+    logging.info(f"Using GPU: {use_gpu}")
 
     wrapped_init_experiment = wrap_experiment(
         function=init_experiment,
