@@ -73,8 +73,8 @@ class CustomMTSAC(MTSAC, CustomSAC):
             env_spec=env_spec,
             sampler=sampler,
             # TODO: can't find parent class with compatible signature
-            # test_sampler=test_sampler,
-            # train_task_sampler=train_task_sampler,
+            test_sampler=test_sampler,
+            train_task_sampler=train_task_sampler,
             num_tasks=num_tasks,
             gradient_steps_per_itr=gradient_steps_per_itr,
             max_episode_length_eval=max_episode_length_eval,
