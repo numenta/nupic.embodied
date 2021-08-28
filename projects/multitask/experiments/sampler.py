@@ -37,7 +37,8 @@ multiple_workers_per_env = dict(
     gpus_per_worker=0,
 )
 
-# down from 3.5 sec to 2.5sec on G isntances
+# down from 3.5 sec to 2.5sec on G instances
+# and from 5 to about 4.5 on P instances
 workers_on_gpu_only = deepcopy(base)
 workers_on_gpu_only = dict(
     cpus_per_worker=0,
