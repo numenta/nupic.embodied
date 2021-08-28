@@ -24,9 +24,12 @@ from dowel import logger
 import time
 import os
 
+import logging
+
 
 class CustomTrainer(Trainer):
-    # custom trainer class which removes Tabular usage
+    """Custom trainer class which removes Tabular usage"""
+
     def log_diagnostics(self, pause_for_plot=False):
         """Log diagnostics.
 
@@ -34,15 +37,15 @@ class CustomTrainer(Trainer):
             pause_for_plot (bool): Pause for plot.
 
         """
-        logger.log('Time %.2f s' % (time.time() - self._start_time))
-        logger.log('EpochTime %.2f s' % (time.time() - self._itr_start_time))
-        logger.log('TotalEnvSteps: ' + str(self._stats.total_env_steps))
+        logging.info("Time %.2f s" % (time.time() - self._start_time))
+        logging.info("EpochTime %.2f s" % (time.time() - self._itr_start_time))
+        logging.info("TotalEnvSteps: " + str(self._stats.total_env_steps))
 
         if self._plot:
             self._plotter.update_plot(self._algo.policy,
                                       self._algo.max_episode_length)
             if pause_for_plot:
-                input('Plotting evaluation run: Press Enter to " "continue...')
+                input("Plotting evaluation run: Press Enter to " "continue...")
 
     def step_epochs(self):
         """Step through each epoch.
@@ -70,15 +73,18 @@ class CustomTrainer(Trainer):
         self.step_episode = None
 
         # Used by integration tests to ensure examples can run one epoch.
+        # TODO: move to initialization, doesn't change during training
         n_epochs = int(
-            os.environ.get('GARAGE_EXAMPLE_TEST_N_EPOCHS',
+            os.environ.get("GARAGE_EXAMPLE_TEST_N_EPOCHS",
                            self._train_args.n_epochs))
 
-        logger.log('Obtaining samples...')
+        logging.info("Obtaining samples...")
 
+        # TODO: segregate logging logic from algoritm, move to diff function
+        # control frequency of saving
         for epoch in range(self._train_args.start_epoch, n_epochs):
             self._itr_start_time = time.time()
-            with logger.prefix('epoch #%d | ' % epoch):
+            with logger.prefix("epoch #%d | " % epoch):
                 yield epoch
                 save_episode = (self.step_episode
                                 if self._train_args.store_episodes else None)
@@ -89,6 +95,7 @@ class CustomTrainer(Trainer):
 
                 self.save(epoch)
 
+                # TODO: turn on and of logging through argument given to garage Trainer
                 if self.enable_logging:
                     self.log_diagnostics(self._train_args.pause_for_plot)
                     logger.dump_all(self.step_itr)

@@ -122,11 +122,14 @@ class CustomDendriticMLP(nn.Module):
         return representation_module
 
     def _create_preprocess_module(self, module_type, preprocess_output_dim, kw_percent_on):
+        # TODO: kw_percent_on should be optional given relu can be a module type
+
         if module_type is None:
             return None
 
         preprocess_module = nn.Sequential()
         linear_layer = SparseWeights(
+            # if m10 context_representation_dim=10, context_representation_dim=50
             torch.nn.Linear(self.context_representation_dim + self.representation_dim,
                             preprocess_output_dim,
                             bias=True),
