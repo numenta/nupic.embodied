@@ -28,8 +28,10 @@ from garage import StepType
 from garage.torch.algos.mtsac import MTSAC
 from time import time
 
-from nupic.embodied.algos.custom_sac import CustomSAC
+from nupic.embodied.multitask.algos.custom_sac import CustomSAC
 from nupic.embodied.utils.garage_utils import log_multitask_performance
+
+import logging
 
 
 class CustomMTSAC(MTSAC, CustomSAC):
@@ -41,7 +43,6 @@ class CustomMTSAC(MTSAC, CustomSAC):
         replay_buffer,
         env_spec,
         sampler,
-        test_sampler,
         train_task_sampler,
         *,
         num_tasks,
@@ -52,7 +53,7 @@ class CustomMTSAC(MTSAC, CustomSAC):
         initial_log_entropy=0.,
         discount=0.99,
         buffer_batch_size=64,
-        min_buffer_size=int(1e4),
+        min_buffer_size=10000,
         target_update_tau=5e-3,
         policy_lr=3e-4,
         qf_lr=3e-4,
@@ -72,7 +73,6 @@ class CustomMTSAC(MTSAC, CustomSAC):
             replay_buffer=replay_buffer,
             env_spec=env_spec,
             sampler=sampler,
-            test_sampler=test_sampler,
             train_task_sampler=train_task_sampler,
             num_tasks=num_tasks,
             gradient_steps_per_itr=gradient_steps_per_itr,
@@ -90,8 +90,12 @@ class CustomMTSAC(MTSAC, CustomSAC):
             optimizer=optimizer,
             steps_per_epoch=steps_per_epoch,
             num_evaluation_episodes=num_evaluation_episodes,
-            task_update_frequency=task_update_frequency
+            task_update_frequency=task_update_frequency,
+            # TODO: remove test_sampler if overriding MTSAC or updating garage
+            test_sampler=None
         )
+        # Added samplers as local attributes since required in methods defined below
+        self._train_task_sampler = train_task_sampler
         self._wandb_logging = wandb_logging
         self._evaluation_frequency = evaluation_frequency
 
@@ -159,7 +163,7 @@ class CustomMTSAC(MTSAC, CustomSAC):
                 self.episode_rewards.append(np.mean(path_returns))
 
                 t1 = time()
-                print("TRAINING DEVICE: ", next(self.policy.parameters()).device)
+                logging.debug("TRAINING DEVICE: ", next(self.policy.parameters()).device)
                 # Note: why only one gradient step with all the data?
                 for _ in range(self._gradient_steps):
                     policy_loss, qf1_loss, qf2_loss = self.train_once()
@@ -185,10 +189,11 @@ class CustomMTSAC(MTSAC, CustomSAC):
 
             t4 = time()
 
-            print(f"Time to collect samples: {t1-t0:.2f}")
-            print(f"Time to update gradient: {t2-t1:.2f}")
-            print(f"Time to evaluate policy: {t3-t2:.2f}")
-            print(f"Time to log:             {t4-t3:.2f}")
+            # TODO: switch to logger.debug once logger is fixed
+            logging.warn(f"Time to collect samples: {t1-t0:.2f}")
+            logging.warn(f"Time to update gradient: {t2-t1:.2f}")
+            logging.warn(f"Time to evaluate policy: {t3-t2:.2f}")
+            logging.warn(f"Time to log:             {t4-t3:.2f}")
 
         return np.mean(last_return)
 
@@ -216,9 +221,9 @@ class CustomMTSAC(MTSAC, CustomSAC):
 
         t01 = time()
 
-        eval_batch = self._test_sampler.obtain_exact_episodes(
+        eval_batch = self._sampler.obtain_exact_episodes(
             n_eps_per_worker=self._num_evaluation_episodes,
-            agent_update=agent_update
+            agent_update=agent_update,
         )
 
         t02 = time()
@@ -229,12 +234,13 @@ class CustomMTSAC(MTSAC, CustomSAC):
 
         t03 = time()
 
-        print(f"Time to copy network to CPU (in evaluate pol): {t01-t00:.2f}")
-        print(f"Time to obtain episodes (in evaluate pol):     {t02-t01:.2f}")
-        print(f"Time to log results (in evaluate pol):         {t03-t02:.2f}")
+        logging.debug(f"Time to copy network to CPU (in evaluate pol): {t01-t00:.2f}")
+        logging.debug(f"Time to obtain episodes (in evaluate pol):     {t02-t01:.2f}")
+        logging.debug(f"Time to log results (in evaluate pol):         {t03-t02:.2f}")
 
         self.policy.train()
         return last_return, log_dict
+
 
     def _log_statistics(self, policy_loss, qf1_loss, qf2_loss):
         """Record training statistics to dowel such as losses and returns.

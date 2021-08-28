@@ -24,7 +24,7 @@
 import torch
 
 from nupic.research.frameworks.dendrites.modules import AbsoluteMaxGatingDendriticLayer
-from nupic.embodied.models.dendrite_mlp import CustomDendriticMLP
+from nupic.embodied.multitask.models.dendrite_mlp import CustomDendriticMLP
 
 
 class ContinuousDendriteMLPQFunction(CustomDendriticMLP):

@@ -1,20 +1,52 @@
-from dowel import tabular
-from garage.np import discount_cumsum
-from garage import EpisodeBatch, StepType
-import numpy as np
-from collections import defaultdict
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
 import json
-from nupic.embodied.policies import GaussianMLPPolicy, GaussianDendriticMLPPolicy
-from nupic.embodied.value_functions import GaussianMLPValueFunction, GaussianDendriticValueFunction
-from nupic.embodied.q_functions import ContinuousDendriteMLPQFunction
-from garage.torch.q_functions import ContinuousMLPQFunction
-from nupic.research.frameworks.dendrites import BiasingDendriticLayer, AbsoluteMaxGatingDendriticLayer, \
-    OneSegmentDendriticLayer, DendriticAbsoluteMaxGate1d
+import numpy as np
 import torch
 import torch.nn.functional as F
+from collections import defaultdict
+from dowel import tabular
+from garage import EpisodeBatch, StepType
+from garage.np import discount_cumsum
 from garage.torch import global_device
 from garage.torch.distributions import TanhNormal
+from garage.torch.q_functions import ContinuousMLPQFunction
 from torch.distributions import Normal
+
+from nupic.embodied.multitask.policies import (
+    GaussianDendriticMLPPolicy,
+    GaussianMLPPolicy,
+)
+from nupic.embodied.multitask.q_functions import ContinuousDendriteMLPQFunction
+from nupic.embodied.multitask.value_functions import (
+    GaussianDendriticValueFunction,
+    GaussianMLPValueFunction,
+)
+from nupic.research.frameworks.dendrites import (
+    AbsoluteMaxGatingDendriticLayer,
+    BiasingDendriticLayer,
+    DendriticAbsoluteMaxGate1d,
+    OneSegmentDendriticLayer,
+)
 
 
 def compute_advantages(discount, gae_lambda, max_episode_length, baselines,
@@ -81,42 +113,42 @@ def compute_advantages(discount, gae_lambda, max_episode_length, baselines,
 
 
 def create_policy_net(env_spec, net_params):
-    net_type = net_params["net_type"]
+    net_type = net_params.net_type
     assert net_type in {"MLP", "Dendrite_MLP"}
     if net_type == "MLP":
         net = GaussianMLPPolicy(
             env_spec=env_spec,
-            hidden_sizes=net_params["policy_hidden_sizes"],
-            hidden_nonlinearity=create_nonlinearity(net_params["policy_hidden_nonlinearity"]),
-            output_nonlinearity=create_nonlinearity(net_params["policy_output_nonlinearity"]),
-            min_std=net_params["policy_min_std"],
-            max_std=net_params["policy_max_std"],
-            normal_distribution_cls=create_distribution(net_params["distribution"])
+            hidden_sizes=net_params.policy_hidden_sizes,
+            hidden_nonlinearity=create_nonlinearity(net_params.policy_hidden_nonlinearity),
+            output_nonlinearity=create_nonlinearity(net_params.policy_output_nonlinearity),
+            min_std=net_params.policy_min_std,
+            max_std=net_params.policy_max_std,
+            normal_distribution_cls=create_distribution(net_params.distribution)
         )
     elif net_type == "Dendrite_MLP":
-        dendritic_layer_class = create_dendritic_layer(net_params["dendritic_layer_class"])
+        dendritic_layer_class = create_dendritic_layer(net_params.dendritic_layer_class)
         net = GaussianDendriticMLPPolicy(
             env_spec=env_spec,
-            dim_context=net_params["dim_context"],
-            num_tasks=net_params["num_tasks"],
-            kw=net_params["kw"],
-            hidden_sizes=net_params["hidden_sizes"],
-            num_segments=net_params["num_segments"],
-            kw_percent_on=net_params["kw_percent_on"],
-            context_percent_on=net_params["context_percent_on"],
-            weight_sparsity=net_params["weight_sparsity"],
-            weight_init=net_params["weight_init"],
-            dendrite_init=net_params["dendrite_init"],
+            dim_context=net_params.dim_context,
+            num_tasks=net_params.num_tasks,
+            kw=net_params.kw,
+            hidden_sizes=net_params.hidden_sizes,
+            num_segments=net_params.num_segments,
+            kw_percent_on=net_params.kw_percent_on,
+            context_percent_on=net_params.context_percent_on,
+            weight_sparsity=net_params.weight_sparsity,
+            weight_init=net_params.weight_init,
+            dendrite_init=net_params.dendrite_init,
             dendritic_layer_class=dendritic_layer_class,
-            output_nonlinearity=net_params["output_nonlinearity"],
-            preprocess_module_type=net_params["preprocess_module_type"],
-            preprocess_output_dim=net_params["preprocess_output_dim"],
-            preprocess_kw_percent_on=net_params["kw_percent_on"],
-            representation_module_type=net_params["representation_module_type"],
-            representation_module_dims=net_params["representation_module_dims"],
-            min_std=net_params["policy_min_std"],
-            max_std=net_params["policy_max_std"],
-            normal_distribution_cls=create_distribution(net_params["distribution"])
+            output_nonlinearity=net_params.output_nonlinearity,
+            preprocess_module_type=net_params.preprocess_module_type,
+            preprocess_output_dim=net_params.preprocess_output_dim,
+            preprocess_kw_percent_on=net_params.kw_percent_on,
+            representation_module_type=net_params.representation_module_type,
+            representation_module_dims=net_params.representation_module_dims,
+            min_std=net_params.policy_min_std,
+            max_std=net_params.policy_max_std,
+            normal_distribution_cls=create_distribution(net_params.distribution)
         )
     else:
         raise NotImplementedError
@@ -124,36 +156,36 @@ def create_policy_net(env_spec, net_params):
 
 
 def create_vf_net(env_spec, net_params):
-    net_type = net_params["net_type"]
+    net_type = net_params.net_type
     assert net_type in {"MLP", "Dendrite_MLP"}
     if net_type == "MLP":
         net = GaussianMLPValueFunction(
             env_spec=env_spec,
-            hidden_sizes=net_params["vf_hidden_sizes"],
-            hidden_nonlinearity=create_nonlinearity(net_params["vf_hidden_nonlinearity"]),
-            output_nonlinearity=create_nonlinearity(net_params["vf_output_nonlinearity"]),
+            hidden_sizes=net_params.vf_hidden_sizes,
+            hidden_nonlinearity=create_nonlinearity(net_params.vf_hidden_nonlinearity),
+            output_nonlinearity=create_nonlinearity(net_params.vf_output_nonlinearity),
         )
     elif net_type == "Dendrite_MLP":
-        dendritic_layer_class = create_dendritic_layer(net_params["dendritic_layer_class"])
+        dendritic_layer_class = create_dendritic_layer(net_params.dendritic_layer_class)
         net = GaussianDendriticValueFunction(
             env_spec=env_spec,
-            dim_context=net_params["dim_context"],
-            num_tasks=net_params["num_tasks"],
-            kw=net_params["kw"],
-            hidden_sizes=net_params["hidden_sizes"],
-            num_segments=net_params["num_segments"],
-            kw_percent_on=net_params["kw_percent_on"],
-            context_percent_on=net_params["context_percent_on"],
-            weight_sparsity=net_params["weight_sparsity"],
-            weight_init=net_params["weight_init"],
-            dendrite_init=net_params["dendrite_init"],
+            dim_context=net_params.dim_context,
+            num_tasks=net_params.num_tasks,
+            kw=net_params.kw,
+            hidden_sizes=net_params.hidden_sizes,
+            num_segments=net_params.num_segments,
+            kw_percent_on=net_params.kw_percent_on,
+            context_percent_on=net_params.context_percent_on,
+            weight_sparsity=net_params.weight_sparsity,
+            weight_init=net_params.weight_init,
+            dendrite_init=net_params.dendrite_init,
             dendritic_layer_class=dendritic_layer_class,
-            output_nonlinearity=net_params["output_nonlinearity"],
-            preprocess_module_type=net_params["preprocess_module_type"],
-            preprocess_output_dim=net_params["preprocess_output_dim"],
-            preprocess_kw_percent_on=net_params["preprocess_kw_percent_on"],
-            representation_module_type=net_params["representation_module_type"],
-            representation_module_dims=net_params["representation_module_dims"],
+            output_nonlinearity=net_params.output_nonlinearity,
+            preprocess_module_type=net_params.preprocess_module_type,
+            preprocess_output_dim=net_params.preprocess_output_dim,
+            preprocess_kw_percent_on=net_params.preprocess_kw_percent_on,
+            representation_module_type=net_params.representation_module_type,
+            representation_module_dims=net_params.representation_module_dims,
         )
     else:
         raise NotImplementedError
@@ -161,34 +193,34 @@ def create_vf_net(env_spec, net_params):
 
 
 def create_qf_net(env_spec, net_params):
-    net_type = net_params["net_type"]
+    net_type = net_params.net_type
     assert net_type in {"MLP", "Dendrite_MLP"}
     if net_type == "MLP":
         net = ContinuousMLPQFunction(
             env_spec=env_spec,
-            hidden_sizes=net_params["qf_hidden_sizes"],
-            hidden_nonlinearity=create_nonlinearity(net_params["qf_hidden_nonlinearity"]),
-            output_nonlinearity=create_nonlinearity(net_params["qf_output_nonlinearity"]),
+            hidden_sizes=net_params.qf_hidden_sizes,
+            hidden_nonlinearity=create_nonlinearity(net_params.qf_hidden_nonlinearity),
+            output_nonlinearity=create_nonlinearity(net_params.qf_output_nonlinearity),
         )
     elif net_type == "Dendrite_MLP":
-        dendritic_layer_class = create_dendritic_layer(net_params["dendritic_layer_class"])
+        dendritic_layer_class = create_dendritic_layer(net_params.dendritic_layer_class)
         net = ContinuousDendriteMLPQFunction(
             env_spec=env_spec,
-            hidden_sizes=net_params["hidden_sizes"],
-            num_segments=net_params["num_segments"],
-            dim_context=net_params["dim_context"],
-            kw=net_params["kw"],
-            kw_percent_on=net_params["kw_percent_on"],
-            context_percent_on=net_params["context_percent_on"],
-            weight_sparsity=net_params["weight_sparsity"],
-            weight_init=net_params["weight_init"],
-            dendrite_init=net_params["dendrite_init"],
+            hidden_sizes=net_params.hidden_sizes,
+            num_segments=net_params.num_segments,
+            dim_context=net_params.dim_context,
+            kw=net_params.kw,
+            kw_percent_on=net_params.kw_percent_on,
+            context_percent_on=net_params.context_percent_on,
+            weight_sparsity=net_params.weight_sparsity,
+            weight_init=net_params.weight_init,
+            dendrite_init=net_params.dendrite_init,
             dendritic_layer_class=dendritic_layer_class,
-            output_nonlinearity=net_params["output_nonlinearity"],
-            preprocess_module_type=net_params["preprocess_module_type"],
-            preprocess_output_dim=net_params["preprocess_output_dim"],
-            representation_module_type=net_params["representation_module_type"],
-            representation_module_dims=net_params["representation_module_dims"],
+            output_nonlinearity=net_params.output_nonlinearity,
+            preprocess_module_type=net_params.preprocess_module_type,
+            preprocess_output_dim=net_params.preprocess_output_dim,
+            representation_module_type=net_params.representation_module_type,
+            representation_module_dims=net_params.representation_module_dims,
         )
     else:
         raise NotImplementedError

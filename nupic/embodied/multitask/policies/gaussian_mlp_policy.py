@@ -1,11 +1,35 @@
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
 """GaussianMLPPolicy."""
 import numpy as np
-from torch import nn
-
-from nupic.embodied.modules import GaussianMLPTwoHeadedModule, GaussianTwoHeadedDendriticMLPModule
-from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer
 from garage.torch.policies.stochastic_policy import StochasticPolicy
+from torch import nn
 from torch.distributions import Normal
+
+from nupic.embodied.multitask.modules import (
+    GaussianMLPTwoHeadedModule,
+    GaussianTwoHeadedDendriticMLPModule,
+)
+from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer
 
 
 class GaussianMLPPolicy(StochasticPolicy):
@@ -49,22 +73,30 @@ class GaussianMLPPolicy(StochasticPolicy):
         layer_normalization (bool): Bool for using layer normalization or not.
     """
 
-    def __init__(self,
-                 env_spec,
-                 hidden_sizes=(32, 32),
-                 hidden_nonlinearity=nn.ReLU,
-                 hidden_w_init=nn.init.xavier_uniform_,
-                 hidden_b_init=nn.init.zeros_,
-                 output_nonlinearity=None,
-                 output_w_init=nn.init.xavier_uniform_,
-                 output_b_init=nn.init.zeros_,
-                 init_std=1.0,
-                 min_std=np.exp(-20.),
-                 max_std=np.exp(2.),
-                 std_parameterization='exp',
-                 layer_normalization=False,
-                 normal_distribution_cls=Normal):
-        super().__init__(env_spec, name='GaussianPolicy')
+    def __init__(
+        self,
+        env_spec,
+        hidden_sizes=(32, 32),
+        hidden_nonlinearity=nn.ReLU,
+        hidden_w_init=nn.init.xavier_uniform_,
+        hidden_b_init=nn.init.zeros_,
+        output_nonlinearity=None,
+        output_w_init=nn.init.xavier_uniform_,
+        output_b_init=nn.init.zeros_,
+        init_std=1.0,
+        min_std=None,
+        max_std=None,
+        std_parameterization="exp",
+        layer_normalization=False,
+        normal_distribution_cls=Normal
+    ):
+        super().__init__(env_spec, name="GaussianPolicy")
+
+        # Note: avoid function calls as the default (PEP8)
+        if min_std is None:
+            min_std = np.exp(-20.)
+        if max_std is None:
+            max_std = np.exp(2.)
 
         self._obs_dim = env_spec.observation_space.flat_dim
         self._action_dim = env_spec.action_space.flat_dim
@@ -96,8 +128,8 @@ class GaussianMLPPolicy(StochasticPolicy):
             dict[str, torch.Tensor]: Additional agent_info, as torch Tensors
         """
         dist = self._module(observations)
-        ret_mean = dist.mean.cpu()
-        ret_log_std = (dist.variance.sqrt()).log().cpu()
+        ret_mean = dist.mean  # .cpu()
+        ret_log_std = (dist.variance.sqrt()).log()  # .cpu()
         return dist, dict(mean=ret_mean, log_std=ret_log_std)
 
 
@@ -165,10 +197,10 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
                  init_std=1.0,
                  min_std=np.exp(-20.),
                  max_std=np.exp(2.),
-                 std_parameterization='exp',
+                 std_parameterization="exp",
                  normal_distribution_cls=Normal
                  ):
-        super().__init__(env_spec, name='GaussianPolicy')
+        super().__init__(env_spec, name="GaussianPolicy")
 
         self._obs_dim = env_spec.observation_space.flat_dim
         self._action_dim = env_spec.action_space.flat_dim
@@ -211,6 +243,6 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
             dict[str, torch.Tensor]: Additional agent_info, as torch Tensors
         """
         dist = self._module(observations)
-        ret_mean = dist.mean.cpu()
-        ret_log_std = (dist.variance.sqrt()).log().cpu()
+        ret_mean = dist.mean  # .cpu()
+        ret_log_std = (dist.variance.sqrt()).log()  # .cpu()
         return dist, dict(mean=ret_mean, log_std=ret_log_std)

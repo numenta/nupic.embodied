@@ -1,11 +1,34 @@
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
+
 """A value function based on a GaussianMLP model."""
 import torch
-from torch import nn
-
-from nupic.embodied.modules import GaussianMLPModule, GaussianDendriticMLPModule
 from garage.torch.value_functions.value_function import ValueFunction
-from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer
+from torch import nn
 from torch.distributions import Normal
+
+from nupic.embodied.multitask.modules import GaussianDendriticMLPModule, GaussianMLPModule
+from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer
+
 
 class GaussianMLPValueFunction(ValueFunction):
     """Gaussian MLP Value Function with Model.

@@ -32,7 +32,7 @@ from nupic.embodied.disagreement.policies import Dynamics, CnnPolicy
 
 from nupic.embodied.disagreement import Trainer, MemUsageMixin
 
-from nupic.embodied.disagreement.mixins import ViewGraph
+# from nupic.embodied.disagreement.mixins import ViewGraph
 
 from nupic.embodied.disagreement.agents import PpoOptimizer
 
@@ -78,8 +78,8 @@ def backward_hook(m, i, o):
 class TrainerWithProfiler(MemUsageMixin, Trainer):
     pass
 
-class AgentWithComputationalGraph(ViewGraph, PpoOptimizer):
-    pass
+# class AgentWithComputationalGraph(ViewGraph, PpoOptimizer):
+#     pass
 
 
 # Debug experiment only
@@ -98,7 +98,7 @@ backprop_debug_robot.update(
     # dynamics_class=CustomDynamics,
     # policy_class=CnnPolicyWithBackwardHooks,
     # trainer_class=Trainer,
-    agent_class=AgentWithComputationalGraph,
+    # agent_class=AgentWithComputationalGraph,
     nsteps_per_seg=8,
     project_id="profiler_test3"
 )

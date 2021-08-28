@@ -64,20 +64,20 @@ class SparseWeightsTD3(TD3):
                 -self._max_action, self._max_action)
 
             # Compute the target Q value
-            target_Q1 = self._target_qf_1(next_inputs, next_actions)
-            target_Q2 = self._target_qf_2(next_inputs, next_actions)
-            target_q = torch.min(target_Q1, target_Q2)
-            target_Q = rewards * self._reward_scaling + (
+            target_q1 = self._target_qf_1(next_inputs, next_actions)
+            target_q2 = self._target_qf_2(next_inputs, next_actions)
+            target_q = torch.min(target_q1, target_q2)
+            target_q = rewards * self._reward_scaling + (
                 1. - terminals) * self._discount * target_q
 
         # Get current Q values
-        current_Q1 = self._qf_1(inputs, actions)
-        current_Q2 = self._qf_2(inputs, actions)
-        current_Q = torch.min(current_Q1, current_Q2)
+        current_q1 = self._qf_1(inputs, actions)
+        current_q2 = self._qf_2(inputs, actions)
+        current_q = torch.min(current_q1, current_q2)
 
         # Compute critic loss
-        critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(
-            current_Q2, target_Q)
+        critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(
+            current_q2, target_q)
 
         # Optimize critic
         self._qf_optimizer_1.zero_grad()
@@ -103,7 +103,7 @@ class SparseWeightsTD3(TD3):
             # update target networks
             self._update_network_parameters()
 
-        return (critic_loss.detach(), target_Q, current_Q.detach(),
+        return (critic_loss.detach(), target_q, current_q.detach(),
                 self._actor_loss.detach())
 
     def _evaluate_policy(self):

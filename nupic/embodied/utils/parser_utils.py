@@ -34,6 +34,15 @@ DataClass = NewType("DataClass", Any)
 DataClassType = NewType("DataClassType", Any)
 
 
+def merge_args(arg_dicts):
+    # Unroll config for logging purposes
+    merged_args = {}
+    for args in arg_dicts:
+        for k, v in args.__dict__.items():
+            merged_args[k] = v
+    return merged_args
+
+
 # From https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
 def string_to_bool(v):
     if isinstance(v, bool):
