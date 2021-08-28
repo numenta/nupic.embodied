@@ -91,7 +91,7 @@ class TrainingArguments:
     discount: float = 0.99
     eval_episodes: int = 3
     num_buffer_transitions: float = 1e6
-    evaluation_frequency: int = 5
+    evaluation_frequency: int = 10
     task_update_frequency: int = 1
     target_update_tau: float = 5e-3
     buffer_batch_size: int = 2560
