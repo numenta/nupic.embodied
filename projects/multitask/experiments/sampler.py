@@ -19,20 +19,33 @@
 #
 
 """
-Base Multitask Experiment configuration.
+Experiments with different approaches to setting workers for sampling
 """
 
 from copy import deepcopy
 
-base = dict()
+from .base import base
 
-debug = deepcopy(base)
-debug = dict(
-    evaluation_frequency=1
+# set to g4dn.8xlarge with 30 CPUs
+# actually slower than using a single worker per env, up from 3.4sec to 4.5sec
+multiple_workers_per_env = deepcopy(base)
+multiple_workers_per_env = dict(
+    num_tasks=10,
+    workers_per_env=3,
+    eval_episodes=3,
+    cpus_per_worker=1,
+    gpus_per_worker=0,
+)
+
+# down from 3.5 sec to 2.5sec on G isntances
+workers_on_gpu_only = deepcopy(base)
+workers_on_gpu_only = dict(
+    cpus_per_worker=0,
+    gpus_per_worker=0.1,
 )
 
 # Export configurations in this file
 CONFIGS = dict(
-    base=base,
-    debug=debug,
+    multiworkers=multiple_workers_per_env,
+    gpuworkers=workers_on_gpu_only,
 )
