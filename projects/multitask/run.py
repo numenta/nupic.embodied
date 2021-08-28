@@ -20,48 +20,26 @@
 #
 # ------------------------------------------------------------------------------
 
-import os
-from functools import partial
-from parser import create_cmd_parser, create_exp_parser
-
-import gym
+import logging
+import metaworld
+import sys
 import torch
 import wandb
-from gym.wrappers import ResizeObservation
-# TODO: check if Monitor from stable_baselines3 is same as baselines Monitor
-from stable_baselines3.common.monitor import Monitor
 
 from experiments import CONFIGS
-
-import logging
-import sys
-
-import json
-import metaworld
-import numpy as np
-import os
-import wandb
-
 from garage import wrap_experiment
 from garage.experiment import deterministic
 from garage.experiment.task_sampler import MetaWorldTaskSampler
 from garage.replay_buffer import PathBuffer
-from garage.sampler import DefaultWorker, EvalWorker, RaySampler
 from garage.torch import set_gpu_mode
-from nupic.embodied.multitask.custom_trainer import CustomTrainer
+from parser import create_cmd_parser, create_exp_parser
 from time import time
 
 from nupic.embodied.multitask.algos.custom_mtsac import CustomMTSAC
+from nupic.embodied.multitask.custom_trainer import CustomTrainer
+from nupic.embodied.multitask.samplers.gpu_sampler import RaySampler
+from nupic.embodied.utils.garage_utils import create_policy_net, create_qf_net
 from nupic.embodied.utils.parser_utils import merge_args
-from nupic.embodied.utils.garage_utils import (
-    create_policy_net,
-    create_qf_net,
-    get_params,
-)
-
-import inspect
-
-t0 = time()
 
 
 def init_experiment(
@@ -121,29 +99,17 @@ def init_experiment(
         capacity_in_transitions=training_args.num_buffer_transitions
     )
     max_episode_length = env.spec.max_episode_length
-    # Note: are the episode length the same among all tasks?
+    # Note: are the episode length always the same among all tasks?
 
     sampler = RaySampler(
         agents=policy,
         envs=mt_train_envs,
         max_episode_length=max_episode_length,
-        # 1 sampler worker for each environment
-        n_workers=num_tasks,
-        worker_class=DefaultWorker
+        cpus_per_worker=experiment_args.cpus_per_worker,
+        gpus_per_worker=experiment_args.gpus_per_worker,
+        workers_per_env=experiment_args.workers_per_env,
+        seed=None,  # set to get_seed() to make it deterministic
     )
-
-    test_sampler = RaySampler(
-        agents=policy,
-        envs=mt_train_envs,
-        max_episode_length=max_episode_length,
-        # 1 sampler worker for each environment
-        n_workers=num_tasks,
-        worker_class=EvalWorker
-    )
-
-    # Note:  difference between sampler and test sampler is only the worker
-    # difference is one line in EvalWorker, uses average: a = agent_info['mean']
-    # TODO: can we create a unified worker that contains both rules?
 
     # Number of transitions before a set of gradient updates
     steps_between_updates = int(max_episode_length * num_tasks)
@@ -159,7 +125,6 @@ def init_experiment(
         replay_buffer=replay_buffer,
         sampler=sampler,
         train_task_sampler=train_task_sampler,
-        test_sampler=test_sampler,
         gradient_steps_per_itr=int(
             max_episode_length * training_args.num_grad_steps_scale
         ),
@@ -174,10 +139,10 @@ def init_experiment(
         num_evaluation_episodes=training_args.eval_episodes,
         task_update_frequency=training_args.task_update_frequency,
         wandb_logging=use_wandb,
-        evaluation_frequency=training_args.evaluation_frequency
+        evaluation_frequency=training_args.evaluation_frequency,
     )
 
-    # TODO: do we have to fix which GPU to use?
+    # TODO: do we have to fix which GPU to use? how to run distributed across multiGPUs?
     if use_gpu:
         set_gpu_mode(True, 0)
 
@@ -213,12 +178,14 @@ if __name__ == "__main__":
     logging_args, experiment_args, training_args, network_args = all_args
 
     # Setup logging based on verbose defined by the user
+    # TODO: logger level being overriden to WARN by garage, requires fixing
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         handlers=[logging.StreamHandler(sys.stdout)],
         level=logging.DEBUG if run_args.verbose else logging.INFO
     )
+    logging.debug("Logger setup to debug mode")
 
     # Gives an additional option to define a wandb run name
     if run_args.wandb_run_name != "":

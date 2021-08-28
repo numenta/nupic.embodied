@@ -26,8 +26,47 @@ from garage.sampler import DefaultWorker, Sampler
 
 import torch
 
+from itertools import chain
+
+import logging
+
+from collections import defaultdict
+
+
+class DefaultWorkerWithEval(DefaultWorker):
+
+    def step_episode(self):
+        """Take a single time-step in the current episode.
+
+        Returns:
+            bool: True iff the episode is done, either due to the environment
+            indicating termination of due to reaching `max_episode_length`.
+
+        """
+        if self._eps_length < self._max_episode_length:
+            a, agent_info = self.agent.get_action(self._prev_obs)
+
+            # Use the average for action selection when evaluating
+            if self.eval_mode:
+                a = agent_info["mean"]
+
+            es = self.env.step(a)
+            self._observations.append(self._prev_obs)
+            self._env_steps.append(es)
+            for k, v in agent_info.items():
+                self._agent_infos[k].append(v)
+            self._eps_length += 1
+
+            if not es.terminal:
+                self._prev_obs = es.observation
+                return False
+        self._lengths.append(self._eps_length)
+        self._last_observations.append(self._prev_obs)
+        return True
+
+
 @ray.remote
-class RayWorker(DefaultWorker):
+class RayWorker(DefaultWorkerWithEval):
     def __init__(
         self, seed, max_episode_length, worker_number, agent, env, device_type="cpu"
     ):
@@ -45,7 +84,8 @@ class RayWorker(DefaultWorker):
         if self._seed is not None and self.deterministic_mode:
             deterministic.set_seed(self._seed + self._worker_number)
 
-    def update(self, agent_update, env_update):
+    def update(self, agent_update, env_update, eval_mode=False):
+        self.eval_mode = eval_mode
         self.update_agent(agent_update)
         self.update_env(env_update)
 
@@ -96,6 +136,7 @@ class RayWorker(DefaultWorker):
         return True
 
 
+
 class RaySampler(Sampler):
     """Samples episodes in a data-parallel fashion using a Ray cluster.
 
@@ -118,7 +159,8 @@ class RaySampler(Sampler):
         max_episode_length=None,
         seed=None,
         cpus_per_worker=1,
-        gpus_per_worker=0
+        gpus_per_worker=0,
+        workers_per_env=1
     ):
 
 
@@ -137,32 +179,35 @@ class RaySampler(Sampler):
         # Use either only GPU or CPU for a single worker
         cpus_per_worker = cpus_per_worker if gpus_per_worker <= 0 else 0
 
-        print(
-            f"Creating {len(envs)} workers with {cpus_per_worker:.2f} cpus "
+        # Create one worker per env
+        self.workers_per_env = workers_per_env
+        self.workers = []
+        for _ in range(self.workers_per_env):
+            self.workers.extend(
+                [RayWorker.options(
+                    # arguments for Ray
+                    num_cpus=cpus_per_worker, num_gpus=gpus_per_worker
+                ).remote(
+                    # arguments for the worker class
+                    seed=seed,
+                    max_episode_length=max_episode_length,
+                    worker_number=idx,
+                    agent=agents,
+                    env=env,
+                    device_type="cuda" if gpus_per_worker > 0 else "cpu"
+                ) for idx, env in enumerate(envs)]
+            )
+
+        logging.warn(
+            f"Creating {len(self.workers)} workers with {cpus_per_worker:.2f} cpus "
             f"and {gpus_per_worker:.2f} gpus"
         )
-
-        # Create one worker per env
-        self.workers = [
-            RayWorker.options(
-                # arguments for Ray
-                num_cpus=cpus_per_worker, num_gpus=gpus_per_worker
-            ).remote(
-                # arguments for the worker class
-                seed=seed,
-                max_episode_length=max_episode_length,
-                worker_number=idx,
-                agent=agents,
-                env=env,
-                device_type="cuda" if gpus_per_worker > 0 else "cpu"
-            ) for idx, env in enumerate(envs)
-        ]
 
         # Extra attributes
         self.total_env_steps = 0
         self.device = torch.device("cuda" if gpus_per_worker > 0 else "cpu")
 
-    def _update_workers(self, agent_update, env_update):
+    def _update_workers(self, agent_update, env_update, eval_mode=False):
         """Update all of the workers
 
         Args:
@@ -182,9 +227,12 @@ class RaySampler(Sampler):
         for p in agent_update.parameters():
             p.requires_grad_(False)
 
-        pids = [w.update.remote(agent_update, env_update) for w in self.workers]
+        pids = [
+            w.update.remote(agent_update, env_update, eval_mode) for w in self.workers
+        ]
         for pid in pids:
             ray.get(pid)
+
 
     def obtain_samples(self, itr, num_samples, agent_update, env_update=None):
         """Sample the policy for new episodes.
@@ -251,12 +299,29 @@ class RaySampler(Sampler):
 
         """
 
-        # TODO: fix it. Temporary work around for testing purposes
-        num_samples = int(n_eps_per_worker * self.max_episode_length)
-        return self.obtain_samples(
-            itr=None, num_samples=num_samples,
-            agent_update=agent_update, env_update=env_update
-        )
+        self._update_workers(agent_update, env_update, eval_mode=True)
+        episodes = defaultdict(list)
+
+        # adjust n_eps_per_worker to account for the number of workers available per env
+        assert n_eps_per_worker % self.workers_per_env == 0, \
+            "Number of eps per worker should be a multiple of workers per env"
+        n_eps_per_worker = int(n_eps_per_worker / self.workers_per_env)
+
+        # TODO: do it all async, including loop through episodes
+        for _ in range(n_eps_per_worker):
+            pids = [w.rollout.remote() for w in self.workers]
+            results = [ray.get(pid) for pid in pids]
+            for worker_id, episode_batch in enumerate(results):
+                episodes[worker_id].append(episode_batch)
+
+        # Note: do they need to be ordered?
+        ordered_episodes = list(chain(
+            *[episodes[i] for i in range(len(self.workers))]
+        ))
+
+        samples = EpisodeBatch.concatenate(*ordered_episodes)
+        self.total_env_steps += sum(samples.lengths)
+        return samples
 
     def shutdown_worker(self):
         """Shuts down all workers and Ray"""
@@ -265,6 +330,6 @@ class RaySampler(Sampler):
         for pid in pids:
             ray.get(pid)
         # kill Ray Actors and shutdown Ray
-        for worker in workers:
+        for worker in self.workers:
             ray.kill(worker)
         ray.shutdown()

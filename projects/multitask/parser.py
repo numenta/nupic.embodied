@@ -1,30 +1,41 @@
+# ------------------------------------------------------------------------------
+#  Numenta Platform for Intelligent Computing (NuPIC)
+#  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
+#  with Numenta, Inc., for a separate license for this software code, the
+#  following terms and conditions apply:
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero Public License version 3 as
+#  published by the Free Software Foundation.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the GNU Affero Public License for more details.
+#
+#  You should have received a copy of the GNU Affero Public License
+#  along with this program.  If not, see http://www.gnu.org/licenses.
+#
+#  http://numenta.org/licenses/
+#
+# ------------------------------------------------------------------------------
+
 import argparse
-
-import torch.nn
-import numpy as np
-
-from typing import Callable
-from typing_extensions import Literal
-from dataclasses import dataclass, field
-from nupic.embodied.disagreement.policies import Dynamics, CnnPolicy
-from nupic.embodied.utils.parser_utils import DataClassArgumentParser
-from nupic.embodied.disagreement import Trainer
-from nupic.embodied.disagreement.agents import PpoOptimizer
-
-from experiments import CONFIGS
-
-import os
-
-import numpy as np
-
 import logging
+import numpy as np
+import os
+from dataclasses import dataclass, field
+from experiments import CONFIGS
+from typing import Optional, Tuple
+from typing_extensions import Literal
 
-from typing import Tuple, Optional
+from nupic.embodied.utils.parser_utils import DataClassArgumentParser
+
 
 @dataclass
 class LoggingArguments:
     project_name: str = "multitask"
-    log_dir: str = None
+    log_dir: Optional[str] = None
     snapshot_mode: Literal["all", "last", "gap", "none"] = field(
         default="none",
         metadata={
@@ -33,16 +44,18 @@ class LoggingArguments:
                     "(only the last iteration will be saved), 'gap' (every snapshot_gap"
                     "iterations are saved), or 'none' (do not save snapshots)."
         }
-    ),
+    )
     snapshot_gap: int = field(
         default=1,
         metadata={
             "help": "Gap between snapshot iterations. Waits this number"
                     "of iterations before taking another snapshot."
         }
-    ),
+    )
 
     def __post_init__(self):
+        # TODO: checkpoint dir doesn't take into account experiment name,
+        # overriden by garage - fix it
         if self.log_dir is None:
             logging.warn(
                 "log_dir is not defined, attempting to default "
@@ -54,25 +67,31 @@ class LoggingArguments:
                     "when log_dir is not defined in experiment config"
                 )
             else:
-                self.log_dir = os.path.join(os.environ["CHECKPOINT_DIR"], "multitask")
-                logging.info(f"Defining log_dir as {self.log_dir}")
+                self.log_dir = os.path.join(
+                    os.environ["CHECKPOINT_DIR"],
+                    "embodiedai",
+                    "multitask"
+                )
+                logging.warn(f"Defining log_dir as {self.log_dir}")
 
 
 @dataclass
 class ExperimentArguments:
     seed: int = 1
     timesteps: int = 15000000
-    cpus_per_worker: float = 0
-    gpus_per_worker: float = 0.14
+    cpus_per_worker: float = 0.5
+    gpus_per_worker: float = 0
+    workers_per_env: int = 1
     do_train: bool = True
     debug_mode: bool = True
+
 
 @dataclass
 class TrainingArguments:
     discount: float = 0.99
     eval_episodes: int = 3
-    num_buffer_transitions: int = 1e6
-    evaluation_frequency: int = 10
+    num_buffer_transitions: float = 1e6
+    evaluation_frequency: int = 5
     task_update_frequency: int = 1
     target_update_tau: float = 5e-3
     buffer_batch_size: int = 2560
