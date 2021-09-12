@@ -140,13 +140,14 @@ def init_experiment(
         task_update_frequency=training_args.task_update_frequency,
         wandb_logging=use_wandb,
         evaluation_frequency=training_args.evaluation_frequency,
+        fp16=experiment_args.fp16
     )
 
     # TODO: do we have to fix which GPU to use? how to run distributed across multiGPUs?
     if use_gpu:
         set_gpu_mode(True, 0)
 
-    # TODO: add a clarifying comment of what mtsac.to is doing
+    # move all networks within the model on device
     mtsac.to()
     trainer.setup(algo=mtsac, env=mt_train_envs)
 

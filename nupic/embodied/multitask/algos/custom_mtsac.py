@@ -23,6 +23,8 @@ import copy
 
 import numpy as np
 import torch
+import torch.nn.functional as F
+from torch.cuda.amp import GradScaler, autocast
 import wandb
 from garage import StepType
 from garage.torch.algos.mtsac import MTSAC
@@ -30,6 +32,7 @@ from time import time
 
 from nupic.embodied.multitask.algos.custom_sac import CustomSAC
 from nupic.embodied.utils.garage_utils import log_multitask_performance
+from nupic.torch.modules.sparse_weights import rezero_weights
 
 import logging
 
@@ -64,6 +67,7 @@ class CustomMTSAC(MTSAC, CustomSAC):
         task_update_frequency=1,
         wandb_logging=True,
         evaluation_frequency=25,
+        fp16=False
     ):
 
         super().__init__(
@@ -98,6 +102,12 @@ class CustomMTSAC(MTSAC, CustomSAC):
         self._train_task_sampler = train_task_sampler
         self._wandb_logging = wandb_logging
         self._evaluation_frequency = evaluation_frequency
+        self._fp16 = fp16
+
+        self._gs_qf1 = GradScaler()
+        self._gs_qf2 = GradScaler()
+        self._gs_policy = GradScaler()
+        self._gs_alpha = GradScaler()
 
     def train(self, trainer):
         """Obtain samplers and start actual training for each epoch.
@@ -196,6 +206,226 @@ class CustomMTSAC(MTSAC, CustomSAC):
             logging.warn(f"Time to log:             {t4-t3:.2f}")
 
         return np.mean(last_return)
+    
+    def _get_log_alpha(self, samples_data):
+        """Return the value of log_alpha.
+        Args:
+            samples_data (dict): Transitions(S,A,R,S') that are sampled from
+                the replay buffer. It should have the keys 'observation',
+                'action', 'reward', 'terminal', and 'next_observations'.
+        Note:
+            samples_data's entries should be torch.Tensor's with the following
+            shapes:
+                observation: :math:`(N, O^*)`
+                action: :math:`(N, A^*)`
+                reward: :math:`(N, 1)`
+                terminal: :math:`(N, 1)`
+                next_observation: :math:`(N, O^*)`
+        Raises:
+            ValueError: If the number of tasks, num_tasks passed to
+                this algorithm doesn't match the length of the task
+                one-hot id in the observation vector.
+        Returns:
+            torch.Tensor: log_alpha. shape is (1, self.buffer_batch_size)
+        """
+        obs = samples_data["observation"]
+        log_alpha = self._log_alpha
+        one_hots = obs[:, -self._num_tasks:]
+
+        if (log_alpha.shape[0] != one_hots.shape[1]
+                or one_hots.shape[1] != self._num_tasks
+                or log_alpha.shape[0] != self._num_tasks):
+            raise ValueError(
+                "The number of tasks in the environment does "
+                "not match self._num_tasks. Are you sure that you passed "
+                "The correct number of tasks?")
+        
+        with autocast(enabled=self._fp16):
+            return torch.mm(one_hots, log_alpha.unsqueeze(0).t()).squeeze()
+
+    def _temperature_objective(self, log_pi, samples_data):
+        """Compute the temperature/alpha coefficient loss.
+        Args:
+            log_pi(torch.Tensor): log probability of actions that are sampled
+                from the replay buffer. Shape is (1, buffer_batch_size).
+            samples_data (dict): Transitions(S,A,R,S') that are sampled from
+                the replay buffer. It should have the keys 'observation',
+                'action', 'reward', 'terminal', and 'next_observations'.
+        Note:
+            samples_data's entries should be torch.Tensor's with the following
+            shapes:
+                observation: :math:`(N, O^*)`
+                action: :math:`(N, A^*)`
+                reward: :math:`(N, 1)`
+                terminal: :math:`(N, 1)`
+                next_observation: :math:`(N, O^*)`
+        Returns:
+            torch.Tensor: the temperature/alpha coefficient loss.
+        """
+        alpha_loss = 0
+
+        with autocast(enabled=self._fp16):
+            if self._use_automatic_entropy_tuning:
+                alpha_loss = (-(self._get_log_alpha(samples_data)) *
+                            (log_pi.detach() + self._target_entropy)).mean()
+
+            return alpha_loss
+
+    def _actor_objective(self, samples_data, new_actions, log_pi_new_actions):
+        """Compute the Policy/Actor loss.
+        Args:
+            samples_data (dict): Transitions(S,A,R,S') that are sampled from
+                the replay buffer. It should have the keys 'observation',
+                'action', 'reward', 'terminal', and 'next_observations'.
+            new_actions (torch.Tensor): Actions resampled from the policy based
+                based on the Observations, obs, which were sampled from the
+                replay buffer. Shape is (action_dim, buffer_batch_size).
+            log_pi_new_actions (torch.Tensor): Log probability of the new
+                actions on the TanhNormal distributions that they were sampled
+                from. Shape is (1, buffer_batch_size).
+        Note:
+            samples_data's entries should be torch.Tensor's with the following
+            shapes:
+                observation: :math:`(N, O^*)`
+                action: :math:`(N, A^*)`
+                reward: :math:`(N, 1)`
+                terminal: :math:`(N, 1)`
+                next_observation: :math:`(N, O^*)`
+        Returns:
+            torch.Tensor: loss from the Policy/Actor.
+        """
+        obs = samples_data["observation"]
+
+        with torch.no_grad():
+            alpha = self._get_log_alpha(samples_data).exp()
+
+        with autocast(enabled=self._fp16):
+            min_q_new_actions = torch.min(self._qf1(obs, new_actions), 
+                                          self._qf2(obs, new_actions))
+
+            policy_objective = ((alpha * log_pi_new_actions) -
+                                min_q_new_actions.flatten()).mean()
+
+            return policy_objective
+
+    def _critic_objective(self, samples_data):
+        """Compute the Q-function/critic loss.
+        Args:
+            samples_data (dict): Transitions(S,A,R,S') that are sampled from
+                the replay buffer. It should have the keys 'observation',
+                'action', 'reward', 'terminal', and 'next_observations'.
+        Note:
+            samples_data's entries should be torch.Tensor's with the following
+            shapes:
+                observation: :math:`(N, O^*)`
+                action: :math:`(N, A^*)`
+                reward: :math:`(N, 1)`
+                terminal: :math:`(N, 1)`
+                next_observation: :math:`(N, O^*)`
+        Returns:
+            torch.Tensor: loss from 1st q-function after optimization.
+            torch.Tensor: loss from 2nd q-function after optimization.
+        """
+        obs = samples_data["observation"]
+        actions = samples_data["action"]
+        rewards = samples_data["reward"].flatten()
+        terminals = samples_data["terminal"].flatten()
+        next_obs = samples_data["next_observation"]
+
+        with torch.no_grad():
+            alpha = self._get_log_alpha(samples_data).exp()
+
+        with autocast(enabled=self._fp16):
+            q1_pred = self._qf1(obs, actions)
+            q2_pred = self._qf2(obs, actions)
+
+            new_next_actions_dist = self.policy(next_obs)[0]
+            new_next_actions_pre_tanh, new_next_actions = (
+                new_next_actions_dist.rsample_with_pre_tanh_value())
+            new_log_pi = new_next_actions_dist.log_prob(value=new_next_actions, 
+                                                        pre_tanh_value=new_next_actions_pre_tanh)
+
+            target_q_values = torch.min(
+                self._target_qf1(next_obs, new_next_actions),
+                self._target_qf2(next_obs, new_next_actions)).flatten() - (alpha * new_log_pi)
+
+            with torch.no_grad():
+                q_target = rewards * self._reward_scale + (
+                    1. - terminals) * self._discount * target_q_values
+                    
+            qf1_loss = F.mse_loss(q1_pred.flatten(), q_target)
+            qf2_loss = F.mse_loss(q2_pred.flatten(), q_target)
+
+            return qf1_loss, qf2_loss
+
+    def optimize_policy(self, samples_data):
+        """Optimize the policy q_functions, and temperature coefficient. Rezero
+        model weights (if applicable) after each optimizer step.
+
+        Args:
+            samples_data (dict): Transitions(S,A,R,S') that are sampled from
+                the replay buffer. It should have the keys 'observation',
+                'action', 'reward', 'terminal', and 'next_observations'.
+
+        Note:
+            samples_data's entries should be torch.Tensor's with the following
+            shapes:
+                observation: :math:`(N, O^*)`
+                action: :math:`(N, A^*)`
+                reward: :math:`(N, 1)`
+                terminal: :math:`(N, 1)`
+                next_observation: :math:`(N, O^*)`
+
+        Returns:
+            torch.Tensor: loss from actor/policy network after optimization.
+            torch.Tensor: loss from 1st q-function after optimization.
+            torch.Tensor: loss from 2nd q-function after optimization.
+
+        """
+        if not self._fp16:
+            return super().optimize_policy(samples_data)
+
+        obs = samples_data["observation"]
+        
+        qf1_loss, qf2_loss = self._critic_objective(samples_data)
+
+        self._qf1_optimizer.zero_grad()
+        self._gs_qf1.scale(qf1_loss).backward()
+        self._gs_qf1.step(self._qf1_optimizer)
+        self._gs_qf1.update()
+        self._qf1.apply(rezero_weights)
+
+        self._qf2_optimizer.zero_grad()
+        self._gs_qf2.scale(qf2_loss).backward()
+        self._gs_qf2.step(self._qf2_optimizer)
+        self._gs_qf2.update()
+        self._qf2.apply(rezero_weights)
+
+        with autocast():
+            action_dists = self.policy(obs)[0]
+            new_actions_pre_tanh, new_actions = (action_dists.rsample_with_pre_tanh_value())
+            log_pi_new_actions = action_dists.log_prob(value=new_actions, 
+                                                       pre_tanh_value=new_actions_pre_tanh)
+
+        policy_loss = self._actor_objective(samples_data, new_actions,
+                                            log_pi_new_actions)
+        
+        self._policy_optimizer.zero_grad()
+        self._gs_policy.scale(policy_loss).backward()
+        self._gs_policy.step(self._policy_optimizer)
+        self._gs_policy.update()
+        self.policy.apply(rezero_weights)
+
+        if self._use_automatic_entropy_tuning:
+            alpha_loss = self._temperature_objective(log_pi_new_actions,
+                                                     samples_data)
+
+            self._alpha_optimizer.zero_grad()
+            self._gs_alpha.scale(alpha_loss).backward()
+            self._gs_alpha.step(self._alpha_optimizer)
+            self._gs_alpha.update()
+
+        return policy_loss, qf1_loss, qf2_loss
 
     def _evaluate_policy(self, epoch):
         """Evaluate the performance of the policy via deterministic sampling.

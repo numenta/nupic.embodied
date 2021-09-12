@@ -84,6 +84,7 @@ class ExperimentArguments:
     workers_per_env: int = 1
     do_train: bool = True
     debug_mode: bool = True
+    fp16 : bool = False
 
 
 @dataclass
