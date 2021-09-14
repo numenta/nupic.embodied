@@ -31,8 +31,25 @@ debug = dict(
     evaluation_frequency=1
 )
 
+multiseg_mt10_base = dict(
+    num_segments=10,
+    dendritic_layer_class="abs_max_gating",
+    dim_context=10,
+    num_tasks=10, 
+    cpus_per_workers=7/50,
+)
+
+singleseg_mt10_base = dict(
+    num_segments=1,
+    dim_context=10,
+    num_tasks=10,
+    cpus_per_worker=7/50,
+)
+
 # Export configurations in this file
 CONFIGS = dict(
     base=base,
     debug=debug,
+    multiseg_mt10_base=multiseg_mt10_base,
+    singleseg_mt10_base=singleseg_mt10_base,
 )

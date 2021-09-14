@@ -19,19 +19,33 @@
 # http://numenta.org/licenses/
 # ----------------------------------------------------------------------
 
-from .base import CONFIGS as BASE
-from .sampler import CONFIGS as SAMPLER
-from .singlesegkw_experiments import CONFIGS as SINGLESEGKW
-from .multisegkw_experiments import CONFIGS as MULTISEGKW
+from .base import multiseg_mt10_base 
 
-"""
-Import and collect all experiment configurations into one CONFIG
-"""
-__all__ = ["CONFIGS"]
+from copy import deepcopy
 
-# Collect all configurations
-CONFIGS = dict()
-CONFIGS.update(BASE)
-CONFIGS.update(SAMPLER)
-CONFIGS.update(SINGLESEGKW)
-CONFIGS.update(MULTISEGKW)
+multisegkw_base = dict()
+multisegkw_base.update(multiseg_mt10_base)
+
+# multi segment K-winners experiment 
+multisegkw1 = deepcopy(multisegkw_base)
+multisegkw1.update(
+    policy_lr=3.85e-4,
+    qf_lr=3.85e-4,
+    hidden_sizes=(2048, 2048, 2048),
+    kw_percent_on=0.17,
+    fp16=True
+)
+
+multisegkw2 = deepcopy(multisegkw_base)
+multisegkw2.update(
+    policy_lr=3.85e-4,
+    qf_lr=3.85e-4,
+    hidden_sizes=(2048, 2048, 2048),
+    kw_percent_on=0.17,
+    fp16=False
+)
+
+CONFIGS = dict(
+    multisegkw1=multisegkw1,
+    multisegkw2=multisegkw2,
+)
