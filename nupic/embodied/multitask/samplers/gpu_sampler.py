@@ -19,18 +19,15 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
+import logging
+from collections import defaultdict
+from itertools import chain
+
 import ray
+import torch
 from garage import EpisodeBatch
 from garage.experiment import deterministic
 from garage.sampler import DefaultWorker, Sampler
-
-import torch
-
-from itertools import chain
-
-import logging
-
-from collections import defaultdict
 
 
 class DefaultWorkerWithEval(DefaultWorker):
@@ -234,11 +231,10 @@ class RaySampler(Sampler):
             ray.get(pid)
 
 
-    def obtain_samples(self, itr, num_samples, agent_update, env_update=None):
+    def obtain_samples(self, num_samples, agent_update, env_update=None):
         """Sample the policy for new episodes.
 
         Args:
-            itr (int): Iteration number. Not used. Kept for backwards compatibility.
             num_samples (int): Number of steps the the sampler should collect.
             agent_update (object): Value which will be passed into the
                 `agent_update_fn` before sampling episodes. If a list is passed
