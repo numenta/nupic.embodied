@@ -77,13 +77,14 @@ class LoggingArguments:
 
 @dataclass
 class ExperimentArguments:
-    seed: int = 1
+    seed: Optional[int] = None
     timesteps: int = 15000000
     cpus_per_worker: float = 0.5
     gpus_per_worker: float = 0
     workers_per_env: int = 1
     do_train: bool = True
     debug_mode: bool = True
+    use_deterministic_evaluation: bool = False
     fp16 : bool = False
 
 
