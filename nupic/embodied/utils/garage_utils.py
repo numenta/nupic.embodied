@@ -266,7 +266,9 @@ def create_distribution(distribution):
         raise NotImplementedError
 
 
-def log_multitask_performance(itr, batch, discount, name_map=None, use_wandb=True):
+def log_multitask_performance(
+    itr, batch, discount, name_map=None, log_per_task=False
+):
     r"""Log performance of episodes from multiple tasks.
 
     Args:
@@ -286,54 +288,42 @@ def log_multitask_performance(itr, batch, discount, name_map=None, use_wandb=Tru
             shape :math:`(N \bullet [T])`.
 
     """
-    eps_by_name = defaultdict(list)
 
-    for eps in batch.split():
-        task_name = "__unnamed_task__"
-        if "task_name" in eps.env_infos:
-            task_name = eps.env_infos["task_name"][0]
-        elif "task_id" in eps.env_infos:
-            name_map = {} if name_map is None else name_map
-            task_id = eps.env_infos["task_id"][0]
-            task_name = name_map.get(task_id, "Task #{}".format(task_id))
-        eps_by_name[task_name].append(eps)
-
-    if name_map is None:
-        task_names = eps_by_name.keys()
-    else:
-        task_names = name_map.values()
-
-    consolidated_log = dict()
-    for task_name in task_names:
-        if task_name in eps_by_name:
-            episodes = eps_by_name[task_name]
-            # analyze statistics per task
-            _, task_log = log_performance(
-                itr,
-                EpisodeBatch.concatenate(*episodes),
-                discount,
-                prefix=task_name,  # specific to task
-                use_wandb=use_wandb
-            )
-            if task_log is not None:
-                consolidated_log.update(task_log)
-        else:
-            with tabular.prefix(task_name + "/"):
-                tabular.record("Iteration", itr)
-                tabular.record("NumEpisodes", 0)
-                tabular.record("AverageDiscountedReturn", np.nan)
-                tabular.record("AverageReturn", np.nan)
-                tabular.record("StdReturn", np.nan)
-                tabular.record("MaxReturn", np.nan)
-                tabular.record("MinReturn", np.nan)
-                tabular.record("TerminationRate", np.nan)
-                tabular.record("SuccessRate", np.nan)
-
-    undiscounted_returns, average_log = log_performance(
-        itr, batch, discount=discount, prefix="Average", use_wandb=use_wandb
+    # Create log_dict with the averages
+    undiscounted_returns, consolidated_log = log_performance(
+        itr, batch, discount=discount, prefix="Average"
     )
-    if average_log is not None:
-        consolidated_log.update(average_log)
+
+    # Add results by task to task _dict, if requested
+    if log_per_task:
+        eps_by_name = defaultdict(list)
+        for eps in batch.split():
+            task_name = "__unnamed_task__"
+            if "task_name" in eps.env_infos:
+                task_name = eps.env_infos["task_name"][0]
+            elif "task_id" in eps.env_infos:
+                name_map = {} if name_map is None else name_map
+                task_id = eps.env_infos["task_id"][0]
+                task_name = name_map.get(task_id, "Task #{}".format(task_id))
+            eps_by_name[task_name].append(eps)
+
+        if name_map is None:
+            task_names = eps_by_name.keys()
+        else:
+            task_names = name_map.values()
+
+        for task_name in task_names:
+            if task_name in eps_by_name:
+                episodes = eps_by_name[task_name]
+                # analyze statistics per task
+                _, task_log = log_performance(
+                    itr,
+                    EpisodeBatch.concatenate(*episodes),
+                    discount,
+                    prefix=task_name,  # specific to task
+                    use_wandb=use_wandb
+                )
+                consolidated_log.update(task_log)
 
     return undiscounted_returns, consolidated_log
 
@@ -393,65 +383,31 @@ def log_performance(itr, batch, discount, prefix="Evaluation", use_wandb=True):
 
     average_discounted_return = np.mean([rtn[0] for rtn in returns])
 
-    with tabular.prefix(prefix + "/"):
-        tabular.record("Iteration", itr)
-        tabular.record("NumEpisodes", len(returns))
-        tabular.record("MinReward", np.min(rewards))
-        tabular.record("MaxReward", np.max(rewards))
-        tabular.record("AverageDiscountedReturn", average_discounted_return)
-        tabular.record("AverageReturn", np.mean(undiscounted_returns))
-        tabular.record("StdReturn", np.std(undiscounted_returns))
-        tabular.record("MaxReturn", np.max(undiscounted_returns))
-        tabular.record("MinReturn", np.min(undiscounted_returns))
-        tabular.record("TerminationRate", np.mean(termination))
-        if success:
-            tabular.record("SuccessRate", np.mean(success))
-        if grasp_success:
-            tabular.record("GraspSuccessRate", np.mean(grasp_success))
-        if near_object:
-            tabular.record("NearObject", np.mean(near_object))
-        if episode_mean_grasp_reward:
-            tabular.record("EpisodeMeanGraspReward",
-                           np.mean(episode_mean_grasp_reward))
-            tabular.record("EpisodeMeanMaxGraspReward",
-                           np.mean(episode_max_grasp_reward))
-            tabular.record("EpisodeMeanMinGraspReward",
-                           np.mean(episode_min_grasp_reward))
-        if episode_mean_in_place_reward:
-            tabular.record("EpisodeMeanInPlaceReward",
-                           np.mean(episode_mean_in_place_reward))
-            tabular.record("EpisodeMeanMaxInPlaceReward",
-                           np.mean(episode_max_in_place_reward))
-            tabular.record("EpisodeMeanMinInPlaceReward",
-                           np.mean(episode_min_in_place_reward))
+    log_dict = {}
+    log_dict[prefix + "/Iteration"] = itr
+    log_dict[prefix + "/NumEpisodes"] = len(returns)
+    log_dict[prefix + "/MinReward"] = np.min(rewards)
+    log_dict[prefix + "/MaxReward"] = np.max(rewards)
+    log_dict[prefix + "/AverageDiscountedReturn"] = average_discounted_return
+    log_dict[prefix + "AverageReturn"] = np.mean(undiscounted_returns)
+    log_dict[prefix + "/StdReturn"] = np.std(undiscounted_returns)
+    log_dict[prefix + "/MaxReturn"] = np.max(undiscounted_returns)
+    log_dict[prefix + "/MinReturn"] = np.min(undiscounted_returns)
+    log_dict[prefix + "/TerminationRate"] = np.mean(termination)
 
-    log_dict = None
-    if use_wandb:
-        log_dict = {}
-        log_dict[prefix + "/Iteration"] = itr
-        log_dict[prefix + "/NumEpisodes"] = len(returns)
-        log_dict[prefix + "/MinReward"] = np.min(rewards)
-        log_dict[prefix + "/MaxReward"] = np.max(rewards)
-        log_dict[prefix + "/AverageDiscountedReturn"] = average_discounted_return
-        log_dict[prefix + "AverageReturn"] = np.mean(undiscounted_returns)
-        log_dict[prefix + "/StdReturn"] = np.std(undiscounted_returns)
-        log_dict[prefix + "/MaxReturn"] = np.max(undiscounted_returns)
-        log_dict[prefix + "/MinReturn"] = np.min(undiscounted_returns)
-        log_dict[prefix + "/TerminationRate"] = np.mean(termination)
-
-        if success:
-            log_dict[prefix + "/SuccessRate"] = np.mean(success)
-        if grasp_success:
-            log_dict[prefix + "Misc/GraspSuccessRate"] = np.mean(grasp_success)
-        if near_object:
-            log_dict[prefix + "Misc/NearObject"] = np.mean(near_object)
-        if episode_mean_grasp_reward:
-            log_dict[prefix + "Misc/EpisodeMeanGraspReward"] = np.mean(episode_mean_grasp_reward)
-            log_dict[prefix + "Misc/EpisodeMeanMaxGraspReward"] = np.mean(episode_max_grasp_reward)
-            log_dict[prefix + "Misc/EpisodeMeanMinGraspReward"] = np.mean(episode_min_grasp_reward)
-        if episode_mean_in_place_reward:
-            log_dict[prefix + "Misc/EpisodeMeanInPlaceReward"] = np.mean(episode_mean_grasp_reward)
-            log_dict[prefix + "Misc/EpisodeMeanMaxInPlaceReward"] = np.mean(episode_max_in_place_reward)
-            log_dict[prefix + "Misc/EpisodeMeanMinInPlaceReward"] = np.mean(episode_min_in_place_reward)
+    if success:
+        log_dict[prefix + "/SuccessRate"] = np.mean(success)
+    if grasp_success:
+        log_dict[prefix + "Misc/GraspSuccessRate"] = np.mean(grasp_success)
+    if near_object:
+        log_dict[prefix + "Misc/NearObject"] = np.mean(near_object)
+    if episode_mean_grasp_reward:
+        log_dict[prefix + "Misc/EpisodeMeanGraspReward"] = np.mean(episode_mean_grasp_reward)
+        log_dict[prefix + "Misc/EpisodeMeanMaxGraspReward"] = np.mean(episode_max_grasp_reward)
+        log_dict[prefix + "Misc/EpisodeMeanMinGraspReward"] = np.mean(episode_min_grasp_reward)
+    if episode_mean_in_place_reward:
+        log_dict[prefix + "Misc/EpisodeMeanInPlaceReward"] = np.mean(episode_mean_grasp_reward)
+        log_dict[prefix + "Misc/EpisodeMeanMaxInPlaceReward"] = np.mean(episode_max_in_place_reward)
+        log_dict[prefix + "Misc/EpisodeMeanMinInPlaceReward"] = np.mean(episode_min_in_place_reward)
 
     return undiscounted_returns, log_dict
