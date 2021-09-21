@@ -21,20 +21,19 @@
 # ------------------------------------------------------------------------------
 
 import logging
-import metaworld
 import sys
+from parser import create_cmd_parser, create_exp_parser
+
+import metaworld
 import torch
 import wandb
-
-from experiments import CONFIGS
 from garage import wrap_experiment
 from garage.experiment import deterministic
 from garage.experiment.task_sampler import MetaWorldTaskSampler
 from garage.replay_buffer import PathBuffer
 from garage.torch import set_gpu_mode
-from parser import create_cmd_parser, create_exp_parser
-from time import time
 
+from experiments import CONFIGS
 from nupic.embodied.multitask.algos.custom_mtsac import CustomMTSAC
 from nupic.embodied.multitask.custom_trainer import CustomTrainer
 from nupic.embodied.multitask.samplers.gpu_sampler import RaySampler
@@ -63,7 +62,8 @@ def init_experiment(
 
     num_tasks = network_args.num_tasks
     timesteps = experiment_args.timesteps
-    deterministic.set_seed(experiment_args.seed)
+    if experiment_args.seed is not None:
+        deterministic.set_seed(experiment_args.seed)
 
     if use_wandb:
         wandb.init(
@@ -88,6 +88,8 @@ def init_experiment(
     # TODO: add some clarifying comments of why these asserts are required
     assert num_tasks % 10 == 0, "Number of tasks have to divisible by 10"
     assert num_tasks <= 500, "Number of tasks should be less or equal 500"
+    # TODO: do we have guarantees that in case seed is set, the tasks being sampled are
+    # the same?
     mt_train_envs = train_task_sampler.sample(num_tasks)
     env = mt_train_envs[0]()
 
@@ -124,10 +126,7 @@ def init_experiment(
         qf2=qf2,
         replay_buffer=replay_buffer,
         sampler=sampler,
-        train_task_sampler=train_task_sampler,
-        gradient_steps_per_itr=int(
-            max_episode_length * training_args.num_grad_steps_scale
-        ),
+        gradient_steps_per_itr=max_episode_length,
         num_tasks=num_tasks,
         min_buffer_size=max_episode_length * num_tasks,
         target_update_tau=training_args.target_update_tau,
@@ -137,10 +136,8 @@ def init_experiment(
         qf_lr=training_args.qf_lr,
         reward_scale=training_args.reward_scale,
         num_evaluation_episodes=training_args.eval_episodes,
-        task_update_frequency=training_args.task_update_frequency,
-        wandb_logging=use_wandb,
-        evaluation_frequency=training_args.evaluation_frequency,
-        fp16=experiment_args.fp16
+        fp16=experiment_args.fp16,
+        use_deterministic_evaluation=experiment_args.use_deterministic_evaluation
     )
 
     # TODO: do we have to fix which GPU to use? how to run distributed across multiGPUs?
@@ -152,7 +149,12 @@ def init_experiment(
     trainer.setup(algo=mtsac, env=mt_train_envs)
 
     if experiment_args.do_train:
-        trainer.train(n_epochs=epochs, batch_size=steps_between_updates)
+        trainer.train(
+            n_epochs=epochs,
+            batch_size=steps_between_updates,
+            wandb_logging=use_wandb,
+            evaluation_frequency=training_args.evaluation_frequency,
+        )
 
     # Debug mode returns all main classes for inspection
     if experiment_args.debug_mode:
