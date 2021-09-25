@@ -19,18 +19,16 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-"""GaussianMLPPolicy."""
 import numpy as np
 from garage.torch.policies.stochastic_policy import StochasticPolicy
+import torch
 from torch import nn
 from torch.distributions import Normal
 
 from nupic.embodied.multitask.modules import (
-    GaussianMLPTwoHeadedModule,
+    GaussianTwoHeadedMLPModule,
     GaussianTwoHeadedDendriticMLPModule,
 )
-from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer
-
 
 class GaussianMLPPolicy(StochasticPolicy):
     """Multiheaded MLP whose outputs are fed into a Normal distribution.
@@ -76,47 +74,41 @@ class GaussianMLPPolicy(StochasticPolicy):
     def __init__(
         self,
         env_spec,
-        hidden_sizes=(32, 32),
-        hidden_nonlinearity=nn.ReLU,
+        hidden_sizes,
+        hidden_nonlinearity,
+        output_nonlinearity,
+        min_std, 
+        max_std,
+        normal_distribution_cls,
+        init_std=1.0,
+        std_parameterization="exp",
         hidden_w_init=nn.init.xavier_uniform_,
         hidden_b_init=nn.init.zeros_,
-        output_nonlinearity=None,
         output_w_init=nn.init.xavier_uniform_,
         output_b_init=nn.init.zeros_,
-        init_std=1.0,
-        min_std=None,
-        max_std=None,
-        std_parameterization="exp",
-        layer_normalization=False,
-        normal_distribution_cls=Normal
+        layer_normalization=False, 
+        learn_std=True
     ):
         super().__init__(env_spec, name="GaussianPolicy")
 
-        # Note: avoid function calls as the default (PEP8)
-        if min_std is None:
-            min_std = np.exp(-20.)
-        if max_std is None:
-            max_std = np.exp(2.)
-
-        self._obs_dim = env_spec.observation_space.flat_dim
-        self._action_dim = env_spec.action_space.flat_dim
-
-        self._module = GaussianMLPTwoHeadedModule(
-            input_dim=self._obs_dim,
-            output_dim=self._action_dim,
+        self._module = GaussianTwoHeadedMLPModule(
+            input_dim=env_spec.observation_space.flat_dim,
+            output_dim=env_spec.action_space.flat_dim,
             hidden_sizes=hidden_sizes,
             hidden_nonlinearity=hidden_nonlinearity,
-            hidden_w_init=hidden_w_init,
-            hidden_b_init=hidden_b_init,
             output_nonlinearity=output_nonlinearity,
-            output_w_init=output_w_init,
-            output_b_init=output_b_init,
-            init_std=init_std,
             min_std=min_std,
             max_std=max_std,
+            normal_distribution_cls=normal_distribution_cls,
+            init_std=init_std,
             std_parameterization=std_parameterization,
+            hidden_w_init=hidden_w_init,
+            hidden_b_init=hidden_b_init,
+            output_w_init=output_w_init,
+            output_b_init=output_b_init,
             layer_normalization=layer_normalization,
-            normal_distribution_cls=normal_distribution_cls)
+            learn_std=learn_std
+        )
 
     def forward(self, observations):
         """Compute the action distributions from the observations.
@@ -128,13 +120,12 @@ class GaussianMLPPolicy(StochasticPolicy):
             dict[str, torch.Tensor]: Additional agent_info, as torch Tensors
         """
         dist = self._module(observations)
-        ret_mean = dist.mean  # .cpu()
-        ret_log_std = (dist.variance.sqrt()).log()  # .cpu()
-        return dist, dict(mean=ret_mean, log_std=ret_log_std)
+
+        return dist, dict(mean=dist.mean, log_std=(dist.variance.sqrt()).log())
 
 
 class GaussianDendriticMLPPolicy(StochasticPolicy):
-    """Multiheaded MLP whose outputs are fed into a Normal distribution.
+    """Multiheaded Dendritic MLP whose outputs are fed into a Normal distribution.
     A policy that contains a MLP to make prediction based on a gaussian
     distribution.
     Args:
@@ -174,63 +165,77 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
         layer_normalization (bool): Bool for using layer normalization or not.
     """
 
-    def __init__(self,
-                 env_spec,
-                 dim_context,
-                 kw,
-                 num_tasks=None,
-                 hidden_sizes=(32, 32),
-                 num_segments=1,
-                 kw_percent_on=0.05,
-                 context_percent_on=1.0,
-                 weight_sparsity=0.50,
-                 weight_init="modified",
-                 dendrite_init="modified",
-                 dendritic_layer_class=AbsoluteMaxGatingDendriticLayer,
-                 output_nonlinearity=None,
-                 preprocess_module_type=None,
-                 preprocess_output_dim=128,
-                 preprocess_kw_percent_on=0.1,
-                 representation_module_type=None,
-                 representation_module_dims=(128, 128),
-                 learn_std=True,
-                 init_std=1.0,
-                 min_std=np.exp(-20.),
-                 max_std=np.exp(2.),
-                 std_parameterization="exp",
-                 normal_distribution_cls=Normal
-                 ):
+    def __init__(
+        self,
+        env_spec,
+        num_tasks,
+        input_data,
+        context_data,
+        hidden_sizes,
+        layers_modulated,
+        num_segments,
+        kw_percent_on,
+        context_percent_on,
+        weight_sparsity,
+        weight_init,
+        dendrite_weight_sparsity,
+        dendrite_init,
+        dendritic_layer_class,
+        output_nonlinearity,
+        preprocess_module_type,
+        preprocess_output_dim,
+        preprocess_kw_percent_on,
+        min_std,
+        max_std,
+        normal_distribution_cls,
+        init_std=1.0,
+        std_parameterization="exp",
+        layer_normalization=False, 
+        learn_std=True
+    ):
         super().__init__(env_spec, name="GaussianPolicy")
 
-        self._obs_dim = env_spec.observation_space.flat_dim
-        self._action_dim = env_spec.action_space.flat_dim
-        self._input_dim = self._obs_dim - num_tasks if num_tasks else self._obs_dim
+        self.num_tasks = num_tasks
+        
+        self.input_data = input_data
+        self.context_data = context_data
+
+        if input_data == "obs":
+            self.input_dim = env_spec.observation_space.flat_dim - self.num_tasks
+        elif input_data == "obs|context":
+            self.input_dim = env_spec.observation_space.flat_dim
+        
+        if context_data == "context":
+            self.context_dim = self.num_tasks
+        elif context_data == "obs|context":
+            self.context_dim = env_spec.observation_space.flat_dim
+
+
         self._module = GaussianTwoHeadedDendriticMLPModule(
-            input_dim=self._input_dim,
-            output_dim=self._action_dim,
-            dim_context=dim_context,
-            num_tasks=num_tasks,
-            kw=kw,
+            input_dim=self.input_dim,
+            context_dim=self.context_dim,
+            output_dim=env_spec.action_space.flat_dim,
             hidden_sizes=hidden_sizes,
+            layers_modulated=layers_modulated,
             num_segments=num_segments,
             kw_percent_on=kw_percent_on,
             context_percent_on=context_percent_on,
             weight_sparsity=weight_sparsity,
             weight_init=weight_init,
+            dendrite_weight_sparsity=dendrite_weight_sparsity,
             dendrite_init=dendrite_init,
             dendritic_layer_class=dendritic_layer_class,
             output_nonlinearity=output_nonlinearity,
             preprocess_module_type=preprocess_module_type,
             preprocess_output_dim=preprocess_output_dim,
             preprocess_kw_percent_on=preprocess_kw_percent_on,
-            representation_module_type=representation_module_type,
-            representation_module_dims=representation_module_dims,
-            learn_std=learn_std,
-            init_std=init_std,
             min_std=min_std,
             max_std=max_std,
+            normal_distribution_cls=normal_distribution_cls,
+            init_std=init_std,
             std_parameterization=std_parameterization,
-            normal_distribution_cls=normal_distribution_cls
+            layer_normalization=layer_normalization,
+            learn_std=learn_std            
         )
 
     def forward(self, observations):
@@ -242,7 +247,19 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
             torch.distributions.Distribution: Batch distribution of actions.
             dict[str, torch.Tensor]: Additional agent_info, as torch Tensors
         """
-        dist = self._module(observations)
-        ret_mean = dist.mean  # .cpu()
-        ret_log_std = (dist.variance.sqrt()).log()  # .cpu()
-        return dist, dict(mean=ret_mean, log_std=ret_log_std)
+        obs_only = observations[:, :-self.num_tasks]
+        context_only = observations[:, -self.num_tasks:]
+
+        if self.input_data == "obs":
+            obs_portion = obs_only
+        elif self.input_data == "obs|context":
+            obs_portion = torch.cat([obs_only, context_only], 1)
+        
+        if self.context_data == "context":
+            context_portion = context_only
+        elif self.context_data == "obs|context":
+            context_portion = torch.cat([obs_only, context_only], 1)
+
+        dist = self._module(obs_portion, context_portion)
+
+        return dist, dict(mean=dist.mean, log_std=(dist.variance.sqrt()).log())
