@@ -35,7 +35,7 @@ from garage.torch import set_gpu_mode
 from parser import create_cmd_parser, create_exp_parser
 from time import time
 
-from nupic.embodied.multitask.algos.custom_mtsac import CustomMTSAC
+from nupic.embodied.multitask.algorithms.custom_mtsac import CustomMTSAC
 from nupic.embodied.multitask.custom_trainer import CustomTrainer
 from nupic.embodied.multitask.samplers.gpu_sampler import RaySampler
 from nupic.embodied.utils.garage_utils import create_policy_net, create_qf_net
@@ -47,6 +47,7 @@ def init_experiment(
     *,
     experiment_name,
     use_wandb,
+    wandb_group,
     project_name,
     experiment_args,
     training_args,
@@ -63,13 +64,15 @@ def init_experiment(
 
     num_tasks = network_args.num_tasks
     timesteps = experiment_args.timesteps
-    deterministic.set_seed(experiment_args.seed)
+
+    if experiment_args.seed is not None:
+        deterministic.set_seed(experiment_args.seed)
 
     if use_wandb:
         wandb.init(
             name=experiment_name,
             project=project_name,
-            group="Baselines{}".format(num_tasks),
+            group=wandb_group,
             reinit=True,
             config=merge_args(
                 (experiment_args, training_args, network_args)
@@ -208,6 +211,7 @@ if __name__ == "__main__":
     wrapped_init_experiment(
         experiment_name=run_args.exp_name,
         use_wandb=not run_args.local_only,
+        wandb_group=logging_args.wandb_group,
         use_gpu=use_gpu,
         project_name=logging_args.project_name,
         experiment_args=experiment_args,
