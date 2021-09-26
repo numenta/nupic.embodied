@@ -127,6 +127,15 @@ class ModularDendriticMLP(nn.Module):
                     dendrite_sparsity=self.dendrite_weight_sparsity,
                 )
 
+                if self.dendrite_init == "modified":
+                    self._init_sparse_dendrites(layer, 1 - self.context_percent_on)
+
+                if freeze_dendrites:
+                    # Dendritic weights will not be updated during backward pass
+                    for name, param in layer.named_parameters():
+                        if "segments" in name:
+                            param.requires_grad = False
+
             if self.weight_init == "modified":
                 # Scale weights to be sampled from the new initialization U(-h, h) where
                 # h = sqrt(1 / (weight_density * previous_layer_percent_on))
@@ -138,17 +147,7 @@ class ModularDendriticMLP(nn.Module):
                     self._init_sparse_weights(
                         layer, 
                         1 - self.kw_percent_on if self.kw_percent_on else 0.0
-                    )
-
-            if i in self.layers_modulated:
-                if self.dendrite_init == "modified":
-                    self._init_sparse_dendrites(layer, 1 - self.context_percent_on)
-
-                if freeze_dendrites:
-                    # Dendritic weights will not be updated during backward pass
-                    for name, param in layer.named_parameters():
-                        if "segments" in name:
-                            param.requires_grad = False
+                    )                
 
             if self.kw_percent_on:
                 activation = KWinners(n=hidden_sizes[i],
