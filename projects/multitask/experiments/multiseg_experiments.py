@@ -35,7 +35,7 @@ seg5.update(multiseg_mt10_base)
 
 
 '''
-Round 2 of experiments
+Round 1 of experiments
 '''
 
 baseline_5d = deepcopy(seg5)
