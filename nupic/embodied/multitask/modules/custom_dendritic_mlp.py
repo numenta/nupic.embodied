@@ -96,7 +96,7 @@ class CustomDendriticMLP(nn.Module):
 
         if module_type == "relu":
             nonlinearity = nn.ReLU()
-        else:
+        elif module_type == "kw":
             nonlinearity = KWinners(
                 n=preprocess_output_dim,
                 percent_on=kw_percent_on,
@@ -104,6 +104,8 @@ class CustomDendriticMLP(nn.Module):
                 boost_strength=0.0,
                 boost_strength_factor=0.0
             )
+        else:
+            nonlinearity = nn.Identity()
 
         preprocess_module.add_module("linear_layer", linear_layer)
         preprocess_module.add_module("nonlinearity", nonlinearity)
