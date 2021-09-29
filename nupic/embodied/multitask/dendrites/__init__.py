@@ -19,5 +19,5 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-from .dendritic_layers import AbsoluteMaxGatingDendriticLayer, FFLayer
+from .dendritic_layers import AbsoluteMaxGatingUnsignedDendriticLayer, MaxGatingDendriticLayer, FFLayer
 from .dendritic_mlp import ModularDendriticMLP
