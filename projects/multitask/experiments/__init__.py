@@ -21,8 +21,9 @@
 
 from .base import CONFIGS as BASE
 from .sampler import CONFIGS as SAMPLER
-from .singlesegkw_experiments import CONFIGS as SINGLESEGKW
-from .multisegkw_experiments import CONFIGS as MULTISEGKW
+from .singleseg_experiments import CONFIGS as SINGLESEGKW
+from .multiseg_experiments import CONFIGS as MULTISEGKW
+from .mlp_experiments import CONFIGS as MLP
 
 """
 Import and collect all experiment configurations into one CONFIG
@@ -35,3 +36,4 @@ CONFIGS.update(BASE)
 CONFIGS.update(SAMPLER)
 CONFIGS.update(SINGLESEGKW)
 CONFIGS.update(MULTISEGKW)
+CONFIGS.update(MLP)

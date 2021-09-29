@@ -19,7 +19,8 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-from .custom_sac import CustomSAC
-from .custom_mtsac import CustomMTSAC
-from .sparse_weights_td3 import SparseWeightsTD3
-from .custom_mt_ppo import CustomMTPPO
+from .dynamic_networks import DynamicsNet
+from .multiheaded_sparse_mlp import MultiHeadedSparseMLP
+from .sparse_mlp import SparseMLP
+from .multiheaded_dendrite_mlp import MultiHeadedDendriticMLP
+from .gaussian_mlp_module import GaussianMLPModule, GaussianDendriticMLPModule

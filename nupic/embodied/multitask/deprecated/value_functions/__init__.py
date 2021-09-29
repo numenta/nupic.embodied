@@ -19,5 +19,5 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-from .custom_dendritic_mlp import CustomDendriticMLP
-from .gaussian_mlp_module import GaussianTwoHeadedMLPModule, GaussianTwoHeadedDendriticMLPModule
+from .gaussian_mlp_value_function import GaussianMLPValueFunction, GaussianDendriticValueFunction
+from .continuous_sparse_mlp_q_function import ContinuousSparseMLPQFunction

@@ -31,25 +31,38 @@ debug = dict(
     evaluation_frequency=1
 )
 
-multiseg_mt10_base = dict(
-    num_segments=10,
-    dendritic_layer_class="abs_max_gating",
-    dim_context=10,
-    num_tasks=10, 
-    cpus_per_workers=7/50,
+singleseg_mt10_base = dict(
+    num_tasks=10,
+    net_type="Dendrite_MLP",
+    num_segments=1,
+    cpus_per_worker=0.5,
+    gpus_per_worker=0,
+    wandb_group="MT10 - SingleSeg",
 )
 
-singleseg_mt10_base = dict(
-    num_segments=1,
-    dim_context=10,
-    num_tasks=10,
-    cpus_per_worker=7/50,
+multiseg_mt10_base = dict(
+    num_tasks=10, 
+    net_type="Dendrite_MLP",
+    dendritic_layer_class="max_gating",
+    cpus_per_worker=0.5,
+    gpus_per_worker=0,
+    wandb_group="MT10 - MultiSeg",
 )
+
+mlp_mt10_base = dict(
+    num_tasks=10, 
+    net_type="MLP",
+    cpus_per_worker=0.5, 
+    gpus_per_worker=0,
+    wandb_group="MT10 - MLP",
+)
+
 
 # Export configurations in this file
 CONFIGS = dict(
     base=base,
     debug=debug,
-    multiseg_mt10_base=multiseg_mt10_base,
     singleseg_mt10_base=singleseg_mt10_base,
+    multiseg_mt10_base=multiseg_mt10_base,
+    mlp_mt10_base=mlp_mt10_base,
 )

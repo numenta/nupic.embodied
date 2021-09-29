@@ -30,7 +30,7 @@ from garage import StepType
 from garage.torch.algos.mtsac import MTSAC
 from time import time
 
-from nupic.embodied.multitask.algos.custom_sac import CustomSAC
+from nupic.embodied.multitask.algorithms.custom_sac import CustomSAC
 from nupic.embodied.utils.garage_utils import log_multitask_performance
 from nupic.torch.modules.sparse_weights import rezero_weights
 

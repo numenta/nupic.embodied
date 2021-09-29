@@ -19,6 +19,4 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-
-from .continuous_sparse_mlp_q_function import ContinuousSparseMLPQFunction
-from .continuous_dendrite_mlp_q_function import ContinuousDendriteMLPQFunction
+from .custom_mtsac import CustomMTSAC
