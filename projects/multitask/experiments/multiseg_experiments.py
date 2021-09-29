@@ -87,7 +87,9 @@ no_overlap_10d.update(
     kw_percent_on=0.25,
     weight_sparsity=0.10,
     fp16=True,
+    preprocess_module_type="relu",
     preprocess_output_dim=10,
+    dendritic_layer_class="abs_max_gating_unsigned",
 )
 
 overlap_input_10d = deepcopy(seg10)
@@ -101,7 +103,9 @@ overlap_input_10d.update(
     kw_percent_on=0.25,
     weight_sparsity=0.10,
     fp16=True,
+    preprocess_module_type="relu",
     preprocess_output_dim=10,
+    dendritic_layer_class="abs_max_gating_unsigned",
 )
 
 overlap_context_10d = deepcopy(seg10)
@@ -115,7 +119,9 @@ overlap_context_10d.update(
     kw_percent_on=0.25,
     weight_sparsity=0.10,
     fp16=True,
+    preprocess_module_type="relu",
     preprocess_output_dim=20,
+    dendritic_layer_class="abs_max_gating_unsigned",
 )
 
 overlap_both_10d = deepcopy(seg10)
@@ -129,9 +135,131 @@ overlap_both_10d.update(
     kw_percent_on=0.25,
     weight_sparsity=0.10,
     fp16=True,
+    preprocess_module_type="relu",
     preprocess_output_dim=20,
+    dendritic_layer_class="abs_max_gating_unsigned",
 )
 
+'''
+Sanity checking Round 2 results
+'''
+
+no_overlap_10d_preprocess_relu = deepcopy(seg10)
+no_overlap_10d_preprocess_relu.update(
+    input_data="obs", 
+    context_data="context",
+    policy_lr=3.0e-4,
+    qf_lr=3.0e-4,
+    hidden_sizes=(1950, 1950),
+    layers_modulated=(1,),
+    kw_percent_on=0.25,
+    weight_sparsity=0.10,
+    fp16=True,
+    preprocess_module_type="relu",
+    preprocess_output_dim=10,
+    dendritic_layer_class="max_gating",
+)
+
+no_overlap_10d_preprocess_kw = deepcopy(seg10)
+no_overlap_10d_preprocess_kw.update(
+    input_data="obs", 
+    context_data="context",
+    policy_lr=3.0e-4,
+    qf_lr=3.0e-4,
+    hidden_sizes=(1950, 1950),
+    layers_modulated=(1,),
+    kw_percent_on=0.25,
+    weight_sparsity=0.10,
+    fp16=True,
+    preprocess_module_type="kw",
+    preprocess_output_dim=10,
+    dendritic_layer_class="max_gating",
+)
+
+no_overlap_10d_preprocess_none = deepcopy(seg10)
+no_overlap_10d_preprocess_none.update(
+    input_data="obs", 
+    context_data="context",
+    policy_lr=3.0e-4,
+    qf_lr=3.0e-4,
+    hidden_sizes=(1950, 1950),
+    layers_modulated=(1,),
+    kw_percent_on=0.25,
+    weight_sparsity=0.10,
+    fp16=True,
+    preprocess_module_type=None,
+    preprocess_output_dim=10,
+    dendritic_layer_class="max_gating",
+)
+
+
+no_overlap_10d_abs_max_gating_preprocess_relu = deepcopy(seg10)
+no_overlap_10d_abs_max_gating_preprocess_relu.update(
+    input_data="obs", 
+    context_data="context",
+    policy_lr=3.0e-4,
+    qf_lr=3.0e-4,
+    hidden_sizes=(1950, 1950),
+    layers_modulated=(1,),
+    kw_percent_on=0.25,
+    weight_sparsity=0.10,
+    fp16=True,
+    preprocess_output_dim=10,
+    dendritic_layer_class="abs_max_gating_signed",
+)
+
+
+no_overlap_10d_abs_max_unsigned = deepcopy(seg10)
+no_overlap_10d_abs_max_unsigned.update(
+    input_data="obs", 
+    context_data="context",
+    policy_lr=3.0e-4,
+    qf_lr=3.0e-4,
+    hidden_sizes=(1950, 1950),
+    layers_modulated=(1,),
+    kw_percent_on=0.25,
+    weight_sparsity=0.10,
+    fp16=True,
+    preprocess_module_type="relu",
+    preprocess_output_dim=10,
+    dendritic_layer_class="abs_max_gating_unsigned",
+)
+
+no_overlap_15d_abs_max_unsigned = deepcopy(seg10)
+no_overlap_15d_abs_max_unsigned.update(
+    input_data="obs", 
+    context_data="context",
+    policy_lr=3.0e-4,
+    qf_lr=3.0e-4,
+    hidden_sizes=(1950, 1950),
+    layers_modulated=(1,),
+    kw_percent_on=0.25,
+    weight_sparsity=0.10,
+    fp16=True,
+    num_segments=15,
+    preprocess_module_type="relu",
+    preprocess_output_dim=10,
+    dendritic_layer_class="abs_max_gating_unsigned",
+)
+
+
+'''
+Round 3 of experiments
+'''
+
+smaller_no_overlap_10d = deepcopy(seg10)
+smaller_no_overlap_10d.update(
+    input_data="obs", 
+    context_data="context",
+    policy_lr=3.0e-4,
+    qf_lr=3.0e-4,
+    hidden_sizes=(1600, 1600),
+    layers_modulated=(1,),
+    kw_percent_on=0.25,
+    weight_sparsity=0.10,
+    fp16=True,
+    preprocess_output_dim=10,
+)
 
 CONFIGS = dict(
     baseline_5d=baseline_5d,
@@ -141,4 +269,11 @@ CONFIGS = dict(
     overlap_input_10d=overlap_input_10d,
     overlap_context_10d=overlap_context_10d,
     overlap_both_10d=overlap_both_10d,
+    smaller_no_overlap_10d=smaller_no_overlap_10d,
+    no_overlap_10d_preprocess_relu=no_overlap_10d_preprocess_relu,
+    no_overlap_10d_preprocess_kw=no_overlap_10d_preprocess_kw,
+    no_overlap_10d_preprocess_none=no_overlap_10d_preprocess_none,
+    no_overlap_10d_abs_max_gating_preprocess_relu=no_overlap_10d_abs_max_gating_preprocess_relu,
+    no_overlap_10d_abs_max_unsigned=no_overlap_10d_abs_max_unsigned,
+    no_overlap_15d_abs_max_unsigned=no_overlap_15d_abs_max_unsigned,
 )
