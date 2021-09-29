@@ -164,7 +164,7 @@ class NetworkArguments:
                 self.num_segments = 1
                 self.dendritic_layer_class = "one_segment"
             elif self.num_segments > 1:
-                assert self.dendritic_layer_class in {"biasing", "abs_max_gating"}
+                assert self.dendritic_layer_class in {"biasing", "max_gating", "abs_max_gating_signed", "abs_max_gating_unsigned"}
         elif self.net_type == "MLP":
             self.input_data = "obs|context"
             self.context_data = None
