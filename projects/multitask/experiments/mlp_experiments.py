@@ -81,10 +81,26 @@ new_metaworld_baseline.update(
 )
 
 
+'''
+Round 3 of experiments
+'''
+
+bigger_metaworld_baseline = deepcopy(mlp_mt10_base)
+bigger_metaworld_baseline.update(
+    policy_lr=3.0e-4,
+    qf_lr=3.0e-4,
+    hidden_sizes=(1600, 1600),
+    kw_percent_on=None,
+    fp16=True,
+    weight_sparsity=1.0,
+)
+
+
 CONFIGS = dict(
     metaworld_base=metaworld_base,
     gradient_surgery_base=gradient_surgery_base,
     baseline_similar_metaworld=baseline_similar_metaworld,
     baseline_similarv2_metaworld=baseline_similarv2_metaworld,
     new_metaworld_baseline=new_metaworld_baseline,
+    bigger_metaworld_baseline=bigger_metaworld_baseline,
 )
