@@ -38,11 +38,14 @@ from nupic.embodied.multitask.policies import (
 )
 from nupic.embodied.multitask.value_functions import ContinuousDendriteMLPQFunction
 
+from nupic.embodied.multitask.dendrites import MaxGatingDendriticLayer, AbsoluteMaxGatingUnsignedDendriticLayer
+
 from nupic.research.frameworks.dendrites import (
     BiasingDendriticLayer,
     OneSegmentDendriticLayer,
 )
-from nupic.embodied.multitask.dendrites import AbsoluteMaxGatingDendriticLayer
+
+from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer as AbsoluteMaxGatingSignedDendriticLayer
 
 
 def create_policy_net(env_spec, net_params):
@@ -126,8 +129,12 @@ def create_qf_net(env_spec, net_params):
 def create_dendritic_layer(dendritic_layer):
     if dendritic_layer == "biasing":
         return BiasingDendriticLayer
-    elif dendritic_layer == "abs_max_gating":
-        return AbsoluteMaxGatingDendriticLayer
+    elif dendritic_layer == "max_gating":
+        return MaxGatingDendriticLayer
+    elif dendritic_layer == "abs_max_gating_signed":
+        return AbsoluteMaxGatingSignedDendriticLayer
+    elif dendritic_layer == "abs_max_gating_unsigned":
+        return AbsoluteMaxGatingUnsignedDendriticLayer
     elif dendritic_layer == "one_segment":
         return OneSegmentDendriticLayer
     else:
