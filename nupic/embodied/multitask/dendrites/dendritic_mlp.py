@@ -25,9 +25,9 @@ import numpy as np
 import torch
 from torch import nn
 
-from nupic.embodied.multitask.dendrites import (AbsoluteMaxGatingDendriticLayer, FFLayer)
-
 from nupic.torch.modules import KWinners, SparseWeights, rezero_weights
+
+from nupic.embodied.multitask.dendrites import FFLayer
 
 
 class ModularDendriticMLP(nn.Module):
@@ -80,7 +80,7 @@ class ModularDendriticMLP(nn.Module):
         input_size, 
         context_size,
         output_size, 
-        hidden_sizes, 
+        hidden_sizes,
         layers_modulated,
         num_segments, 
         kw_percent_on,
@@ -189,12 +189,7 @@ class ModularDendriticMLP(nn.Module):
 
     def forward(self, x, context):        
         for layer, activation in zip(self._layers, self._activations):
-            # AbsoluteMaxGatingDendriticLayer contains optimizations for training/eval mode
-            # TODO: remove this check once nupic.research gets optimized dendrites
-            if hasattr(layer, "eval_optimized"):
-                x = activation(layer(x, context, self.training))
-            else:
-                x = activation(layer(x, context))
+            x = activation(layer(x, context))
         
         if len(self._output_layers) == 1:
             return self._output_layers[0](x)
