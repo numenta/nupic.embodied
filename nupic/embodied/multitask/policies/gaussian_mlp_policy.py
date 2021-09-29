@@ -30,6 +30,16 @@ from nupic.embodied.multitask.modules import (
     GaussianTwoHeadedDendriticMLPModule,
 )
 
+def get_input_separate(observations, num_tasks):
+    return observations[:, :-num_tasks]
+    
+def get_context_separate(observations, num_tasks):
+    return observations[:, -num_tasks:]
+
+def get_mixed_data(observations, num_tasks):
+    return torch.cat([observations[:, :-num_tasks], observations[:, -num_tasks:]], 1)
+
+
 class GaussianMLPPolicy(StochasticPolicy):
     """Multiheaded MLP whose outputs are fed into a Normal distribution.
     A policy that contains a MLP to make prediction based on a gaussian
@@ -110,6 +120,7 @@ class GaussianMLPPolicy(StochasticPolicy):
             learn_std=learn_std
         )
 
+        
     def forward(self, observations):
         """Compute the action distributions from the observations.
         Args:
@@ -197,19 +208,22 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
 
         self.num_tasks = num_tasks
         
-        self.input_data = input_data
-        self.context_data = context_data
+        self.input_func = None
+        self.context_func = None
 
         if input_data == "obs":
             self.input_dim = env_spec.observation_space.flat_dim - self.num_tasks
+            self.input_func = get_input_separate
         elif input_data == "obs|context":
             self.input_dim = env_spec.observation_space.flat_dim
-        
+            self.input_func = get_mixed_data
+
         if context_data == "context":
             self.context_dim = self.num_tasks
+            self.context_func = get_context_separate
         elif context_data == "obs|context":
             self.context_dim = env_spec.observation_space.flat_dim
-
+            self.context_func = get_mixed_data
 
         self._module = GaussianTwoHeadedDendriticMLPModule(
             input_dim=self.input_dim,
@@ -238,6 +252,7 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
             learn_std=learn_std            
         )
 
+
     def forward(self, observations):
         """Compute the action distributions from the observations.
         Args:
@@ -247,18 +262,8 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
             torch.distributions.Distribution: Batch distribution of actions.
             dict[str, torch.Tensor]: Additional agent_info, as torch Tensors
         """
-        obs_only = observations[:, :-self.num_tasks]
-        context_only = observations[:, -self.num_tasks:]
-
-        if self.input_data == "obs":
-            obs_portion = obs_only
-        elif self.input_data == "obs|context":
-            obs_portion = torch.cat([obs_only, context_only], 1)
-        
-        if self.context_data == "context":
-            context_portion = context_only
-        elif self.context_data == "obs|context":
-            context_portion = torch.cat([obs_only, context_only], 1)
+        obs_portion = self.input_func(observations=observations, num_tasks=self.num_tasks)
+        context_portion = self.context_func(observations=observations, num_tasks=self.num_tasks)
 
         dist = self._module(obs_portion, context_portion)
 
