@@ -25,6 +25,16 @@ import torch
 
 from nupic.embodied.multitask.modules import CustomDendriticMLP
 
+def get_input_separate(observations, actions, num_tasks):
+    return torch.cat([observations[:, :-num_tasks], actions], 1)
+    
+def get_context_separate(observations, actions, num_tasks):
+    return observations[:, -num_tasks:]
+
+def get_mixed_data(observations, actions, num_tasks):
+    return torch.cat([observations[:, :-num_tasks], actions, observations[:, -num_tasks:]], 1)
+
+
 class ContinuousDendriteMLPQFunction(CustomDendriticMLP):
     """Implements a continuous MLP Q-value network.
 
@@ -60,19 +70,23 @@ class ContinuousDendriteMLPQFunction(CustomDendriticMLP):
 
         """
         self.num_tasks = num_tasks
-
-        self.input_data = input_data
-        self.context_data = context_data
+        
+        self.input_func = None
+        self.context_func = None
 
         if input_data == "obs":
             self.input_dim = env_spec.observation_space.flat_dim - self.num_tasks + env_spec.action_space.flat_dim
+            self.input_func = get_input_separate
         elif input_data == "obs|context":
             self.input_dim = env_spec.observation_space.flat_dim + env_spec.action_space.flat_dim
+            self.input_func = get_mixed_data
         
         if context_data == "context":
             self.context_dim = self.num_tasks
+            self.context_func = get_context_separate
         elif context_data == "obs|context":
             self.context_dim = env_spec.observation_space.flat_dim + env_spec.action_space.flat_dim
+            self.context_func = get_mixed_data
 
 
         super().__init__(
@@ -105,17 +119,7 @@ class ContinuousDendriteMLPQFunction(CustomDendriticMLP):
         Returns:
             torch.Tensor: Output value
         """
-        obs_only = observations[:, :-self.num_tasks]
-        context_only = observations[:, -self.num_tasks:]
-
-        if self.input_data == "obs":
-            obs_portion = torch.cat([obs_only, actions], 1)
-        elif self.input_data == "obs|context":
-            obs_portion = torch.cat([obs_only, actions, context_only], 1)
-        
-        if self.context_data == "context":
-            context_portion = context_only
-        elif self.context_data == "obs|context":
-            context_portion = torch.cat([obs_only, actions, context_only], 1)
+        obs_portion = self.input_func(observations=observations, actions=actions, num_tasks=self.num_tasks)
+        context_portion = self.context_func(observations=observations, actions=actions, num_tasks=self.num_tasks)
 
         return super().forward(obs_portion, context_portion)
