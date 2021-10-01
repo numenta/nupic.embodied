@@ -126,6 +126,7 @@ def init_experiment(
         qf2=qf2,
         replay_buffer=replay_buffer,
         sampler=sampler,
+        train_task_sampler=train_task_sampler,
         gradient_steps_per_itr=max_episode_length,
         num_tasks=num_tasks,
         min_buffer_size=max_episode_length * num_tasks,
@@ -137,7 +138,7 @@ def init_experiment(
         reward_scale=training_args.reward_scale,
         num_evaluation_episodes=training_args.eval_episodes,
         fp16=experiment_args.fp16,
-        train_task_sampler=train_task_sampler,
+        log_per_task=logging_args.log_per_task
     )
 
     # TODO: do we have to fix which GPU to use? how to run distributed across multiGPUs?

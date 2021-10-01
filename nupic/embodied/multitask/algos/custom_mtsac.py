@@ -153,8 +153,6 @@ class CustomMTSAC(MTSAC):
             float: The average return in last epoch cycle.
 
         """
-
-
         t0 = time()
 
         new_trajectories = self._sampler.obtain_samples(
@@ -167,9 +165,6 @@ class CustomMTSAC(MTSAC):
         total_losses = self.run_step()
         time_to_collect_samples = t1 - t0
         time_to_update_gradient = time() - t1
-
-        # Normalize losses by total of gradient updates
-        total_losses = [loss / self._gradient_steps for loss in total_losses]
 
         log_dict = self._log_statistics(*total_losses)
 
@@ -199,6 +194,9 @@ class CustomMTSAC(MTSAC):
                 total_losses[1] += qf1_loss
                 total_losses[2] += qf2_loss
                 self._update_targets()
+
+        # Normalize losses by total of gradient updates
+        total_losses = [loss / self._gradient_steps for loss in total_losses]
 
         return total_losses
 
