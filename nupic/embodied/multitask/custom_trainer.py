@@ -116,7 +116,7 @@ class CustomTrainer(Trainer):
             self._itr_start_time = time.time()
 
             # Run training epoch
-            log_dict = self._algo.run_epoch(env_steps_per_epoch=batch_size)
+            log_dict = self._algo.run_epoch(epoch=epoch, env_steps_per_epoch=batch_size)
             self.total_env_steps = log_dict["TotalEnvSteps"]  # TODO: needed?
 
             # Run evaluation, with a given frequency

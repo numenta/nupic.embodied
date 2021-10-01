@@ -73,10 +73,10 @@ class CustomMTSAC(MTSAC):
             replay_buffer=replay_buffer,
             env_spec=env_spec,
             sampler=sampler,
-            test_sampler=sampler,
+            test_sampler=sampler,  # not used, for compatibility
             train_task_sampler=train_task_sampler,
             num_tasks=num_tasks,
-            gradient_steps_per_itr=gradient_steps_per_itr,  # see
+            gradient_steps_per_itr=gradient_steps_per_itr,
             max_episode_length_eval=max_episode_length_eval,
             fixed_alpha=fixed_alpha,
             target_entropy=target_entropy,
@@ -102,6 +102,9 @@ class CustomMTSAC(MTSAC):
         self._gs_qf2 = GradScaler()
         self._gs_policy = GradScaler()
         self._gs_alpha = GradScaler()
+
+        # get updates for evaluation
+        self.eval_env_update = self.resample_environment(force_update=True)
 
     def get_updated_policy(self):
         with torch.no_grad():
@@ -130,7 +133,11 @@ class CustomMTSAC(MTSAC):
 
         self.episode_rewards.append(np.mean(path_returns))
 
-    def run_epoch(self, env_steps_per_epoch):
+    def resample_environment(self, epoch=0, force_update=False):
+        if epoch % self._task_update_frequency or force_update:
+            return self._train_task_sampler.sample(self._num_tasks)
+
+    def run_epoch(self, epoch, env_steps_per_epoch):
         """
         Run one epoch, which is composed of one N sample collections and N training
         steps. Each training step in their turn is composed of M gradient steps of
@@ -149,9 +156,11 @@ class CustomMTSAC(MTSAC):
 
 
         t0 = time()
+
         new_trajectories = self._sampler.obtain_samples(
             num_samples=env_steps_per_epoch,
-            agent_update=self.get_updated_policy()
+            agent_update=self.get_updated_policy(),
+            env_update=self.resample_environment(epoch),
         )
         self.update_buffer(new_trajectories)
         t1 = time()
@@ -213,6 +222,7 @@ class CustomMTSAC(MTSAC):
         eval_trajectories = self._sampler.obtain_exact_episodes(
             n_eps_per_worker=self._num_evaluation_episodes,
             agent_update=self.get_updated_policy(),
+            env_update=self.eval_env_update,
         )
 
         # Log performance
