@@ -36,204 +36,105 @@ from nupic.embodied.multitask.policies import (
     GaussianDendriticMLPPolicy,
     GaussianMLPPolicy,
 )
-from nupic.embodied.multitask.q_functions import ContinuousDendriteMLPQFunction
-from nupic.embodied.multitask.value_functions import (
-    GaussianDendriticValueFunction,
-    GaussianMLPValueFunction,
-)
+from nupic.embodied.multitask.value_functions import ContinuousDendriteMLPQFunction
+
+from nupic.embodied.multitask.dendrites import MaxGatingDendriticLayer, AbsoluteMaxGatingUnsignedDendriticLayer
+
 from nupic.research.frameworks.dendrites import (
-    AbsoluteMaxGatingDendriticLayer,
     BiasingDendriticLayer,
-    DendriticAbsoluteMaxGate1d,
     OneSegmentDendriticLayer,
 )
 
-
-def compute_advantages(discount, gae_lambda, max_episode_length, baselines,
-                       rewards):
-    """Calculate advantages.
-
-    Advantages are a discounted cumulative sum.
-
-    Calculate advantages using a baseline according to Generalized Advantage
-    Estimation (GAE)
-
-    The discounted cumulative sum can be computed using conv2d with filter.
-    filter:
-        [1, (discount * gae_lambda), (discount * gae_lambda) ^ 2, ...]
-        where the length is same with max_episode_length.
-
-    baselines and rewards are also has same shape.
-        baselines:
-        [ [b_11, b_12, b_13, ... b_1n],
-          [b_21, b_22, b_23, ... b_2n],
-          ...
-          [b_m1, b_m2, b_m3, ... b_mn] ]
-        rewards:
-        [ [r_11, r_12, r_13, ... r_1n],
-          [r_21, r_22, r_23, ... r_2n],
-          ...
-          [r_m1, r_m2, r_m3, ... r_mn] ]
-
-    Args:
-        discount (float): RL discount factor (i.e. gamma).
-        gae_lambda (float): Lambda, as used for Generalized Advantage
-            Estimation (GAE).
-        max_episode_length (int): Maximum length of a single episode.
-        baselines (torch.Tensor): A 2D vector of value function estimates with
-            shape (N, T), where N is the batch dimension (number of episodes)
-            and T is the maximum episode length experienced by the agent. If an
-            episode terminates in fewer than T time steps, the remaining
-            elements in that episode should be set to 0.
-        rewards (torch.Tensor): A 2D vector of per-step rewards with shape
-            (N, T), where N is the batch dimension (number of episodes) and T
-            is the maximum episode length experienced by the agent. If an
-            episode terminates in fewer than T time steps, the remaining
-            elements in that episode should be set to 0.
-
-    Returns:
-        torch.Tensor: A 2D vector of calculated advantage values with shape
-            (N, T), where N is the batch dimension (number of episodes) and T
-            is the maximum episode length experienced by the agent. If an
-            episode terminates in fewer than T time steps, the remaining values
-            in that episode should be set to 0.
-
-    """
-    adv_filter = torch.full((1, 1, 1, max_episode_length - 1),
-                            discount * gae_lambda,
-                            dtype=torch.float, device=global_device())
-    adv_filter = torch.cumprod(F.pad(adv_filter, (1, 0), value=1), dim=-1)
-
-    deltas = (rewards + discount * F.pad(baselines, (0, 1))[:, 1:] - baselines)
-    deltas = F.pad(deltas,
-                   (0, max_episode_length - 1)).unsqueeze(0).unsqueeze(0)
-
-    advantages = F.conv2d(deltas, adv_filter, stride=1).reshape(rewards.shape)
-    return advantages
+from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer as AbsoluteMaxGatingSignedDendriticLayer
 
 
 def create_policy_net(env_spec, net_params):
-    net_type = net_params.net_type
-    assert net_type in {"MLP", "Dendrite_MLP"}
-    if net_type == "MLP":
+    if net_params.net_type == "MLP":
         net = GaussianMLPPolicy(
             env_spec=env_spec,
-            hidden_sizes=net_params.policy_hidden_sizes,
+            hidden_sizes=net_params.hidden_sizes,
             hidden_nonlinearity=create_nonlinearity(net_params.policy_hidden_nonlinearity),
-            output_nonlinearity=create_nonlinearity(net_params.policy_output_nonlinearity),
-            min_std=net_params.policy_min_std,
-            max_std=net_params.policy_max_std,
+            output_nonlinearity=create_nonlinearity(net_params.output_nonlinearity),
+            min_std=net_params.policy_min_log_std,
+            max_std=net_params.policy_max_log_std,
             normal_distribution_cls=create_distribution(net_params.distribution)
         )
-    elif net_type == "Dendrite_MLP":
+    elif net_params.net_type == "Dendrite_MLP":
         dendritic_layer_class = create_dendritic_layer(net_params.dendritic_layer_class)
+
         net = GaussianDendriticMLPPolicy(
             env_spec=env_spec,
-            dim_context=net_params.dim_context,
             num_tasks=net_params.num_tasks,
-            kw=net_params.kw,
+            input_data=net_params.input_data,
+            context_data=net_params.context_data,
             hidden_sizes=net_params.hidden_sizes,
+            layers_modulated=net_params.layers_modulated,
             num_segments=net_params.num_segments,
             kw_percent_on=net_params.kw_percent_on,
             context_percent_on=net_params.context_percent_on,
             weight_sparsity=net_params.weight_sparsity,
             weight_init=net_params.weight_init,
+            dendrite_weight_sparsity=net_params.dendrite_weight_sparsity,
             dendrite_init=net_params.dendrite_init,
             dendritic_layer_class=dendritic_layer_class,
             output_nonlinearity=net_params.output_nonlinearity,
             preprocess_module_type=net_params.preprocess_module_type,
             preprocess_output_dim=net_params.preprocess_output_dim,
             preprocess_kw_percent_on=net_params.kw_percent_on,
-            representation_module_type=net_params.representation_module_type,
-            representation_module_dims=net_params.representation_module_dims,
-            min_std=net_params.policy_min_std,
-            max_std=net_params.policy_max_std,
+            min_std=net_params.policy_min_log_std,
+            max_std=net_params.policy_max_log_std,
             normal_distribution_cls=create_distribution(net_params.distribution)
         )
     else:
         raise NotImplementedError
+
     return net
-
-
-def create_vf_net(env_spec, net_params):
-    net_type = net_params.net_type
-    assert net_type in {"MLP", "Dendrite_MLP"}
-    if net_type == "MLP":
-        net = GaussianMLPValueFunction(
-            env_spec=env_spec,
-            hidden_sizes=net_params.vf_hidden_sizes,
-            hidden_nonlinearity=create_nonlinearity(net_params.vf_hidden_nonlinearity),
-            output_nonlinearity=create_nonlinearity(net_params.vf_output_nonlinearity),
-        )
-    elif net_type == "Dendrite_MLP":
-        dendritic_layer_class = create_dendritic_layer(net_params.dendritic_layer_class)
-        net = GaussianDendriticValueFunction(
-            env_spec=env_spec,
-            dim_context=net_params.dim_context,
-            num_tasks=net_params.num_tasks,
-            kw=net_params.kw,
-            hidden_sizes=net_params.hidden_sizes,
-            num_segments=net_params.num_segments,
-            kw_percent_on=net_params.kw_percent_on,
-            context_percent_on=net_params.context_percent_on,
-            weight_sparsity=net_params.weight_sparsity,
-            weight_init=net_params.weight_init,
-            dendrite_init=net_params.dendrite_init,
-            dendritic_layer_class=dendritic_layer_class,
-            output_nonlinearity=net_params.output_nonlinearity,
-            preprocess_module_type=net_params.preprocess_module_type,
-            preprocess_output_dim=net_params.preprocess_output_dim,
-            preprocess_kw_percent_on=net_params.preprocess_kw_percent_on,
-            representation_module_type=net_params.representation_module_type,
-            representation_module_dims=net_params.representation_module_dims,
-        )
-    else:
-        raise NotImplementedError
-    return net
-
 
 def create_qf_net(env_spec, net_params):
-    net_type = net_params.net_type
-    assert net_type in {"MLP", "Dendrite_MLP"}
-    if net_type == "MLP":
+    if net_params.net_type == "MLP":
         net = ContinuousMLPQFunction(
             env_spec=env_spec,
-            hidden_sizes=net_params.qf_hidden_sizes,
+            hidden_sizes=net_params.hidden_sizes,
             hidden_nonlinearity=create_nonlinearity(net_params.qf_hidden_nonlinearity),
-            output_nonlinearity=create_nonlinearity(net_params.qf_output_nonlinearity),
+            output_nonlinearity=create_nonlinearity(net_params.output_nonlinearity),
         )
-    elif net_type == "Dendrite_MLP":
+    elif net_params.net_type == "Dendrite_MLP":
         dendritic_layer_class = create_dendritic_layer(net_params.dendritic_layer_class)
+
         net = ContinuousDendriteMLPQFunction(
             env_spec=env_spec,
+            num_tasks=net_params.num_tasks,
+            input_data=net_params.input_data,
+            context_data=net_params.context_data,
             hidden_sizes=net_params.hidden_sizes,
+            layers_modulated=net_params.layers_modulated,
             num_segments=net_params.num_segments,
-            dim_context=net_params.dim_context,
-            kw=net_params.kw,
             kw_percent_on=net_params.kw_percent_on,
             context_percent_on=net_params.context_percent_on,
             weight_sparsity=net_params.weight_sparsity,
             weight_init=net_params.weight_init,
+            dendrite_weight_sparsity=net_params.dendrite_weight_sparsity,
             dendrite_init=net_params.dendrite_init,
             dendritic_layer_class=dendritic_layer_class,
             output_nonlinearity=net_params.output_nonlinearity,
             preprocess_module_type=net_params.preprocess_module_type,
             preprocess_output_dim=net_params.preprocess_output_dim,
-            representation_module_type=net_params.representation_module_type,
-            representation_module_dims=net_params.representation_module_dims,
         )
     else:
         raise NotImplementedError
+
     return net
 
 
 def create_dendritic_layer(dendritic_layer):
     if dendritic_layer == "biasing":
         return BiasingDendriticLayer
-    elif dendritic_layer == "abs_max_gating":
-        return AbsoluteMaxGatingDendriticLayer
     elif dendritic_layer == "max_gating":
-        return DendriticAbsoluteMaxGate1d
+        return MaxGatingDendriticLayer
+    elif dendritic_layer == "abs_max_gating_signed":
+        return AbsoluteMaxGatingSignedDendriticLayer
+    elif dendritic_layer == "abs_max_gating_unsigned":
+        return AbsoluteMaxGatingUnsignedDendriticLayer
     elif dendritic_layer == "one_segment":
         return OneSegmentDendriticLayer
     else:

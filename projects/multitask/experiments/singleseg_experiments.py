@@ -23,29 +23,22 @@ from .base import singleseg_mt10_base
 
 from copy import deepcopy
 
-singlesegkw_base = dict()
-singlesegkw_base.update(singleseg_mt10_base)
+'''
+Round 1 of experiments
+'''
 
-# single segment K-winners experiment 
-singlesegkw1 = deepcopy(singlesegkw_base)
-singlesegkw1.update(
-    policy_lr=3.85e-4,
-    qf_lr=3.85e-4,
-    hidden_sizes=(2048, 2048, 2048),
-    kw_percent_on=0.17,
-    fp16=True
+baseline_1d = deepcopy(singleseg_mt10_base)
+baseline_1d.update(
+    policy_lr=3.0e-4,
+    qf_lr=3.0e-4,
+    hidden_sizes=(520, 520),
+    kw_percent_on=0.25,
+    fp16=True,
+    weight_sparsity=0.5,
+    preprocess_output_dim=32,
 )
 
-singlesegkw2 = deepcopy(singlesegkw_base)
-singlesegkw2.update(
-    policy_lr=3.85e-4,
-    qf_lr=3.85e-4,
-    hidden_sizes=(2048, 2048, 2048),
-    kw_percent_on=0.17,
-    fp16=False
-)
 
 CONFIGS = dict(
-    singlesegkw1=singlesegkw1,
-    singlesegkw2=singlesegkw2,
+    baseline_1d=baseline_1d,
 )

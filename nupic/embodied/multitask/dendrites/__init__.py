@@ -19,5 +19,5 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-from .custom_dendritic_mlp import CustomDendriticMLP
-from .gaussian_mlp_module import GaussianTwoHeadedMLPModule, GaussianTwoHeadedDendriticMLPModule
+from .dendritic_layers import AbsoluteMaxGatingUnsignedDendriticLayer, MaxGatingDendriticLayer, FFLayer
+from .dendritic_mlp import ModularDendriticMLP

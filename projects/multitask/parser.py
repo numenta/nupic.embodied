@@ -52,6 +52,7 @@ class LoggingArguments:
                     "of iterations before taking another snapshot."
         }
     )
+    wandb_group: Optional[str] = None
     log_per_task: bool = field(
         default=False,
         metadata={
@@ -90,6 +91,7 @@ class ExperimentArguments:
     workers_per_env: int = 1
     do_train: bool = True
     debug_mode: bool = True
+    use_deterministic_evaluation: bool = False
     fp16 : bool = False
 
 
@@ -114,31 +116,70 @@ class TrainingArguments:
 @dataclass
 class NetworkArguments:
     net_type: str = "Dendrite_MLP"
-    dim_context: int = 10
     num_tasks: int = 10
-    kw: bool = True
+    input_data: Literal["obs", "obs|context"] = field(
+        default="obs",
+        metadata={
+            "help": "(str): Type of input data to use. Can be either 'obs|context'"
+                    "(observation concatenated with context, which is a one-hot"
+                    "encoded task id) or 'obs' (just the obseration)."
+        }
+    )
+    context_data: Literal["context", "obs|context", None] = field( 
+        default="obs|context",
+        metadata={
+            "help": "(str) Type of context data to use. Can be either 'obs|context'"
+                    "(observation concatenated with context, which is a one-hot"
+                    "encoded task id) or 'context' (just the one-hot encoded task id)."
+        }
+    )
     hidden_sizes: Tuple = (2048, 2048)
+    layers_modulated: Tuple = tuple(range(len(hidden_sizes)))
     num_segments: int = 1
     kw_percent_on: float = 0.33
     context_percent_on: float = 1.0
     weight_sparsity: float = 0.0
     weight_init: str = "modified"
+    dendrite_weight_sparsity: float = 0.0
     dendrite_init: str = "modified"
     dendritic_layer_class: str = "one_segment"
     output_nonlinearity: Optional[str] = None
     preprocess_module_type: str = "relu"
     preprocess_output_dim: int = 64
-    representation_module_type: Optional[str] = None
-    representation_module_dims: Optional[str] = None
     policy_min_log_std: float = -20.0
     policy_max_log_std: float = 2.0
+    policy_hidden_nonlinearity: str = "relu"
+    qf_hidden_nonlinearity: str = "relu"
     distribution: str = "TanhNormal"
 
     def __post_init__(self):
-        self.policy_min_std = np.exp(self.policy_min_log_std)
-        self.policy_max_std = np.exp(self.policy_max_log_std)
-        # TODO: see if we really need an extra dim_context
-        self.dim_context = self.num_tasks
+        # TODO: modify DataClassArgumentParser to verify if Literals are valid
+
+        assert self.input_data in {"obs", "obs|context"}
+        assert self.context_data in {"context", "obs|context", None}
+        assert self.kw_percent_on is None or (self.kw_percent_on >= 0.0 and self.kw_percent_on < 1.0)
+        assert self.context_percent_on >= 0.0
+        assert self.weight_init in {"modified", "kaiming"}
+        assert self.dendrite_init in {"modified", "kaiming"}
+        assert self.preprocess_module_type in {None, "relu", "kw"}
+
+        if self.net_type == "Dendritic_MLP":
+            assert self.num_segments >= 1
+
+            if self.num_segments == 1 or self.dendritic_layer_class == "one_segment":
+                self.num_segments = 1
+                self.dendritic_layer_class = "one_segment"
+            elif self.num_segments > 1:
+                assert self.dendritic_layer_class in {"biasing", "max_gating", "abs_max_gating_signed", "abs_max_gating_unsigned"}
+        elif self.net_type == "MLP":
+            self.input_data = "obs|context"
+            self.context_data = None
+            self.num_segments = 0
+            self.dendritic_layer_class = None
+            
+
+        if self.kw_percent_on == 0.0:
+            self.kw_percent_on = None
 
 
 def create_exp_parser():
