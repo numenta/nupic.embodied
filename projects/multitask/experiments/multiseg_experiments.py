@@ -193,22 +193,6 @@ no_overlap_10d_preprocess_none.update(
 )
 
 
-no_overlap_10d_abs_max_gating_preprocess_relu = deepcopy(seg10)
-no_overlap_10d_abs_max_gating_preprocess_relu.update(
-    input_data="obs", 
-    context_data="context",
-    policy_lr=3.0e-4,
-    qf_lr=3.0e-4,
-    hidden_sizes=(1950, 1950),
-    layers_modulated=(1,),
-    kw_percent_on=0.25,
-    weight_sparsity=0.10,
-    fp16=True,
-    preprocess_output_dim=10,
-    dendritic_layer_class="abs_max_gating_signed",
-)
-
-
 no_overlap_10d_abs_max_unsigned = deepcopy(seg10)
 no_overlap_10d_abs_max_unsigned.update(
     input_data="obs", 
@@ -242,24 +226,21 @@ no_overlap_15d_abs_max_unsigned.update(
     dendritic_layer_class="abs_max_gating_unsigned",
 )
 
-
-'''
-Round 3 of experiments
-'''
-
-smaller_no_overlap_10d = deepcopy(seg10)
-smaller_no_overlap_10d.update(
+no_overlap_10d_abs_max_signed = deepcopy(seg10)
+no_overlap_10d_abs_max_signed.update(
     input_data="obs", 
     context_data="context",
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
-    hidden_sizes=(1600, 1600),
+    hidden_sizes=(1950, 1950),
     layers_modulated=(1,),
     kw_percent_on=0.25,
     weight_sparsity=0.10,
     fp16=True,
     preprocess_output_dim=10,
+    dendritic_layer_class="abs_max_gating_signed",
 )
+
 
 CONFIGS = dict(
     baseline_5d=baseline_5d,
@@ -269,11 +250,10 @@ CONFIGS = dict(
     overlap_input_10d=overlap_input_10d,
     overlap_context_10d=overlap_context_10d,
     overlap_both_10d=overlap_both_10d,
-    smaller_no_overlap_10d=smaller_no_overlap_10d,
     no_overlap_10d_preprocess_relu=no_overlap_10d_preprocess_relu,
     no_overlap_10d_preprocess_kw=no_overlap_10d_preprocess_kw,
     no_overlap_10d_preprocess_none=no_overlap_10d_preprocess_none,
-    no_overlap_10d_abs_max_gating_preprocess_relu=no_overlap_10d_abs_max_gating_preprocess_relu,
     no_overlap_10d_abs_max_unsigned=no_overlap_10d_abs_max_unsigned,
     no_overlap_15d_abs_max_unsigned=no_overlap_15d_abs_max_unsigned,
+    no_overlap_10d_abs_max_signed=no_overlap_10d_abs_max_signed,
 )
