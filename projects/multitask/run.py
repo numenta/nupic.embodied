@@ -137,7 +137,7 @@ def init_experiment(
         reward_scale=training_args.reward_scale,
         num_evaluation_episodes=training_args.eval_episodes,
         fp16=experiment_args.fp16,
-        use_deterministic_evaluation=experiment_args.use_deterministic_evaluation
+        train_task_sampler=train_task_sampler,
     )
 
     # TODO: do we have to fix which GPU to use? how to run distributed across multiGPUs?

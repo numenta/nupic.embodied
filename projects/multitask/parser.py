@@ -84,7 +84,6 @@ class ExperimentArguments:
     workers_per_env: int = 1
     do_train: bool = True
     debug_mode: bool = True
-    use_deterministic_evaluation: bool = False
     fp16 : bool = False
 
 

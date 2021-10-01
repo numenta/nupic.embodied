@@ -44,6 +44,7 @@ class CustomMTSAC(MTSAC):
         replay_buffer,
         env_spec,
         sampler,
+        train_task_sampler,
         *,
         num_tasks,
         gradient_steps_per_itr,
@@ -60,7 +61,6 @@ class CustomMTSAC(MTSAC):
         reward_scale=1.0,
         optimizer=torch.optim.Adam,
         num_evaluation_episodes=5,
-        use_deterministic_evaluation=False,  # not being used currently
         # added
         fp16=False,
         log_per_task=False,
@@ -73,6 +73,8 @@ class CustomMTSAC(MTSAC):
             replay_buffer=replay_buffer,
             env_spec=env_spec,
             sampler=sampler,
+            test_sampler=sampler,
+            train_task_sampler=train_task_sampler,
             num_tasks=num_tasks,
             gradient_steps_per_itr=gradient_steps_per_itr,  # see
             max_episode_length_eval=max_episode_length_eval,
@@ -87,11 +89,10 @@ class CustomMTSAC(MTSAC):
             qf_lr=qf_lr,
             reward_scale=reward_scale,
             optimizer=optimizer,
-            eval_env=None,
             steps_per_epoch=1,
             num_evaluation_episodes=num_evaluation_episodes,
-            use_deterministic_evaluation=use_deterministic_evaluation,
         )
+        self._train_task_sampler = train_task_sampler
         self._fp16 = fp16
         self._log_per_task = log_per_task
         self._total_envsteps = 0
