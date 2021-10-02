@@ -129,7 +129,10 @@ def init_experiment(
         replay_buffer=replay_buffer,
         sampler=sampler,
         train_task_sampler=train_task_sampler,
-        gradient_steps_per_itr=max_episode_length,
+        gradient_steps_per_itr=int(
+            max_episode_length * training_args.num_grad_steps_scale
+        ),
+        task_update_frequency=training_args.task_update_frequency,
         num_tasks=num_tasks,
         min_buffer_size=max_episode_length * num_tasks,
         target_update_tau=training_args.target_update_tau,
