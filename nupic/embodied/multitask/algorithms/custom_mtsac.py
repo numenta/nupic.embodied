@@ -48,6 +48,7 @@ class CustomMTSAC(MTSAC):
         *,
         num_tasks,
         gradient_steps_per_itr,
+        task_update_frequency=1,
         max_episode_length_eval=None,
         fixed_alpha=None,
         target_entropy=None,
@@ -93,6 +94,7 @@ class CustomMTSAC(MTSAC):
             num_evaluation_episodes=num_evaluation_episodes,
         )
         self._train_task_sampler = train_task_sampler
+        self._task_update_frequency = task_update_frequency
         self._fp16 = fp16
         self._log_per_task = log_per_task
         self._total_envsteps = 0
@@ -134,8 +136,14 @@ class CustomMTSAC(MTSAC):
         self.episode_rewards.append(np.mean(path_returns))
 
     def resample_environment(self, epoch=0, force_update=False):
-        if epoch % self._task_update_frequency or force_update:
+        """
+        TODO: fix env update in sampler
+
+        Intended behavior:
+        if epoch % self._task_update_frequency == 0 or force_update:
             return self._train_task_sampler.sample(self._num_tasks)
+        """
+        return None
 
     def run_epoch(self, epoch, env_steps_per_epoch):
         """
