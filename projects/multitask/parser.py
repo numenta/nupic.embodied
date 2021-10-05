@@ -53,6 +53,12 @@ class LoggingArguments:
         }
     )
     wandb_group: Optional[str] = None
+    log_per_task: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether or not to log individual results per task."
+        }
+    )
 
     def __post_init__(self):
         # TODO: checkpoint dir doesn't take into account experiment name,

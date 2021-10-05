@@ -28,4 +28,4 @@
 mujoco-py<2.1,>=2.0
 metaworld @ git+https://github.com/rlworkgroup/metaworld.git@cfd837e31d65c9d2b62b7240c68a26b04a9166d9
 garage @ git+https://github.com/rlworkgroup/garage.git@0e9f32b1cf7072640c5ddcb0abf49780b8333a8c#egg=garage  # @5cf758d90a4bfa1bb6905b1e92e1ce849eddf22c#egg=garage
-numpy>=1.2.1
+# numpy>=1.2.1

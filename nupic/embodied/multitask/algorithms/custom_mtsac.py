@@ -20,24 +20,22 @@
 #
 # ------------------------------------------------------------------------------
 import copy
+import logging
+from time import time
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.cuda.amp import GradScaler, autocast
-import wandb
 from garage import StepType
+from garage.torch import as_torch_dict
 from garage.torch.algos.mtsac import MTSAC
-from time import time
+from torch.cuda.amp import GradScaler, autocast
 
-from nupic.embodied.multitask.algorithms.custom_sac import CustomSAC
 from nupic.embodied.utils.garage_utils import log_multitask_performance
 from nupic.torch.modules.sparse_weights import rezero_weights
 
-import logging
 
-
-class CustomMTSAC(MTSAC, CustomSAC):
+class CustomMTSAC(MTSAC):
     def __init__(
         self,
         policy,
@@ -50,6 +48,7 @@ class CustomMTSAC(MTSAC, CustomSAC):
         *,
         num_tasks,
         gradient_steps_per_itr,
+        task_update_frequency=1,
         max_episode_length_eval=None,
         fixed_alpha=None,
         target_entropy=None,
@@ -62,12 +61,10 @@ class CustomMTSAC(MTSAC, CustomSAC):
         qf_lr=3e-4,
         reward_scale=1.0,
         optimizer=torch.optim.Adam,
-        steps_per_epoch=1,
         num_evaluation_episodes=5,
-        task_update_frequency=1,
-        wandb_logging=True,
-        evaluation_frequency=25,
-        fp16=False
+        # added
+        fp16=False,
+        log_per_task=False,
     ):
 
         super().__init__(
@@ -77,6 +74,7 @@ class CustomMTSAC(MTSAC, CustomSAC):
             replay_buffer=replay_buffer,
             env_spec=env_spec,
             sampler=sampler,
+            test_sampler=sampler,  # not used, for compatibility
             train_task_sampler=train_task_sampler,
             num_tasks=num_tasks,
             gradient_steps_per_itr=gradient_steps_per_itr,
@@ -92,121 +90,177 @@ class CustomMTSAC(MTSAC, CustomSAC):
             qf_lr=qf_lr,
             reward_scale=reward_scale,
             optimizer=optimizer,
-            steps_per_epoch=steps_per_epoch,
+            steps_per_epoch=1,
             num_evaluation_episodes=num_evaluation_episodes,
-            task_update_frequency=task_update_frequency,
-            # TODO: remove test_sampler if overriding MTSAC or updating garage
-            test_sampler=None
         )
-        # Added samplers as local attributes since required in methods defined below
         self._train_task_sampler = train_task_sampler
-        self._wandb_logging = wandb_logging
-        self._evaluation_frequency = evaluation_frequency
+        self._task_update_frequency = task_update_frequency
         self._fp16 = fp16
+        self._log_per_task = log_per_task
+        self._total_envsteps = 0
 
+        # scalers for fp16
         self._gs_qf1 = GradScaler()
         self._gs_qf2 = GradScaler()
         self._gs_policy = GradScaler()
         self._gs_alpha = GradScaler()
 
-    def train(self, trainer):
-        """Obtain samplers and start actual training for each epoch.
+        # get updates for evaluation
+        self.eval_env_update = self.resample_environment(force_update=True)
 
-        Args:
-            trainer (Trainer): Gives the algorithm the access to
-                :method:`~Trainer.step_epochs()`, which provides services
-                such as snapshotting and sampler control.
+    def get_updated_policy(self):
+        with torch.no_grad():
+            updated_policy = copy.deepcopy(self.policy)
+        updated_policy.eval()
+
+        return updated_policy
+
+    def update_buffer(self, trajectories):
+        """Update Buffer"""
+
+        self._total_envsteps += sum(trajectories.lengths)
+        path_returns = []
+        for path in trajectories.to_list():
+            self.replay_buffer.add_path(dict(
+                observation=path["observations"],
+                action=path["actions"],
+                reward=path["rewards"].reshape(-1, 1),
+                next_observation=path["next_observations"],
+                terminal=np.array([
+                    step_type == StepType.TERMINAL
+                    for step_type in path["step_types"]
+                ]).reshape(-1, 1)
+            ))
+            path_returns.append(sum(path["rewards"]))
+
+        self.episode_rewards.append(np.mean(path_returns))
+
+    def resample_environment(self, epoch=0, force_update=False):
+        """
+        TODO: fix env update in sampler
+
+        Intended behavior:
+        if epoch % self._task_update_frequency == 0 or force_update:
+            return self._train_task_sampler.sample(self._num_tasks)
+        """
+        return None
+
+    def run_epoch(self, epoch, env_steps_per_epoch):
+        """
+        Run one epoch, which is composed of one N sample collections and N training
+        steps. Each training step in their turn is composed of M gradient steps of
+        batch size B
+
+        Total number of samples used by the algorithm in a epoch is given by N * M * B
+        (steps * gradient_steps * batch size)
+
+        Samples collected are only used to update the buffer, and there is no direct
+        influence on number of gradient steps or batch size.
 
         Returns:
             float: The average return in last epoch cycle.
 
         """
-        # Note: is a separate eval env really required?
-        if not self._eval_env:
-            self._eval_env = trainer.get_env_copy()
+        t0 = time()
 
-        last_return = None
+        new_trajectories = self._sampler.obtain_samples(
+            num_samples=env_steps_per_epoch,
+            agent_update=self.get_updated_policy(),
+            env_update=self.resample_environment(epoch),
+        )
+        self.update_buffer(new_trajectories)
+        t1 = time()
+        total_losses = self.run_step()
+        time_to_collect_samples = t1 - t0
+        time_to_update_gradient = time() - t1
 
-        for epoch in trainer.step_epochs():
-            for step in range(self._steps_per_epoch):
-                t0 = time()
-                if self.replay_buffer.n_transitions_stored >= self._min_buffer_size:
-                    batch_size = None
-                else:
-                    batch_size = int(self._min_buffer_size)
+        log_dict = self._log_statistics(*total_losses)
 
-                # Note: copying the policy to CPU - why? because collection is on CPU?
-                with torch.no_grad():
-                    agent_update = copy.deepcopy(self.policy).to("cpu")
+        # TODO: switch to logger.debug once logger is fixed
+        logging.warn(f"Time to collect samples: {time_to_collect_samples:.2f}")
+        logging.warn(f"Time to update gradient: {time_to_update_gradient:.2f}")
 
-                env_updates = None
+        return log_dict
 
-                if step % self._task_update_frequency:
-                    self._curr_train_tasks = self._train_task_sampler.sample(
-                        self._num_tasks
-                    )
-                    env_updates = self._curr_train_tasks
+    def run_step(self):
+        """
+        Run one training step, which is composed of M gradient steps
 
-                trainer.step_episode = trainer.obtain_samples(
-                    trainer.step_itr, batch_size,
-                    agent_update=agent_update,
-                    env_update=env_updates
-                )
+        For M gradients steps:
+        - sample a batch from buffer
+        - perform one gradient step in all three networks (policy, qf1 and qf2)
+        """
 
-                path_returns = []
-                for path in trainer.step_episode:
-                    self.replay_buffer.add_path(dict(
-                        observation=path["observations"],
-                        action=path["actions"],
-                        reward=path["rewards"].reshape(-1, 1),
-                        next_observation=path["next_observations"],
-                        terminal=np.array([
-                            step_type == StepType.TERMINAL
-                            for step_type in path["step_types"]
-                        ]).reshape(-1, 1)
-                    ))
-                    path_returns.append(sum(path["rewards"]))
+        total_losses = [0, 0, 0]
+        for _ in range(self._gradient_steps):
+            if self.replay_buffer.n_transitions_stored >= self._min_buffer_size:
+                samples = as_torch_dict(self.replay_buffer.sample_transitions(
+                    self._buffer_batch_size
+                ))
+                policy_loss, qf1_loss, qf2_loss = self.optimize_policy(samples)
+                total_losses[0] += policy_loss
+                total_losses[1] += qf1_loss
+                total_losses[2] += qf2_loss
+                self._update_targets()
 
-                assert len(path_returns) == len(trainer.step_episode), \
-                    "The number of path returns have to match number step episodes"
+        # Normalize losses by total of gradient updates
+        total_losses = [loss / self._gradient_steps for loss in total_losses]
 
-                self.episode_rewards.append(np.mean(path_returns))
+        return total_losses
 
-                t1 = time()
-                logging.debug("TRAINING DEVICE: ", next(self.policy.parameters()).device)
-                # Note: why only one gradient step with all the data?
-                for _ in range(self._gradient_steps):
-                    policy_loss, qf1_loss, qf2_loss = self.train_once()
+    def _evaluate_policy(self, epoch):
+        """Evaluate the performance of the policy via deterministic sampling.
 
-            t2 = time()
+            Statistics such as (average) discounted return and success rate are
+            recorded.
 
-            # logging at each epoch
-            log_dict = self._log_statistics(policy_loss, qf1_loss, qf2_loss)
-            if self._wandb_logging:
-                log_dict["TotalEnvSteps"] = trainer.total_env_steps
-            trainer.step_itr += 1
+        Args:
+            epoch (int): The current training epoch.
 
-            # logging only when evaluating
-            if epoch % self._evaluation_frequency == 0:
-                last_return, eval_log_dict = self._evaluate_policy(trainer.step_itr)
-                if log_dict is not None:
-                    log_dict.update(eval_log_dict)
+        Returns:
+            float: The average return across self._num_evaluation_episodes
+                episodes
 
-            t3 = time()
+        """
 
-            if log_dict is not None:
-                wandb.log(log_dict)
+        t0 = time()
+        # Collect episodes for evaluation
+        eval_trajectories = self._sampler.obtain_exact_episodes(
+            n_eps_per_worker=self._num_evaluation_episodes,
+            agent_update=self.get_updated_policy(),
+            env_update=self.eval_env_update,
+        )
 
-            t4 = time()
+        # Log performance
+        undiscounted_returns, log_dict = log_multitask_performance(
+            epoch, eval_trajectories, self._discount, log_per_task=self._log_per_task
+        )
+        log_dict["average_return"] = np.mean(undiscounted_returns)
+        logging.warn(f"Time to evaluate policy: {time()-t0:.2f}")
 
-            # TODO: switch to logger.debug once logger is fixed
-            logging.warn(f"Time to collect samples: {t1-t0:.2f}")
-            logging.warn(f"Time to update gradient: {t2-t1:.2f}")
-            logging.warn(f"Time to evaluate policy: {t3-t2:.2f}")
-            logging.warn(f"Time to log:             {t4-t3:.2f}")
+        return undiscounted_returns, log_dict
 
-        return np.mean(last_return)
-    
+    def _log_statistics(self, policy_loss, qf1_loss, qf2_loss):
+        """Record training statistics to dowel such as losses and returns.
+
+        Args:
+            policy_loss (torch.Tensor): loss from actor/policy network.
+            qf1_loss (torch.Tensor): loss from 1st qf/critic network.
+            qf2_loss (torch.Tensor): loss from 2nd qf/critic network.
+
+        """
+        log_dict = {}
+        with torch.no_grad():
+            log_dict["AlphaTemperature/mean"] = self._log_alpha.exp().mean().item()
+        log_dict["Policy/Loss"] = policy_loss.item()
+        log_dict["QF/{}".format("Qf1Loss")] = float(qf1_loss)
+        log_dict["QF/{}".format("Qf2Loss")] = float(qf2_loss)
+        log_dict["ReplayBuffer/buffer_size"] = self.replay_buffer.n_transitions_stored
+        log_dict["Average/TrainAverageReturn"] = np.mean(self.episode_rewards)
+        log_dict["TotalEnvSteps"] = self._total_envsteps
+
+        return log_dict
+
     def _get_log_alpha(self, samples_data):
         """Return the value of log_alpha.
         Args:
@@ -239,7 +293,7 @@ class CustomMTSAC(MTSAC, CustomSAC):
                 "The number of tasks in the environment does "
                 "not match self._num_tasks. Are you sure that you passed "
                 "The correct number of tasks?")
-        
+
         with autocast(enabled=self._fp16):
             return torch.mm(one_hots, log_alpha.unsqueeze(0).t()).squeeze()
 
@@ -300,7 +354,7 @@ class CustomMTSAC(MTSAC, CustomSAC):
             alpha = self._get_log_alpha(samples_data).exp()
 
         with autocast(enabled=self._fp16):
-            min_q_new_actions = torch.min(self._qf1(obs, new_actions), 
+            min_q_new_actions = torch.min(self._qf1(obs, new_actions),
                                           self._qf2(obs, new_actions))
 
             policy_objective = ((alpha * log_pi_new_actions) -
@@ -342,17 +396,20 @@ class CustomMTSAC(MTSAC, CustomSAC):
             new_next_actions_dist = self.policy(next_obs)[0]
             new_next_actions_pre_tanh, new_next_actions = (
                 new_next_actions_dist.rsample_with_pre_tanh_value())
-            new_log_pi = new_next_actions_dist.log_prob(value=new_next_actions, 
-                                                        pre_tanh_value=new_next_actions_pre_tanh)
+            new_log_pi = new_next_actions_dist.log_prob(
+                value=new_next_actions,
+                pre_tanh_value=new_next_actions_pre_tanh
+            )
 
             target_q_values = torch.min(
                 self._target_qf1(next_obs, new_next_actions),
-                self._target_qf2(next_obs, new_next_actions)).flatten() - (alpha * new_log_pi)
+                self._target_qf2(next_obs, new_next_actions)
+            ).flatten() - (alpha * new_log_pi)
 
             with torch.no_grad():
                 q_target = rewards * self._reward_scale + (
                     1. - terminals) * self._discount * target_q_values
-                    
+
             qf1_loss = F.mse_loss(q1_pred.flatten(), q_target)
             qf2_loss = F.mse_loss(q2_pred.flatten(), q_target)
 
@@ -382,11 +439,71 @@ class CustomMTSAC(MTSAC, CustomSAC):
             torch.Tensor: loss from 2nd q-function after optimization.
 
         """
-        if not self._fp16:
-            return super().optimize_policy(samples_data)
+        if self._fp16:
+            return self.optimize_policy_with_autocast(samples_data)
 
         obs = samples_data["observation"]
-        
+        qf1_loss, qf2_loss = self._critic_objective(samples_data)
+
+        self._qf1_optimizer.zero_grad()
+        qf1_loss.backward()
+        self._qf1_optimizer.step()
+        self._qf1.apply(rezero_weights)
+
+        self._qf2_optimizer.zero_grad()
+        qf2_loss.backward()
+        self._qf2_optimizer.step()
+        self._qf2.apply(rezero_weights)
+
+        action_dists = self.policy(obs)[0]
+        new_actions_pre_tanh, new_actions = (
+            action_dists.rsample_with_pre_tanh_value())
+        log_pi_new_actions = action_dists.log_prob(
+            value=new_actions, pre_tanh_value=new_actions_pre_tanh)
+
+        policy_loss = self._actor_objective(samples_data, new_actions,
+                                            log_pi_new_actions)
+        self._policy_optimizer.zero_grad()
+        policy_loss.backward()
+
+        self._policy_optimizer.step()
+        self.policy.apply(rezero_weights)
+
+        if self._use_automatic_entropy_tuning:
+            alpha_loss = self._temperature_objective(log_pi_new_actions,
+                                                     samples_data)
+            self._alpha_optimizer.zero_grad()
+            alpha_loss.backward()
+            self._alpha_optimizer.step()
+
+        return policy_loss, qf1_loss, qf2_loss
+
+    def optimize_policy_with_autocast(self, samples_data):
+        """Optimize the policy q_functions, and temperature coefficient. Rezero
+        model weights (if applicable) after each optimizer step.
+
+        Args:
+            samples_data (dict): Transitions(S,A,R,S') that are sampled from
+                the replay buffer. It should have the keys 'observation',
+                'action', 'reward', 'terminal', and 'next_observations'.
+
+        Note:
+            samples_data's entries should be torch.Tensor's with the following
+            shapes:
+                observation: :math:`(N, O^*)`
+                action: :math:`(N, A^*)`
+                reward: :math:`(N, 1)`
+                terminal: :math:`(N, 1)`
+                next_observation: :math:`(N, O^*)`
+
+        Returns:
+            torch.Tensor: loss from actor/policy network after optimization.
+            torch.Tensor: loss from 1st q-function after optimization.
+            torch.Tensor: loss from 2nd q-function after optimization.
+
+        """
+        obs = samples_data["observation"]
+
         qf1_loss, qf2_loss = self._critic_objective(samples_data)
 
         self._qf1_optimizer.zero_grad()
@@ -403,13 +520,15 @@ class CustomMTSAC(MTSAC, CustomSAC):
 
         with autocast():
             action_dists = self.policy(obs)[0]
-            new_actions_pre_tanh, new_actions = (action_dists.rsample_with_pre_tanh_value())
-            log_pi_new_actions = action_dists.log_prob(value=new_actions, 
-                                                       pre_tanh_value=new_actions_pre_tanh)
+            new_actions_pre_tanh, new_actions = (
+                action_dists.rsample_with_pre_tanh_value()
+            )
+            log_pi_new_actions = action_dists.log_prob(
+                value=new_actions, pre_tanh_value=new_actions_pre_tanh)
 
         policy_loss = self._actor_objective(samples_data, new_actions,
                                             log_pi_new_actions)
-        
+
         self._policy_optimizer.zero_grad()
         self._gs_policy.scale(policy_loss).backward()
         self._gs_policy.step(self._policy_optimizer)
@@ -426,70 +545,3 @@ class CustomMTSAC(MTSAC, CustomSAC):
             self._gs_alpha.update()
 
         return policy_loss, qf1_loss, qf2_loss
-
-    def _evaluate_policy(self, epoch):
-        """Evaluate the performance of the policy via deterministic sampling.
-
-            Statistics such as (average) discounted return and success rate are
-            recorded.
-
-        Args:
-            epoch (int): The current training epoch.
-
-        Returns:
-            float: The average return across self._num_evaluation_episodes
-                episodes
-
-        """
-        self.policy.eval()
-
-        t00 = time()
-
-        # Note: why is the policy on CPU?
-        with torch.no_grad():
-            agent_update = copy.deepcopy(self.policy).to("cpu")
-
-        t01 = time()
-
-        eval_batch = self._sampler.obtain_exact_episodes(
-            n_eps_per_worker=self._num_evaluation_episodes,
-            agent_update=agent_update,
-        )
-
-        t02 = time()
-
-        last_return, log_dict = log_multitask_performance(
-            epoch, eval_batch, self._discount, use_wandb=self._wandb_logging
-        )
-
-        t03 = time()
-
-        logging.debug(f"Time to copy network to CPU (in evaluate pol): {t01-t00:.2f}")
-        logging.debug(f"Time to obtain episodes (in evaluate pol):     {t02-t01:.2f}")
-        logging.debug(f"Time to log results (in evaluate pol):         {t03-t02:.2f}")
-
-        self.policy.train()
-        return last_return, log_dict
-
-
-    def _log_statistics(self, policy_loss, qf1_loss, qf2_loss):
-        """Record training statistics to dowel such as losses and returns.
-
-        Args:
-            policy_loss (torch.Tensor): loss from actor/policy network.
-            qf1_loss (torch.Tensor): loss from 1st qf/critic network.
-            qf2_loss (torch.Tensor): loss from 2nd qf/critic network.
-
-        """
-        log_dict = None
-        if self._wandb_logging:
-            log_dict = {}
-            with torch.no_grad():
-                log_dict["AlphaTemperature/mean"] = self._log_alpha.exp().mean().item()
-            log_dict["Policy/Loss"] = policy_loss.item()
-            log_dict["QF/{}".format("Qf1Loss")] = float(qf1_loss)
-            log_dict["QF/{}".format("Qf2Loss")] = float(qf2_loss)
-            log_dict["ReplayBuffer/buffer_size"] = self.replay_buffer.n_transitions_stored  # noqa: E501
-            log_dict["Average/TrainAverageReturn"] = np.mean(self.episode_rewards)
-
-        return log_dict

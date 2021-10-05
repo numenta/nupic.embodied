@@ -19,16 +19,22 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-from garage.trainer import Trainer
-from dowel import logger
-import time
-import os
-
 import logging
+import os
+import time
+
+import numpy as np
+import wandb
+from dowel import logger
+from garage.experiment.experiment import dump_json
+from garage.trainer import NotSetupError, TrainArgs, Trainer
 
 
 class CustomTrainer(Trainer):
-    """Custom trainer class which removes Tabular usage"""
+    """Custom trainer class which
+    - removes Tabular usage
+    - refactors bidirectional message in run epoch intro traditional OOP architecture
+    """
 
     def log_diagnostics(self, pause_for_plot=False):
         """Log diagnostics.
@@ -47,55 +53,102 @@ class CustomTrainer(Trainer):
             if pause_for_plot:
                 input("Plotting evaluation run: Press Enter to " "continue...")
 
-    def step_epochs(self):
-        """Step through each epoch.
+    def train(
+        self,
+        n_epochs,
+        batch_size=None,
+        plot=False,
+        store_episodes=False,
+        pause_for_plot=False,
+        wandb_logging=True,
+        evaluation_frequency=25
+    ):
+        """
+        Start training.
+        This version replaces step_epochs in original garage Trainer
 
-        This function returns a magic generator. When iterated through, this
-        generator automatically performs services such as snapshotting and log
-        management. It is used inside train() in each algorithm.
+        Args:
+            n_epochs (int): Number of epochs.
+            batch_size (int or None):
+                Number of environment steps (samples) collected per epoch
+                Only defines how many samples will be collected and added to buffer
+                Does not define size of the batch used in the gradient update.
 
-        The generator initializes two variables: `self.step_itr` and
-        `self.step_episode`. To use the generator, these two have to be
-        updated manually in each epoch, as the example shows below.
+            plot (bool): Visualize an episode from the policy after each epoch.
+            store_episodes (bool): Save episodes in snapshot.
+            pause_for_plot (bool): Pause for plot.
 
-        Yields:
-            int: The next training epoch.
+        Raises:
+            NotSetupError: If train() is called before setup().
 
-        Examples:
-            for epoch in trainer.step_epochs():
-                trainer.step_episode = trainer.obtain_samples(...)
-                self.train_once(...)
-                trainer.step_itr += 1
+        Returns:
+            float: The average return in last epoch cycle.
 
         """
+
+        if not self._has_setup:
+            raise NotSetupError(
+                "Use setup() to setup trainer before training.")
+
+        # Save arguments for restore
+        self._train_args = TrainArgs(n_epochs=n_epochs,
+                                     batch_size=batch_size,
+                                     plot=plot,
+                                     store_episodes=store_episodes,
+                                     pause_for_plot=pause_for_plot,
+                                     start_epoch=0)
+
+        self._plot = plot
+        self._start_worker()
+
+        # Log experiment json file
+        log_dir = self._snapshotter.snapshot_dir
+        summary_file = os.path.join(log_dir, "experiment.json")
+        dump_json(summary_file, self)
+
+        logging.info("Starting training...")
         self._start_time = time.time()
-        self.step_itr = self._stats.total_itr
         self.step_episode = None
+        returns = []
 
-        # Used by integration tests to ensure examples can run one epoch.
-        # TODO: move to initialization, doesn't change during training
-        n_epochs = int(
-            os.environ.get("GARAGE_EXAMPLE_TEST_N_EPOCHS",
-                           self._train_args.n_epochs))
-
-        logging.info("Obtaining samples...")
-
-        # TODO: segregate logging logic from algoritm, move to diff function
-        # control frequency of saving
+        # Loop through epochs and call algorithm to run one epoch at at ime
         for epoch in range(self._train_args.start_epoch, n_epochs):
             self._itr_start_time = time.time()
-            with logger.prefix("epoch #%d | " % epoch):
-                yield epoch
-                save_episode = (self.step_episode
-                                if self._train_args.store_episodes else None)
 
-                self._stats.last_episode = save_episode
-                self._stats.total_epoch = epoch
-                self._stats.total_itr = self.step_itr
+            # Run training epoch
+            log_dict = self._algo.run_epoch(epoch=epoch, env_steps_per_epoch=batch_size)
+            self.total_env_steps = log_dict["TotalEnvSteps"]  # TODO: needed?
 
-                self.save(epoch)
+            # Run evaluation, with a given frequency
+            if epoch % evaluation_frequency == 0:
+                eval_returns, eval_log_dict = self._algo._evaluate_policy(epoch)
+                log_dict["average_return"] = np.mean(eval_returns)
+                log_dict.update(eval_log_dict)
+                returns.append(eval_returns)
 
-                # TODO: turn on and of logging through argument given to garage Trainer
-                if self.enable_logging:
-                    self.log_diagnostics(self._train_args.pause_for_plot)
-                    logger.dump_all(self.step_itr)
+            # Logging and updating state variables
+            if wandb_logging:
+                wandb.log(log_dict)
+            self.log_epoch_legacy(epoch)  # for backwards compatibility garage logger
+            # TODO: are these always equal if steps_per_epoch = 1? remove it
+            self._stats.total_epoch += 1
+            self._stats.total_itr += 1
+
+        self._shutdown_worker()
+
+        return np.mean(returns)
+
+    def log_epoch_legacy(self, epoch):
+
+        # TODO: control frequency of saving
+        with logger.prefix("epoch #%d | " % epoch):
+            save_episode = (self.step_episode
+                            if self._train_args.store_episodes else None)
+
+            self._stats.last_episode = save_episode
+            self.save(epoch)
+
+            # TODO: turn on and of logging through argument given to garage Trainer
+            if self.enable_logging:
+                self.log_diagnostics(self._train_args.pause_for_plot)
+                logger.dump_all(epoch)
