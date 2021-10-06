@@ -168,7 +168,7 @@ def create_distribution(distribution):
 
 
 def log_multitask_performance(
-    itr, batch, discount, name_map=None, log_per_task=False
+    itr, batch, discount, name_map=None, log_per_task=False,
 ):
     r"""Log performance of episodes from multiple tasks.
 
@@ -222,14 +222,13 @@ def log_multitask_performance(
                     EpisodeBatch.concatenate(*episodes),
                     discount,
                     prefix=task_name,  # specific to task
-                    use_wandb=use_wandb
                 )
                 consolidated_log.update(task_log)
 
     return undiscounted_returns, consolidated_log
 
 
-def log_performance(itr, batch, discount, prefix="Evaluation", use_wandb=True):
+def log_performance(itr, batch, discount, prefix="Evaluation"):
     """Evaluate the performance of an algorithm on a batch of episodes.
 
     Args:
