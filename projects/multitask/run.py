@@ -45,13 +45,12 @@ def init_experiment(
     ctxt=None,
     *,
     experiment_name,
-    use_wandb,
-    wandb_group,
-    project_name,
     experiment_args,
     training_args,
     network_args,
-    use_gpu
+    logging_args,
+    use_wandb=True,
+    use_gpu=True
 ):
     """Train MTSAC with metaworld_experiments environment.
     Args:
@@ -70,8 +69,8 @@ def init_experiment(
     if use_wandb:
         wandb.init(
             name=experiment_name,
-            project=project_name,
-            group=wandb_group,
+            project=logging_args.project_name,
+            group=logging_args.wandb_group,
             reinit=True,
             config=merge_args(
                 (experiment_args, training_args, network_args)
@@ -216,10 +215,9 @@ if __name__ == "__main__":
     wrapped_init_experiment(
         experiment_name=run_args.exp_name,
         use_wandb=not run_args.local_only,
-        wandb_group=logging_args.wandb_group,
         use_gpu=use_gpu,
-        project_name=logging_args.project_name,
         experiment_args=experiment_args,
         training_args=training_args,
         network_args=network_args,
+        logging_args=logging_args
     )
