@@ -21,27 +21,38 @@
 # ------------------------------------------------------------------------------
 
 import dataclasses
-import json
 import re
-import sys
+import random
 from argparse import ArgumentParser, ArgumentTypeError
+from collections import namedtuple
 from enum import Enum
-from pathlib import Path
 from typing import Any, Iterable, List, NewType, Optional, Tuple, Union
-
 
 DataClass = NewType("DataClass", Any)
 DataClassType = NewType("DataClassType", Any)
 
 
+def create_id(num_letters=4, num_numbers=3):
+    random_id = ""
+    for _ in range(num_letters):
+        random_id += chr(random.randint(97, 122))
+    for _ in range(num_numbers):
+        random_id += str(random.randint(0, 9))
+
+    return random_id
+
 def merge_args(arg_dicts):
-    # Unroll config for logging purposes
+    # Unroll config for logging purposes. Returns named tuple
     merged_args = {}
     for args in arg_dicts:
         for k, v in args.__dict__.items():
             merged_args[k] = v
-    return merged_args
 
+    return dict_to_namedtuple(merged_args)
+
+
+def dict_to_namedtuple(input_dict, tuple_name="Args"):
+    return namedtuple(tuple_name, input_dict.keys())(**input_dict)
 
 # From https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
 def string_to_bool(v):
