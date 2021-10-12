@@ -43,8 +43,8 @@ baseline_5d.update(
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
     hidden_sizes=(350, 350),
-    kw_percent_on=0.25, 
-    weight_sparsity=0.5, 
+    kw_percent_on=0.25,
+    weight_sparsity=0.5,
     fp16=True,
     preprocess_output_dim=32,
 )
@@ -54,8 +54,8 @@ baseline_5d_bigger.update(
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
     hidden_sizes=(1000, 1000),
-    kw_percent_on=0.25, 
-    weight_sparsity=0.25, 
+    kw_percent_on=0.25,
+    weight_sparsity=0.25,
     fp16=True,
     preprocess_output_dim=32,
 )
@@ -65,8 +65,8 @@ baseline_10d.update(
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
     hidden_sizes=(232, 232),
-    kw_percent_on=0.25, 
-    weight_sparsity=0.5, 
+    kw_percent_on=0.25,
+    weight_sparsity=0.5,
     fp16=True,
     preprocess_output_dim=32,
 )
@@ -78,7 +78,7 @@ Round 2 of experiments
 
 no_overlap_10d = deepcopy(seg10)
 no_overlap_10d.update(
-    input_data="obs", 
+    input_data="obs",
     context_data="context",
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
@@ -94,7 +94,7 @@ no_overlap_10d.update(
 
 overlap_input_10d = deepcopy(seg10)
 overlap_input_10d.update(
-    input_data="obs|context", 
+    input_data="obs|context",
     context_data="context",
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
@@ -110,7 +110,7 @@ overlap_input_10d.update(
 
 overlap_context_10d = deepcopy(seg10)
 overlap_context_10d.update(
-    input_data="obs", 
+    input_data="obs",
     context_data="obs|context",
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
@@ -126,7 +126,7 @@ overlap_context_10d.update(
 
 overlap_both_10d = deepcopy(seg10)
 overlap_both_10d.update(
-    input_data="obs|context", 
+    input_data="obs|context",
     context_data="obs|context",
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
@@ -146,7 +146,7 @@ Sanity checking Round 2 results
 
 no_overlap_10d_preprocess_relu = deepcopy(seg10)
 no_overlap_10d_preprocess_relu.update(
-    input_data="obs", 
+    input_data="obs",
     context_data="context",
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
@@ -162,7 +162,7 @@ no_overlap_10d_preprocess_relu.update(
 
 no_overlap_10d_preprocess_kw = deepcopy(seg10)
 no_overlap_10d_preprocess_kw.update(
-    input_data="obs", 
+    input_data="obs",
     context_data="context",
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
@@ -178,7 +178,7 @@ no_overlap_10d_preprocess_kw.update(
 
 no_overlap_10d_preprocess_none = deepcopy(seg10)
 no_overlap_10d_preprocess_none.update(
-    input_data="obs", 
+    input_data="obs",
     context_data="context",
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
@@ -195,7 +195,7 @@ no_overlap_10d_preprocess_none.update(
 
 no_overlap_10d_abs_max_unsigned = deepcopy(seg10)
 no_overlap_10d_abs_max_unsigned.update(
-    input_data="obs", 
+    input_data="obs",
     context_data="context",
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
@@ -211,7 +211,7 @@ no_overlap_10d_abs_max_unsigned.update(
 
 no_overlap_15d_abs_max_unsigned = deepcopy(seg10)
 no_overlap_15d_abs_max_unsigned.update(
-    input_data="obs", 
+    input_data="obs",
     context_data="context",
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
@@ -228,7 +228,7 @@ no_overlap_15d_abs_max_unsigned.update(
 
 no_overlap_10d_abs_max_signed = deepcopy(seg10)
 no_overlap_10d_abs_max_signed.update(
-    input_data="obs", 
+    input_data="obs",
     context_data="context",
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
