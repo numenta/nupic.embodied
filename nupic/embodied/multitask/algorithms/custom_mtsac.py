@@ -150,16 +150,19 @@ class CustomMTSAC(MTSAC):
         self._target_qf1.load_state_dict(state["target_qf1"])
         self._target_qf2.load_state_dict(state["target_qf2"])
         self._log_alpha.data = state["log_alpha"]
+
         # scalers
         self._gs_qf1.load_state_dict(state["gs_qf1"])
         self._gs_qf2.load_state_dict(state["gs_qf2"])
         self._gs_policy.load_state_dict(state["gs_policy"])
         self._gs_alpha.load_state_dict(state["gs_alpha"])
+
         # optimizers
         self._policy_optimizer.load_state_dict(state["policy_optimizer"])
         self._qf1_optimizer.load_state_dict(state["qf1_optimizer"])
         self._qf2_optimizer.load_state_dict(state["qf2_optimizer"])
         self._alpha_optimizer.load_state_dict(state["alpha_optimizer"])
+        
         # other variables
         self.replay_buffer = state["replay_buffer"]
         self.eval_env_update = state["eval_env_update"]
