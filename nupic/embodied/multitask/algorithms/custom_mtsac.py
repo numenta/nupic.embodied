@@ -545,3 +545,7 @@ class CustomMTSAC(MTSAC):
             self._gs_alpha.update()
 
         return policy_loss, qf1_loss, qf2_loss
+
+    def shutdown_worker(self):
+        """Shutdown Plotter and Sampler workers."""
+        self._sampler.shutdown_worker()
