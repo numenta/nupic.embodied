@@ -100,6 +100,8 @@ class CustomMTSAC(MTSAC):
         self._total_envsteps = 0
 
         # scalers for fp16
+        # TODO: don't initialize gradscalers if not using fp16
+        # Also don't save and/or restore
         self._gs_qf1 = GradScaler()
         self._gs_qf2 = GradScaler()
         self._gs_policy = GradScaler()
@@ -107,6 +109,11 @@ class CustomMTSAC(MTSAC):
 
         # get updates for evaluation
         self.eval_env_update = self.resample_environment(force_update=True)
+
+        # Fix bug with alpha with optimizer
+        self._use_automatic_entropy_tuning = fixed_alpha is None
+        if self._use_automatic_entropy_tuning:
+            self._alpha_optimizer = optimizer([self._log_alpha], lr=self._policy_lr)
 
     def get_updated_policy(self):
         with torch.no_grad():
