@@ -290,7 +290,10 @@ class CustomMTSAC(MTSAC):
 
         # Log performance
         undiscounted_returns, log_dict = log_multitask_performance(
-            epoch, eval_trajectories, self._discount, log_per_task=self._log_per_task
+            epoch,
+            batch=eval_trajectories,
+            discount=self._discount,
+            log_per_task=self._log_per_task
         )
         log_dict["average_return"] = np.mean(undiscounted_returns)
         logging.warn(f"Time to evaluate policy: {time()-t0:.2f}")

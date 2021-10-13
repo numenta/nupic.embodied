@@ -21,6 +21,7 @@
 # ------------------------------------------------------------------------------
 
 import dataclasses
+from dataclasses import make_dataclass
 import re
 import random
 from argparse import ArgumentParser, ArgumentTypeError
@@ -31,7 +32,6 @@ from typing import Any, Iterable, List, NewType, Optional, Tuple, Union
 DataClass = NewType("DataClass", Any)
 DataClassType = NewType("DataClassType", Any)
 
-
 def create_id(num_letters=4, num_numbers=3):
     random_id = ""
     for _ in range(num_letters):
@@ -41,18 +41,20 @@ def create_id(num_letters=4, num_numbers=3):
 
     return random_id
 
-def merge_args(arg_dicts):
-    # Unroll config for logging purposes. Returns named tuple
-    merged_args = {}
-    for args in arg_dicts:
-        for k, v in args.__dict__.items():
-            merged_args[k] = v
 
-    return dict_to_namedtuple(merged_args)
+def merge_args(dataclasses, class_name="Args"):
+    """Merge multiple dataclasses into one"""
+    fields, args = {}, {}
+    for dc in dataclasses:
+        fields.update(dc.__dataclass_fields__)
+        args.update(dc.__dict__)
+
+    return make_dataclass(cls_name="Args", fields=fields)(**args)
 
 
-def dict_to_namedtuple(input_dict, tuple_name="Args"):
-    return namedtuple(tuple_name, input_dict.keys())(**input_dict)
+def dict_to_dataclass(input_dict, class_name="Args"):
+    return make_dataclass(cls_name=class_name, fields=input_dict.keys())(**input_dict)
+
 
 # From https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
 def string_to_bool(v):
