@@ -28,7 +28,11 @@ base = dict()
 
 debug = deepcopy(base)
 debug = dict(
-    evaluation_frequency=1
+    evaluation_frequency=10,
+    timesteps=100000,
+    buffer_batch_size=32,
+    num_grad_steps_scale=0.01,  # 5 steps,
+    project_id="shqr401",
 )
 
 singleseg_mt10_base = dict(
@@ -41,7 +45,7 @@ singleseg_mt10_base = dict(
 )
 
 multiseg_mt10_base = dict(
-    num_tasks=10, 
+    num_tasks=10,
     net_type="Dendrite_MLP",
     dendritic_layer_class="max_gating",
     cpus_per_worker=0.5,
@@ -50,9 +54,9 @@ multiseg_mt10_base = dict(
 )
 
 mlp_mt10_base = dict(
-    num_tasks=10, 
+    num_tasks=10,
     net_type="MLP",
-    cpus_per_worker=0.5, 
+    cpus_per_worker=0.5,
     gpus_per_worker=0,
     wandb_group="MT10 - MLP",
 )

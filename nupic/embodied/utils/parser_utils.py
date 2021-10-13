@@ -21,26 +21,39 @@
 # ------------------------------------------------------------------------------
 
 import dataclasses
-import json
+from dataclasses import make_dataclass
 import re
-import sys
+import random
 from argparse import ArgumentParser, ArgumentTypeError
+from collections import namedtuple
 from enum import Enum
-from pathlib import Path
 from typing import Any, Iterable, List, NewType, Optional, Tuple, Union
-
 
 DataClass = NewType("DataClass", Any)
 DataClassType = NewType("DataClassType", Any)
 
+def create_id(num_letters=4, num_numbers=3):
+    random_id = ""
+    for _ in range(num_letters):
+        random_id += chr(random.randint(97, 122))
+    for _ in range(num_numbers):
+        random_id += str(random.randint(0, 9))
 
-def merge_args(arg_dicts):
-    # Unroll config for logging purposes
-    merged_args = {}
-    for args in arg_dicts:
-        for k, v in args.__dict__.items():
-            merged_args[k] = v
-    return merged_args
+    return random_id
+
+
+def merge_args(dataclasses, class_name="Args"):
+    """Merge multiple dataclasses into one"""
+    fields, args = {}, {}
+    for dc in dataclasses:
+        fields.update(dc.__dataclass_fields__)
+        args.update(dc.__dict__)
+
+    return make_dataclass(cls_name="Args", fields=fields)(**args)
+
+
+def dict_to_dataclass(input_dict, class_name="Args"):
+    return make_dataclass(cls_name=class_name, fields=input_dict.keys())(**input_dict)
 
 
 # From https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse

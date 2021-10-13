@@ -26,32 +26,15 @@ import numpy as np
 import os
 from dataclasses import dataclass, field
 from experiments import CONFIGS
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 from typing_extensions import Literal
-
-from nupic.embodied.utils.parser_utils import DataClassArgumentParser
-
+from nupic.embodied.utils.parser_utils import DataClassArgumentParser, create_id
 
 @dataclass
 class LoggingArguments:
     project_name: str = "multitask"
     log_dir: Optional[str] = None
-    snapshot_mode: Literal["all", "last", "gap", "none"] = field(
-        default="none",
-        metadata={
-            "help": "(str): Policy for which snapshots to keep (or make at"
-                    "all). Can be either 'all' (all iterations will be saved), 'last'"
-                    "(only the last iteration will be saved), 'gap' (every snapshot_gap"
-                    "iterations are saved), or 'none' (do not save snapshots)."
-        }
-    )
-    snapshot_gap: int = field(
-        default=1,
-        metadata={
-            "help": "Gap between snapshot iterations. Waits this number"
-                    "of iterations before taking another snapshot."
-        }
-    )
+    project_id: str = create_id()
     wandb_group: Optional[str] = None
     log_per_task: bool = field(
         default=False,
@@ -61,8 +44,6 @@ class LoggingArguments:
     )
 
     def __post_init__(self):
-        # TODO: checkpoint dir doesn't take into account experiment name,
-        # overriden by garage - fix it
         if self.log_dir is None:
             logging.warn(
                 "log_dir is not defined, attempting to default "
@@ -85,14 +66,16 @@ class LoggingArguments:
 @dataclass
 class ExperimentArguments:
     seed: Optional[int] = None
+    env_seed: Optional[int] = np.random.randint(10e4)
     timesteps: int = 15000000
     cpus_per_worker: float = 0.5
     gpus_per_worker: float = 0
     workers_per_env: int = 1
     do_train: bool = True
-    debug_mode: bool = True
+    debug_mode: bool = False
     use_deterministic_evaluation: bool = False
-    fp16 : bool = False
+    fp16: bool = False
+    checkpoint_frequency: int = 5
 
 
 @dataclass
@@ -125,7 +108,7 @@ class NetworkArguments:
                     "encoded task id) or 'obs' (just the obseration)."
         }
     )
-    context_data: Literal["context", "obs|context", None] = field( 
+    context_data: Literal["context", "obs|context", None] = field(
         default="obs|context",
         metadata={
             "help": "(str) Type of context data to use. Can be either 'obs|context'"
@@ -163,7 +146,7 @@ class NetworkArguments:
         assert self.dendrite_init in {"modified", "kaiming"}
         assert self.preprocess_module_type in {None, "relu", "kw"}
 
-        if self.net_type == "Dendritic_MLP":
+        if self.net_type == "Dendrite_MLP":
             assert self.num_segments >= 1
 
             if self.num_segments == 1 or self.dendritic_layer_class == "one_segment":
@@ -176,7 +159,7 @@ class NetworkArguments:
             self.context_data = None
             self.num_segments = 0
             self.dendritic_layer_class = None
-            
+
 
         if self.kw_percent_on == 0.0:
             self.kw_percent_on = None
@@ -189,7 +172,6 @@ def create_exp_parser():
         TrainingArguments,
         NetworkArguments,
     ])
-
 
 def create_cmd_parser():
     parser = argparse.ArgumentParser(
@@ -227,9 +209,22 @@ def create_cmd_parser():
         "-c",
         "--cpu",
         action="store_true",
-        default=False,
+        default="False",
         help="Whether to use CPU even if GPU is available",
     )
+    parser.add_argument(
+        "-r",
+        "--restore",
+        action="store_true",
+        help="Whether to restore from existing experiment with same project name",
+    )
+    parser.add_argument(
+        "-p",
+        "--project_id",
+        default=None,
+        help="Alternative way of providing project id",
+    )
+
     # TODO: evaluate whether or not debugging flag is required
     parser.add_argument(
         "-d",

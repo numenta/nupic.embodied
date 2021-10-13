@@ -100,6 +100,8 @@ class CustomMTSAC(MTSAC):
         self._total_envsteps = 0
 
         # scalers for fp16
+        # TODO: don't initialize gradscalers if not using fp16
+        # Also don't save and/or restore
         self._gs_qf1 = GradScaler()
         self._gs_qf2 = GradScaler()
         self._gs_policy = GradScaler()
@@ -107,6 +109,64 @@ class CustomMTSAC(MTSAC):
 
         # get updates for evaluation
         self.eval_env_update = self.resample_environment(force_update=True)
+
+        # Fix bug with alpha with optimizer
+        self._use_automatic_entropy_tuning = fixed_alpha is None
+        if self._use_automatic_entropy_tuning:
+            self._alpha_optimizer = optimizer([self._log_alpha], lr=self._policy_lr)
+
+
+    def state_dict(self):
+        return {
+            # parameters
+            "policy": self.policy.state_dict(),
+            "qf1": self._qf1.state_dict(),
+            "qf2": self._qf2.state_dict(),
+            "target_qf1": self._target_qf1.state_dict(),
+            "target_qf2": self._target_qf2.state_dict(),
+            "log_alpha": self._log_alpha,
+            # scalers
+            "gs_qf1": self._gs_qf1.state_dict(),
+            "gs_qf2": self._gs_qf2.state_dict(),
+            "gs_policy": self._gs_policy.state_dict(),
+            "gs_alpha": self._gs_alpha.state_dict(),
+            # optimizers
+            "policy_optimizer": self._policy_optimizer.state_dict(),
+            "qf1_optimizer": self._qf1_optimizer.state_dict(),
+            "qf2_optimizer": self._qf2_optimizer.state_dict(),
+            "alpha_optimizer": self._alpha_optimizer.state_dict(),
+            # other variables
+            "replay_buffer": self.replay_buffer,
+            "eval_env_update": self.eval_env_update,
+            "total_envsteps": self._total_envsteps,
+
+        }
+
+    def load_state(self, state):
+        # parameters
+        self.policy.load_state_dict(state["policy"])
+        self._qf1.load_state_dict(state["qf1"])
+        self._qf2.load_state_dict(state["qf2"])
+        self._target_qf1.load_state_dict(state["target_qf1"])
+        self._target_qf2.load_state_dict(state["target_qf2"])
+        self._log_alpha.data = state["log_alpha"]
+
+        # scalers
+        self._gs_qf1.load_state_dict(state["gs_qf1"])
+        self._gs_qf2.load_state_dict(state["gs_qf2"])
+        self._gs_policy.load_state_dict(state["gs_policy"])
+        self._gs_alpha.load_state_dict(state["gs_alpha"])
+
+        # optimizers
+        self._policy_optimizer.load_state_dict(state["policy_optimizer"])
+        self._qf1_optimizer.load_state_dict(state["qf1_optimizer"])
+        self._qf2_optimizer.load_state_dict(state["qf2_optimizer"])
+        self._alpha_optimizer.load_state_dict(state["alpha_optimizer"])
+        
+        # other variables
+        self.replay_buffer = state["replay_buffer"]
+        self.eval_env_update = state["eval_env_update"]
+        self._total_envsteps = state["total_envsteps"]
 
     def get_updated_policy(self):
         with torch.no_grad():
@@ -233,7 +293,10 @@ class CustomMTSAC(MTSAC):
 
         # Log performance
         undiscounted_returns, log_dict = log_multitask_performance(
-            epoch, eval_trajectories, self._discount, log_per_task=self._log_per_task
+            epoch,
+            batch=eval_trajectories,
+            discount=self._discount,
+            log_per_task=self._log_per_task
         )
         log_dict["average_return"] = np.mean(undiscounted_returns)
         logging.warn(f"Time to evaluate policy: {time()-t0:.2f}")
@@ -545,3 +608,7 @@ class CustomMTSAC(MTSAC):
             self._gs_alpha.update()
 
         return policy_loss, qf1_loss, qf2_loss
+
+    def shutdown_worker(self):
+        """Shutdown Plotter and Sampler workers."""
+        self._sampler.shutdown_worker()
