@@ -70,11 +70,11 @@ class Trainer():
         self.experiment_name = experiment_name
 
         # Check if loading from existing experiment
-        loading_from_existing = os.path.exists(self.checkpoint_dir)
+        self.loading_from_existing = os.path.exists(self.checkpoint_dir)
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
         # Save arguments for later retrieval
-        self.init_config(trainer_args, loading_from_existing=loading_from_existing)
+        self.init_config(trainer_args)
 
         num_tasks = trainer_args.num_tasks
 
@@ -152,7 +152,7 @@ class Trainer():
 
         # Override with loaded networks if existing experiment
         self.current_epoch = 0
-        if loading_from_existing:
+        if self.loading_from_existing:
             self.load_experiment_state()
 
         # Move all networks within the model on device
@@ -179,9 +179,9 @@ class Trainer():
             "current_epoch": self.current_epoch
         }
 
-    def init_config(self, trainer_args, loading_from_existing=False):
+    def init_config(self, trainer_args):
         """Load if existing. Gives warning if configs doesn't match"""
-        if loading_from_existing:
+        if self.loading_from_existing:
             with open(self.config_path, "r") as file:
                 args_loaded = json.load(file)
                 self.verify_inconsistencies(trainer_args, args_loaded)
@@ -245,7 +245,8 @@ class Trainer():
                 reinit=True,
                 config=self.trainer_args.__dict__,
                 id=self.trainer_args.project_id,
-                dir=self.checkpoint_dir
+                dir=self.checkpoint_dir,
+                resume="allow" if self.loading_from_existing else None,
             )
 
         # Loop through epochs and call algorithm to run one epoch at at ime
