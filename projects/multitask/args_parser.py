@@ -209,9 +209,22 @@ def create_cmd_parser():
         "-c",
         "--cpu",
         action="store_true",
-        default=False,
+        default="False",
         help="Whether to use CPU even if GPU is available",
     )
+    parser.add_argument(
+        "-r",
+        "--restore",
+        action="store_true",
+        help="Whether to restore from existing experiment with same project name",
+    )
+    parser.add_argument(
+        "-p",
+        "--project_id",
+        default=None,
+        help="Alternative way of providing project id",
+    )
+
     # TODO: evaluate whether or not debugging flag is required
     parser.add_argument(
         "-d",

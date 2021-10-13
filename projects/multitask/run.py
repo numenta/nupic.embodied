@@ -23,12 +23,32 @@
 import logging
 import sys
 import torch
+import glob
+import os
 
 from args_parser import create_cmd_parser, create_exp_parser
 from experiments import CONFIGS
 
 from nupic.embodied.multitask.trainer import Trainer
 from nupic.embodied.utils.parser_utils import merge_args
+
+
+def find_latest_run(log_dir, exp_name):
+    """
+    Given a log dir and a projet name, return the latest project id
+    """
+    # Get full path to last experiment
+    exp_path = os.path.join(log_dir, exp_name)
+    last_exp = sorted(glob.glob(exp_path + "*"), key=os.path.getmtime, reverse=True)[0]
+    # Return project id if last run is found, raise error otherwise
+    if last_exp:
+        project_id = os.path.basename(last_exp)[len(exp_name) + 1:]
+        print(f"Restoring from last run found for this experiment: {project_id}")
+        return project_id
+    else:
+        raise ValueError("No existing run could be found for this experiment,"
+                         " cannot restore.")
+
 
 if __name__ == "__main__":
 
@@ -61,6 +81,18 @@ if __name__ == "__main__":
     # Gives an additional option to define a wandb run name
     if run_args.wandb_run_name != "":
         run_args.wandb_run_name = run_args.exp_name
+
+    # Restore last known experiment
+    print(run_args.restore, run_args.project_id, trainer_args.project_id)
+    # Restore andd override project id from config with project id from cmd parser
+    if run_args.restore:
+        if not run_args.project_id:
+            trainer_args.project_id = find_latest_run(
+                trainer_args.log_dir, run_args.exp_name
+            )
+        else:
+            trainer_args.project_id = run_args.project_id
+            print(f"Overriding project id to {trainer_args.project_id}")
 
     # Automatically detects whether or not to use GPU
     use_gpu = torch.cuda.is_available() and not run_args.cpu
