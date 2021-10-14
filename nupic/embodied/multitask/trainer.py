@@ -38,6 +38,7 @@ from nupic.embodied.multitask.samplers.gpu_sampler import RaySampler
 from nupic.embodied.utils.garage_utils import create_policy_net, create_qf_net
 from nupic.embodied.utils.parser_utils import dict_to_namedtuple
 from nupic.embodied.utils.hooks import PolicyHook
+from nupic.embodied.utils.parser_utils import dict_to_dataclass
 
 
 class Trainer():
@@ -186,16 +187,16 @@ class Trainer():
             with open(self.config_path, "r") as file:
                 args_loaded = json.load(file)
                 self.verify_inconsistencies(trainer_args, args_loaded)
-                self.trainer_args = dict_to_namedtuple(args_loaded)
+                self.trainer_args = dict_to_dataclass(args_loaded)
         else:
             self.trainer_args = trainer_args
             with open(self.config_path, "w") as file:
-                json.dump(self.trainer_args._asdict(), file)
+                json.dump(self.trainer_args.__dict__, file)
 
     def verify_inconsistencies(self, original, loaded):
         """Loop that verifies inconsistency between defined config and checkpoint"""
         inconsistencies_found = False
-        for k, v1 in original._asdict().items():
+        for k, v1 in original.__dict__.items():
             if k in loaded:
                 v2 = loaded[k]
                 if v1 != v2:
@@ -244,7 +245,7 @@ class Trainer():
                 project=self.trainer_args.project_name,
                 group=self.trainer_args.wandb_group,
                 reinit=True,
-                config=self.trainer_args._asdict(),
+                config=self.trainer_args.__dict__,
                 id=self.trainer_args.project_id,
                 dir=self.checkpoint_dir,
                 resume="allow" if self.loading_from_existing else None,
