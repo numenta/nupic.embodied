@@ -109,30 +109,33 @@ class ModularDendriticMLP(nn.Module):
         self.dendrite_init = dendrite_init
         self.output_nonlinearity = output_nonlinearity
 
-        self._layers = nn.ModuleList()
-        self._activations = nn.ModuleList()
+        self.layers = nn.Sequential()
 
         for i in range(len(self.hidden_sizes)):
+            block_name = ""
+
             if i not in self.layers_modulated:
-                layer = FFLayer(
+                linear = FFLayer(
                     module=nn.Linear(input_size, self.hidden_sizes[i], bias=True),
                     module_sparsity=self.weight_sparsity,
                 )
+                block_name += f"ff_{i}"
             else:
-                layer = dendritic_layer_class(
+                linear = dendritic_layer_class(
                     module=nn.Linear(input_size, self.hidden_sizes[i], bias=True),
                     num_segments=self.num_segments,
                     dim_context=self.context_size,
                     module_sparsity=self.weight_sparsity,
                     dendrite_sparsity=self.dendrite_weight_sparsity,
                 )
+                block_name += f"dendrite_{i}"
 
                 if self.dendrite_init == "modified":
-                    self._init_sparse_dendrites(layer, 1 - self.context_percent_on)
+                    self._init_sparse_dendrites(linear, 1 - self.context_percent_on)
 
                 if freeze_dendrites:
                     # Dendritic weights will not be updated during backward pass
-                    for name, param in layer.named_parameters():
+                    for name, param in linear.named_parameters():
                         if "segments" in name:
                             param.requires_grad = False
 
@@ -142,10 +145,10 @@ class ModularDendriticMLP(nn.Module):
 
                 # first hidden layer can't have kw input
                 if i == 0:
-                    self._init_sparse_weights(layer, 0.0)
+                    self._init_sparse_weights(linear, 0.0)
                 else:
                     self._init_sparse_weights(
-                        layer, 
+                        linear, 
                         1 - self.kw_percent_on if self.kw_percent_on else 0.0
                     )                
 
@@ -158,10 +161,11 @@ class ModularDendriticMLP(nn.Module):
             else:
                 activation = nn.ReLU()
 
-            self._layers.append(layer)
-            self._activations.append(activation)
+
+            self.layers.add_module(block_name, nn.Sequential(*[linear, activation]))
 
             input_size = self.hidden_sizes[i]
+
 
         if not isinstance(output_size, Iterable):
             output_size = (output_size,)
@@ -188,8 +192,7 @@ class ModularDendriticMLP(nn.Module):
             self._output_layers.append(output_layer)
 
     def forward(self, x, context):        
-        for layer, activation in zip(self._layers, self._activations):
-            x = activation(layer(x, context))
+        x = self.layers(x, context)
         
         if len(self._output_layers) == 1:
             return self._output_layers[0](x)
