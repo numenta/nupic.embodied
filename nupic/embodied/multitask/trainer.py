@@ -37,6 +37,7 @@ from nupic.embodied.multitask.algorithms.custom_mtsac import CustomMTSAC
 from nupic.embodied.multitask.samplers.gpu_sampler import RaySampler
 from nupic.embodied.utils.garage_utils import create_policy_net, create_qf_net
 from nupic.embodied.utils.parser_utils import dict_to_namedtuple
+from nupic.embodied.utils.hooks import PolicyHook
 
 
 class Trainer():
@@ -259,7 +260,7 @@ class Trainer():
 
             # Run evaluation, with a given frequency
             if epoch % evaluation_frequency == 0:
-                eval_returns, eval_log_dict = self._algo._evaluate_policy(epoch)
+                eval_returns, eval_log_dict = self._algo._evaluate_policy(epoch, policy_hook=PolicyHook)
                 log_dict["average_return"] = np.mean(eval_returns)
                 log_dict.update(eval_log_dict)
 
