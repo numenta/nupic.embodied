@@ -34,7 +34,6 @@ from torch.cuda.amp import GradScaler, autocast
 from nupic.embodied.utils.garage_utils import log_multitask_performance
 from nupic.torch.modules.sparse_weights import rezero_weights
 
-
 class CustomMTSAC(MTSAC):
     def __init__(
         self,
@@ -125,21 +124,23 @@ class CustomMTSAC(MTSAC):
             "target_qf1": self._target_qf1.state_dict(),
             "target_qf2": self._target_qf2.state_dict(),
             "log_alpha": self._log_alpha,
+
             # scalers
             "gs_qf1": self._gs_qf1.state_dict(),
             "gs_qf2": self._gs_qf2.state_dict(),
             "gs_policy": self._gs_policy.state_dict(),
             "gs_alpha": self._gs_alpha.state_dict(),
+
             # optimizers
             "policy_optimizer": self._policy_optimizer.state_dict(),
             "qf1_optimizer": self._qf1_optimizer.state_dict(),
             "qf2_optimizer": self._qf2_optimizer.state_dict(),
             "alpha_optimizer": self._alpha_optimizer.state_dict(),
+
             # other variables
             "replay_buffer": self.replay_buffer,
             "eval_env_update": self.eval_env_update,
             "total_envsteps": self._total_envsteps,
-
         }
 
     def load_state(self, state):
@@ -268,7 +269,7 @@ class CustomMTSAC(MTSAC):
 
         return total_losses
 
-    def _evaluate_policy(self, epoch):
+    def _evaluate_policy(self, epoch, policy_hook=None):
         """Evaluate the performance of the policy via deterministic sampling.
 
             Statistics such as (average) discounted return and success rate are
@@ -282,12 +283,17 @@ class CustomMTSAC(MTSAC):
                 episodes
 
         """
+        policy = self.get_updated_policy()
+
+        if policy_hook is not None:
+            hook = policy_hook(policy)
+            hook.attach()
 
         t0 = time()
         # Collect episodes for evaluation
         eval_trajectories = self._sampler.obtain_exact_episodes(
             n_eps_per_worker=self._num_evaluation_episodes,
-            agent_update=self.get_updated_policy(),
+            agent_update=policy,
             env_update=self.eval_env_update,
         )
 
@@ -296,6 +302,12 @@ class CustomMTSAC(MTSAC):
             epoch, eval_trajectories, self._discount, log_per_task=self._log_per_task
         )
         log_dict["average_return"] = np.mean(undiscounted_returns)
+
+        if policy_hook is not None:
+            ## return visualizations from hooks
+            visualizations = hook.get_visualizations()
+            log_dict['network_visualization'] = visualizations
+
         logging.warn(f"Time to evaluate policy: {time()-t0:.2f}")
 
         return undiscounted_returns, log_dict
