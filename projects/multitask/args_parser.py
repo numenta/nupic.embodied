@@ -146,7 +146,7 @@ class NetworkArguments:
         assert self.dendrite_init in {"modified", "kaiming"}
         assert self.preprocess_module_type in {None, "relu", "kw"}
 
-        if self.net_type == "Dendritic_MLP":
+        if self.net_type == "Dendrite_MLP":
             assert self.num_segments >= 1
 
             if self.num_segments == 1 or self.dendritic_layer_class == "one_segment":
