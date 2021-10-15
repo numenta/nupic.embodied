@@ -216,6 +216,7 @@ def create_cmd_parser():
         "-r",
         "--restore",
         action="store_true",
+        default="False",
         help="Whether to restore from existing experiment with same project name",
     )
     parser.add_argument(
