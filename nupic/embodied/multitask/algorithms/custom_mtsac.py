@@ -269,7 +269,7 @@ class CustomMTSAC(MTSAC):
 
         return total_losses
 
-    def _evaluate_policy(self, epoch, policy_hook=None):
+    def _evaluate_policy(self, epoch, policy_hooks=[]):
         """Evaluate the performance of the policy via deterministic sampling.
 
             Statistics such as (average) discounted return and success rate are
@@ -285,9 +285,9 @@ class CustomMTSAC(MTSAC):
         """
         policy = self.get_updated_policy()
 
-        if policy_hook is not None:
-            hook = policy_hook(policy)
-            hook.attach()
+        for i in range(len(policy_hooks)):
+            policy_hooks[i] = policy_hooks[i](policy)
+            policy_hooks[i].attach()
 
         t0 = time()
         # Collect episodes for evaluation
@@ -306,10 +306,9 @@ class CustomMTSAC(MTSAC):
         )
         log_dict["average_return"] = np.mean(undiscounted_returns)
 
-        if policy_hook is not None:
-            ## return visualizations from hooks
-            visualizations = hook.get_visualizations()
-            log_dict['network_visualization'] = visualizations
+        for i in range(len(policy_hooks)):
+            name, visualization = policy_hooks[i].get_visualization()
+            log_dict[name] = visualization
 
         logging.warn(f"Time to evaluate policy: {time()-t0:.2f}")
 
