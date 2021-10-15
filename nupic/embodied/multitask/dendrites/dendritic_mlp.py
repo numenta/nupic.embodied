@@ -29,6 +29,18 @@ from nupic.torch.modules import KWinners, SparseWeights, rezero_weights
 
 from nupic.embodied.multitask.dendrites import FFLayer
 
+class SequentialBlock(nn.Sequential):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, *input):
+        for module in self._modules.values():
+            if type(input) == tuple:
+                input = module(*input)
+            else:
+                input = module(input)
+        return input
+        
 
 class ModularDendriticMLP(nn.Module):
     """
@@ -109,7 +121,7 @@ class ModularDendriticMLP(nn.Module):
         self.dendrite_init = dendrite_init
         self.output_nonlinearity = output_nonlinearity
 
-        self.layers = nn.Sequential()
+        self.layers = nn.ModuleList()
 
         for i in range(len(self.hidden_sizes)):
             block_name = ""
@@ -119,7 +131,7 @@ class ModularDendriticMLP(nn.Module):
                     module=nn.Linear(input_size, self.hidden_sizes[i], bias=True),
                     module_sparsity=self.weight_sparsity,
                 )
-                block_name += f"ff_{i}"
+                block_name = "ff"
             else:
                 linear = dendritic_layer_class(
                     module=nn.Linear(input_size, self.hidden_sizes[i], bias=True),
@@ -128,7 +140,7 @@ class ModularDendriticMLP(nn.Module):
                     module_sparsity=self.weight_sparsity,
                     dendrite_sparsity=self.dendrite_weight_sparsity,
                 )
-                block_name += f"dendrite_{i}"
+                block_name = "dendrite"
 
                 if self.dendrite_init == "modified":
                     self._init_sparse_dendrites(linear, 1 - self.context_percent_on)
@@ -161,8 +173,9 @@ class ModularDendriticMLP(nn.Module):
             else:
                 activation = nn.ReLU()
 
-
-            self.layers.add_module(block_name, nn.Sequential(*[linear, activation]))
+            block = SequentialBlock()
+            block.add_module(block_name, SequentialBlock(linear, activation))
+            self.layers.append(block)
 
             input_size = self.hidden_sizes[i]
 
@@ -191,8 +204,9 @@ class ModularDendriticMLP(nn.Module):
 
             self._output_layers.append(output_layer)
 
-    def forward(self, x, context):        
-        x = self.layers(x, context)
+    def forward(self, x, context):
+        for layer in self.layers:        
+            x = layer(x, context)
         
         if len(self._output_layers) == 1:
             return self._output_layers[0](x)
