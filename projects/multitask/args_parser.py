@@ -209,13 +209,14 @@ def create_cmd_parser():
         "-c",
         "--cpu",
         action="store_true",
-        default="False",
+        default=False,
         help="Whether to use CPU even if GPU is available",
     )
     parser.add_argument(
         "-r",
         "--restore",
         action="store_true",
+        default=False,
         help="Whether to restore from existing experiment with same project name",
     )
     parser.add_argument(
