@@ -38,6 +38,9 @@ from nupic.embodied.multitask.samplers.gpu_sampler import RaySampler
 from nupic.embodied.utils.garage_utils import create_policy_net, create_qf_net
 from nupic.embodied.utils.parser_utils import dict_to_dataclass
 
+from nupic.embodied.utils.hooks import HiddenActivationsPercentOnHook, AverageSegmentActivationsHook
+
+
 
 class Trainer():
     """Custom trainer class which

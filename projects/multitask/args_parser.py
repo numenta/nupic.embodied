@@ -210,7 +210,7 @@ def create_cmd_parser():
         "-c",
         "--cpu",
         action="store_true",
-        default="False",
+        default=False,
         help="Whether to use CPU even if GPU is available",
     )
     parser.add_argument(

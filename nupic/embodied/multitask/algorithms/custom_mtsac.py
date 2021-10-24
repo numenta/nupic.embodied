@@ -34,7 +34,6 @@ from torch.cuda.amp import GradScaler, autocast
 from nupic.embodied.utils.garage_utils import log_multitask_performance
 from nupic.torch.modules.sparse_weights import rezero_weights
 
-
 class CustomMTSAC(MTSAC):
     def __init__(
         self,
@@ -125,21 +124,23 @@ class CustomMTSAC(MTSAC):
             "target_qf1": self._target_qf1.state_dict(),
             "target_qf2": self._target_qf2.state_dict(),
             "log_alpha": self._log_alpha,
+
             # scalers
             "gs_qf1": self._gs_qf1.state_dict(),
             "gs_qf2": self._gs_qf2.state_dict(),
             "gs_policy": self._gs_policy.state_dict(),
             "gs_alpha": self._gs_alpha.state_dict(),
+
             # optimizers
             "policy_optimizer": self._policy_optimizer.state_dict(),
             "qf1_optimizer": self._qf1_optimizer.state_dict(),
             "qf2_optimizer": self._qf2_optimizer.state_dict(),
             "alpha_optimizer": self._alpha_optimizer.state_dict(),
+
             # other variables
             "replay_buffer": self.replay_buffer,
             "eval_env_update": self.eval_env_update,
             "total_envsteps": self._total_envsteps,
-
         }
 
     def load_state(self, state):
@@ -285,6 +286,11 @@ class CustomMTSAC(MTSAC):
                 episodes
 
         """
+        policy = self.get_updated_policy()
+
+        for i in range(len(policy_hooks)):
+            policy_hooks[i] = policy_hooks[i](policy)
+            policy_hooks[i].attach()
 
         t0 = time()
 
@@ -303,6 +309,11 @@ class CustomMTSAC(MTSAC):
             log_per_task=self._log_per_task
         )
         log_dict["average_return"] = np.mean(undiscounted_returns)
+
+        for i in range(len(policy_hooks)):
+            name, visualization = policy_hooks[i].get_visualization()
+            log_dict[name] = visualization
+
         logging.warn(f"Time to evaluate policy: {time()-t0:.2f}")
 
         return undiscounted_returns, log_dict, policy_hook_data

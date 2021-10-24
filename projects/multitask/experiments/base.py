@@ -28,7 +28,7 @@ base = dict()
 
 debug = deepcopy(base)
 debug = dict(
-    evaluation_frequency=10,
+    evaluation_frequency=1,
     timesteps=100000,
     buffer_batch_size=32,
     num_grad_steps_scale=0.01,  # 5 steps,

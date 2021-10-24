@@ -239,6 +239,8 @@ no_overlap_10d_abs_max_signed.update(
     fp16=True,
     preprocess_output_dim=10,
     dendritic_layer_class="abs_max_gating_signed",
+    wandb_group="MT10: Paper Figures",
+    evaluation_frequency=5,
 )
 
 
