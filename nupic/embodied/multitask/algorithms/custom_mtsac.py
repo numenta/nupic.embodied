@@ -162,16 +162,19 @@ class CustomMTSAC(MTSAC):
         self._qf1_optimizer.load_state_dict(state["qf1_optimizer"])
         self._qf2_optimizer.load_state_dict(state["qf2_optimizer"])
         self._alpha_optimizer.load_state_dict(state["alpha_optimizer"])
-        
+
         # other variables
         self.replay_buffer = state["replay_buffer"]
         self.eval_env_update = state["eval_env_update"]
         self._total_envsteps = state["total_envsteps"]
 
-    def get_updated_policy(self):
+    def get_updated_policy(self, policy_hook=None):
         with torch.no_grad():
             updated_policy = copy.deepcopy(self.policy)
         updated_policy.eval()
+        # attach hooks
+        if policy_hook:
+            policy_hook(updated_policy)
 
         return updated_policy
 
@@ -268,7 +271,7 @@ class CustomMTSAC(MTSAC):
 
         return total_losses
 
-    def _evaluate_policy(self, epoch):
+    def _evaluate_policy(self, epoch, policy_hook=None):
         """Evaluate the performance of the policy via deterministic sampling.
 
             Statistics such as (average) discounted return and success rate are
@@ -284,10 +287,11 @@ class CustomMTSAC(MTSAC):
         """
 
         t0 = time()
+
         # Collect episodes for evaluation
-        eval_trajectories = self._sampler.obtain_exact_episodes(
+        eval_trajectories, policy_hook_data = self._sampler.obtain_exact_episodes(
             n_eps_per_worker=self._num_evaluation_episodes,
-            agent_update=self.get_updated_policy(),
+            agent_update=self.get_updated_policy(policy_hook=policy_hook),
             env_update=self.eval_env_update,
         )
 
@@ -301,7 +305,7 @@ class CustomMTSAC(MTSAC):
         log_dict["average_return"] = np.mean(undiscounted_returns)
         logging.warn(f"Time to evaluate policy: {time()-t0:.2f}")
 
-        return undiscounted_returns, log_dict
+        return undiscounted_returns, log_dict, policy_hook_data
 
     def _log_statistics(self, policy_loss, qf1_loss, qf2_loss):
         """Record training statistics to dowel such as losses and returns.

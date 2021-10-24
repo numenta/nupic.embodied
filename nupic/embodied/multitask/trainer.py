@@ -116,7 +116,7 @@ class Trainer():
         self.num_epochs = trainer_args.timesteps // self.env_steps_per_epoch
 
         sampler = RaySampler(
-            agents=policy,
+            agent=policy,
             envs=mt_train_envs,
             max_episode_length=max_episode_length,
             cpus_per_worker=trainer_args.cpus_per_worker,
@@ -268,11 +268,18 @@ class Trainer():
                 epoch=epoch, env_steps_per_epoch=self.env_steps_per_epoch
             )
 
-            # Run evaluation, with a given frequency
+        # Run evaluation, with a given frequency
             if epoch % evaluation_frequency == 0:
-                eval_returns, eval_log_dict = self._algo._evaluate_policy(epoch)
+                # Evalutes with optional hook to collect data
+                hook_manager_class = self.trainer_args.policy_data_collection_hook
+                eval_returns, eval_log_dict, hook_data = self._algo._evaluate_policy(
+                    epoch, hook_manager_class
+                )
                 log_dict["average_return"] = np.mean(eval_returns)
                 log_dict.update(eval_log_dict)
+                # Reports data from hook
+                if hook_manager_class is not None:
+                    hook_manager_class.consolidate_and_report(hook_data)
 
             self.current_epoch = epoch + 1
             log_dict["epoch"] = self.current_epoch

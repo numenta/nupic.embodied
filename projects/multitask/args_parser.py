@@ -26,7 +26,7 @@ import numpy as np
 import os
 from dataclasses import dataclass, field
 from experiments import CONFIGS
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Callable
 from typing_extensions import Literal
 from nupic.embodied.utils.parser_utils import DataClassArgumentParser, create_id
 
@@ -42,6 +42,7 @@ class LoggingArguments:
             "help": "Whether or not to log individual results per task."
         }
     )
+    policy_data_collection_hook: Optional[Callable] = None
 
     def __post_init__(self):
         if self.log_dir is None:
