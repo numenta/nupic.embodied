@@ -1,9 +1,10 @@
+# ------------------------------------------------------------------------------
 #  Numenta Platform for Intelligent Computing (NuPIC)
 #  Copyright (C) 2021, Numenta, Inc.  Unless you have an agreement
 #  with Numenta, Inc., for a separate license for this software code, the
 #  following terms and conditions apply:
 #
-#  This program is free software you can redistribute it and/or modify
+#  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU Affero Public License version 3 as
 #  published by the Free Software Foundation.
 #
@@ -13,27 +14,16 @@
 #  See the GNU Affero Public License for more details.
 #
 #  You should have received a copy of the GNU Affero Public License
-#  along with this program.  If not, see htt"://www.gnu.org/licenses.
+#  along with this program.  If not, see http://www.gnu.org/licenses.
 #
 #  http://numenta.org/licenses/
 #
+# ------------------------------------------------------------------------------
 
-"""
-Multitask Experiment configuration to test policy data collection hooks
-"""
+import abc
 
-from .base import debug
-from copy import deepcopy
-import torch
-from collections import defaultdict
 
-from nupic.embodied.multitask.hooks.sparse_viz import (
-    AverageSegmentActivationsHook,
-    HiddenActivationsPercentOnHook,
-    CombinedSparseVizHook
-)
-
-class HookManagerSample:
+class HookManagerBase(metaclass=abc.ABCMeta):
     """
     Requires:
     - assigning a function to collect_log_data in the recipient network
@@ -43,56 +33,37 @@ class HookManagerSample:
     """
 
     def __init__(self, network):
-        self.hook_data = []
-        # redirect function to the network
         network.collect_log_data = self.export_data
-        # attach hook
-        network.module.mean_log_std.register_forward_hook(
-            self.forward_hook
-        )
+        self.attach(network)
+        self.init_data_collection()
 
-    def forward_hook(self, m, i, o):
-        self.hook_data.append(i[0][0])
+    def init_data_collection(self):
+        self.hook_data = []
 
     def export_data(self):
         """Returns current data and reinitializes collection"""
         data_to_export = self.hook_data
-        self.hook_data = []
+        self.init_data_collection()
         return data_to_export
 
+    @abc.abstractmethod
+    def attach(self, network):
+        """
+        Attach hook to network
+        Example: network.register_forward_hook(self.forward_hook)
+        """
+        raise NotImplementedError
+
     @classmethod
+    @abc.abstractmethod
     def consolidate_and_report(cls, data):
         """
         Accepts a dictionary where key is the task index
         and value is a list with one entry per step take
+        Each value has the same format as the return of export_data function
 
         Class method, requires data argument
 
         Returns a dictionary that can be incorporated into a regular log dict
         """
-        sum_inputs_per_task = defaultdict(int)
-        for task_id, task_data in data.items():
-            for step_data in task_data:
-                sum_inputs_per_task[task_id] += torch.sum(step_data).item()
-        print(sum_inputs_per_task)
-
-        return {"sum_inputs_per_task": sum_inputs_per_task.values()}
-
-
-test_hook = deepcopy(debug)
-test_hook.update(
-    policy_data_collection_hook=HookManagerSample,
-    evaluation_frequency=1,
-)
-
-test_sparse_hook = deepcopy(test_hook)
-test_sparse_hook.update(
-    policy_data_collection_hook=CombinedSparseVizHook,
-)
-
-
-# Export configurations in this file
-CONFIGS = dict(
-    test_hook=test_hook,
-    test_sparse_hook=test_sparse_hook
-)
+        raise NotImplementedError

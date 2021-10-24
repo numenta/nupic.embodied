@@ -279,7 +279,8 @@ class Trainer():
                 log_dict.update(eval_log_dict)
                 # Reports data from hook
                 if hook_manager_class is not None:
-                    hook_manager_class.consolidate_and_report(hook_data)
+                    hook_log_dict = hook_manager_class.consolidate_and_report(hook_data)
+                    log_dict.update(hook_log_dict)
 
             self.current_epoch = epoch + 1
             log_dict["epoch"] = self.current_epoch
