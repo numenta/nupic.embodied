@@ -184,27 +184,38 @@ class Trainer():
         if self.loading_from_existing:
             with open(self.config_path, "r") as file:
                 args_loaded = json.load(file)
-                self.verify_inconsistencies(trainer_args, args_loaded)
-                self.trainer_args = dict_to_dataclass(args_loaded)
+                updated_args = self.merge_loaded(trainer_args, args_loaded)
+                self.trainer_args = dict_to_dataclass(updated_args)
         else:
             self.trainer_args = trainer_args
             with open(self.config_path, "w") as file:
-                json.dump(self.trainer_args.__dict__, file)
+                export_dict = {
+                    k: v for k, v in self.trainer_args.__dict__.items()
+                    if not callable(v)
+                }
+                json.dump(export_dict, file)
 
-    def verify_inconsistencies(self, original, loaded):
-        """Loop that verifies inconsistency between defined config and checkpoint"""
-        inconsistencies_found = False
-        for k, v1 in original.__dict__.items():
-            if k in loaded:
-                v2 = loaded[k]
-                if v1 != v2:
-                    logging.warn(f"For key {k}, value defined in config {v1}"
-                                 f" doesn't equal value saved in checkpoint {v2}")
-                    inconsistencies_found = True
-
-        if inconsistencies_found:
-            logging.warn("Inconsistencies found between config in checkpoint and config"
-                         " defined in experiment file. Using checkpoint config only")
+    def merge_loaded(self, original, loaded):
+        """
+        Merge config from loaded checkpoing with config defined by experiment name.
+        Required since not callables are not saved to json.
+        Report if any inconsistencies are found.
+        """
+        updated_args = {}
+        for key, original_value in original.__dict__.items():
+            # If key in loaded config, use value from loaded config
+            if key in loaded:
+                new_value = loaded[key]
+                updated_args[key] = new_value
+                if original_value != new_value:
+                    logging.warn(
+                        f"For key {key}, value defined in config {original_value}"
+                        f" doesn't equal value saved in checkpoint {new_value}"
+                    )
+            # If key not in loaded config, use original one
+            else:
+                updated_args[key] = original_value
+        return updated_args
 
     def train(
         self,
