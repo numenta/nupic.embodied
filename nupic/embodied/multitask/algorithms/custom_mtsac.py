@@ -286,12 +286,6 @@ class CustomMTSAC(MTSAC):
                 episodes
 
         """
-        policy = self.get_updated_policy()
-
-        for i in range(len(policy_hooks)):
-            policy_hooks[i] = policy_hooks[i](policy)
-            policy_hooks[i].attach()
-
         t0 = time()
 
         # Collect episodes for evaluation
@@ -309,10 +303,6 @@ class CustomMTSAC(MTSAC):
             log_per_task=self._log_per_task
         )
         log_dict["average_return"] = np.mean(undiscounted_returns)
-
-        for i in range(len(policy_hooks)):
-            name, visualization = policy_hooks[i].get_visualization()
-            log_dict[name] = visualization
 
         logging.warn(f"Time to evaluate policy: {time()-t0:.2f}")
 

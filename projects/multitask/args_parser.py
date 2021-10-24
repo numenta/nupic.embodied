@@ -26,7 +26,7 @@ import numpy as np
 import os
 from dataclasses import dataclass, field
 from experiments import CONFIGS
-from typing import Optional, Tuple, Union, Callable
+from typing import Optional, Tuple, Callable
 from typing_extensions import Literal
 from nupic.embodied.utils.parser_utils import DataClassArgumentParser, create_id
 
