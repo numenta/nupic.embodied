@@ -32,7 +32,7 @@ debug = dict(
     timesteps=100000,
     buffer_batch_size=32,
     num_grad_steps_scale=0.01,  # 5 steps,
-    project_id="shqr401",
+    # project_id="shqr401",
 )
 
 singleseg_mt10_base = dict(
