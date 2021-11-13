@@ -22,6 +22,7 @@
 import json
 import logging
 import os
+import cloudpickle
 from threading import Thread
 
 import metaworld
@@ -66,6 +67,7 @@ class Trainer():
         )
         print(f"Checkpoint dir: {self.checkpoint_dir}")
         self.state_path = os.path.join(self.checkpoint_dir, "experiment_state.p")
+        self.env_state_path = os.path.join(self.checkpoint_dir, "env_state.p")
         self.config_path = os.path.join(self.checkpoint_dir, "config.json")
         self.experiment_name = experiment_name
 
@@ -160,7 +162,19 @@ class Trainer():
 
     def save_experiment_state(self):
         print("***Saving experiment state")
-        thread = Thread(target=lambda: torch.save(self.state_dict(), self.state_path))
+
+        def save_fn(state_dict, state_path, env_state, env_state_path):
+            torch.save(state_dict, self.state_path)
+            with open(env_state_path, "wb") as f:
+                cloudpickle.dump(env_state, f)
+
+        # save state dict
+        thread = Thread(target=lambda: save_fn(
+            self.state_dict(),
+            self.state_path,
+            self._algo.eval_env_updates,
+            self.env_state_path
+        ))
         thread.start()
         thread.join()
 
@@ -168,6 +182,11 @@ class Trainer():
         print(f"***Loading experiment state from {self.state_path}")
         experiment_state = torch.load(self.state_path)
         self._algo.load_state(experiment_state["algorithm"])
+
+        with open(self.env_state_path, "rb") as f:
+            env_state = cloudpickle.load(f)
+        self._algo.load_env_state(env_state)
+
         self.current_epoch = experiment_state["current_epoch"]
 
         if self.current_epoch == self.num_epochs:

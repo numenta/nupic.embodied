@@ -107,13 +107,12 @@ class CustomMTSAC(MTSAC):
         self._gs_alpha = GradScaler()
 
         # get updates for evaluation
-        self.eval_env_update = self.resample_environment(force_update=True)
+        self.eval_env_updates = self.resample_environment(force_update=True)
 
         # Fix bug with alpha with optimizer
         self._use_automatic_entropy_tuning = fixed_alpha is None
         if self._use_automatic_entropy_tuning:
             self._alpha_optimizer = optimizer([self._log_alpha], lr=self._policy_lr)
-
 
     def state_dict(self):
         return {
@@ -139,9 +138,11 @@ class CustomMTSAC(MTSAC):
 
             # other variables
             "replay_buffer": self.replay_buffer,
-            "eval_env_update": self.eval_env_update,
             "total_envsteps": self._total_envsteps,
         }
+
+    def load_env_state(self, env_state):
+        self.eval_env_updates = env_state
 
     def load_state(self, state):
         # parameters
@@ -166,7 +167,6 @@ class CustomMTSAC(MTSAC):
 
         # other variables
         self.replay_buffer = state["replay_buffer"]
-        self.eval_env_update = state["eval_env_update"]
         self._total_envsteps = state["total_envsteps"]
 
     def get_updated_policy(self, policy_hook=None):
@@ -207,7 +207,8 @@ class CustomMTSAC(MTSAC):
         if epoch % self._task_update_frequency == 0 or force_update:
             return self._train_task_sampler.sample(self._num_tasks)
         """
-        return None
+        if epoch % self._task_update_frequency == 0 or force_update:
+            return self._train_task_sampler.sample(self._num_tasks)
 
     def run_epoch(self, epoch, env_steps_per_epoch):
         """
@@ -230,7 +231,7 @@ class CustomMTSAC(MTSAC):
         new_trajectories = self._sampler.obtain_samples(
             num_samples=env_steps_per_epoch,
             agent_update=self.get_updated_policy(),
-            env_update=self.resample_environment(epoch),
+            env_updates=self.resample_environment(epoch),
         )
         self.update_buffer(new_trajectories)
         t1 = time()
@@ -292,7 +293,7 @@ class CustomMTSAC(MTSAC):
         eval_trajectories, policy_hook_data = self._sampler.obtain_exact_episodes(
             n_eps_per_worker=self._num_evaluation_episodes,
             agent_update=self.get_updated_policy(policy_hook=policy_hook),
-            env_update=self.eval_env_update,
+            env_updates=self.eval_env_updates,
         )
 
         # Log performance
