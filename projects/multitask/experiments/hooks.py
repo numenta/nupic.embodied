@@ -22,7 +22,6 @@
 Multitask Experiment configuration to test policy data collection hooks
 """
 
-from .base import debug
 from copy import deepcopy
 import torch
 from collections import defaultdict
@@ -32,6 +31,8 @@ from nupic.embodied.multitask.hooks.sparse_viz import (
     HiddenActivationsPercentOnHook,
     CombinedSparseVizHook
 )
+
+from .multiseg_experiments import no_overlap_10d_abs_max_signed
 
 class HookManagerSample:
     """
@@ -79,13 +80,20 @@ class HookManagerSample:
         return {"sum_inputs_per_task": sum_inputs_per_task.values()}
 
 
+debug = deepcopy(no_overlap_10d_abs_max_signed)
+debug.update(
+    evaluation_frequency=1,
+    timesteps=100000,
+    buffer_batch_size=32,
+    num_grad_steps_scale=0.01,
+)
+
 test_hook = deepcopy(debug)
 test_hook.update(
     policy_data_collection_hook=HookManagerSample,
-    evaluation_frequency=1,
 )
 
-test_sparse_hook = deepcopy(test_hook)
+test_sparse_hook = deepcopy(debug)
 test_sparse_hook.update(
     policy_data_collection_hook=CombinedSparseVizHook,
 )

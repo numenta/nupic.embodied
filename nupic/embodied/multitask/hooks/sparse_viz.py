@@ -26,10 +26,12 @@ import torch
 import torch.nn as nn
 from matplotlib import cm, colors
 from matplotlib import pyplot as plt
+import os
 
 from nupic.research.frameworks.dendrites import DendriticLayerBase
 
 from .base import HookManagerBase
+import wandb
 
 
 class PolicyVisualizationsHook(HookManagerBase):
@@ -53,24 +55,27 @@ class PolicyVisualizationsHook(HookManagerBase):
         self.activations.append(output)
 
     def export_data(self):
-        """Returns current data and reinitializes collection"""
-        targets = torch.cat(self.targets, dim=0).to(torch.int)
+        """Returns current data and reinitializes collection
+        target - shape (batch_size, )
+        activations - shape (batch_size, 1950, 10)
+        """
+        targets = torch.stack(self.targets).to(torch.int)
         activations = torch.cat(self.activations, dim=0)
         self.init_data_collection()
-        return targets, activations
+        return {self.__class__.__name__: (targets, activations)}
 
     @classmethod
-    def consolidate_and_report(cls, data):
+    def consolidate_and_report(cls, data, epoch=None, local_save_path=None):
         """
         Accepts a dictionary where key is the task index
         and value is a list with one entry per step take
 
         Class method, requires data argument
         """
-        for task_id, task_data in data.items():
-            for (targets, activations) in task_data:
-                print(f"Visualizing data for task {task_id}")
-                cls.get_visualization(targets, activations)
+        for _, task_data in data.items():  # loop over tasks
+            for episode in task_data:  # loop through episodes
+                targets, activations = episode
+                cls.get_visualization(targets, activations, epoch, local_save_path)
 
     @classmethod
     def get_visualization(cls, targets, activations):
@@ -80,7 +85,14 @@ class PolicyVisualizationsHook(HookManagerBase):
 class AverageSegmentActivationsHook(PolicyVisualizationsHook):
 
     @classmethod
-    def get_visualization(cls, targets, activations, unit_to_plot=0):
+    def get_visualization(
+        cls,
+        targets,
+        activations,
+        epoch=None,
+        local_save_path=None,
+        unit_to_plot=0
+    ):
         """
         Returns a heatmap of dendrite activations for a single unit, plotted using
         matplotlib.
@@ -123,10 +135,19 @@ class AverageSegmentActivationsHook(PolicyVisualizationsHook):
             ax.set_yticks(range(num_segments))
 
             plt.tight_layout()
-            figure = plt.gcf()
-            plt.savefig("/Users/lsouza/nta/results/test_figures")
 
-            return {"average_segment_activations": figure}
+            # Prepare to report it to wandb
+            plt_name = "average_segment_activations"
+            log_dict = {plt_name: wandb.Image(plt)}
+
+            # Save a local copy if required by user
+            if local_save_path is not None and epoch is not None:
+                plot_save_path = os.path.join(local_save_path, plt_name)
+                os.makedirs(plot_save_path, exist_ok=True)
+                plt.savefig(f"{os.path.join(plot_save_path, str(epoch))}.svg", dpi=300)
+
+            plt.clf()
+            return log_dict
 
     def attach(self, network):
         """
@@ -142,8 +163,8 @@ class AverageSegmentActivationsHook(PolicyVisualizationsHook):
                 dendrite_layers.append(layer.segments)
 
         # TODO: asserts failing, finding 0 dendrite layers
-        # assert len(preprocess_layers) == 1, f"Found {len(preprocess_layers)} layers"
-        # assert len(dendrite_layers) == 1, f"Found {len(dendrite_layers)} layers"
+        assert len(preprocess_layers) == 1, f"Found {len(preprocess_layers)} layers"
+        assert len(dendrite_layers) == 1, f"Found {len(dendrite_layers)} layers"
 
         preprocess_layers[0].register_forward_hook(self.target_hook_fn)
         dendrite_layers[0].register_forward_hook(self.activation_hook_fn)
@@ -151,7 +172,14 @@ class AverageSegmentActivationsHook(PolicyVisualizationsHook):
 class HiddenActivationsPercentOnHook(PolicyVisualizationsHook):
 
     @classmethod
-    def get_visualization(cls, targets, activations, num_units_to_plot=64):
+    def get_visualization(
+        cls,
+        targets,
+        activations,
+        epoch=None,
+        local_save_path=None,
+        num_units_to_plot=64
+    ):
         """
         Returns a heatmap with shape (num_categories, num_units) where cell c, i gives the
         mean value of hidden activations for unit i over all given examples from category
@@ -201,10 +229,18 @@ class HiddenActivationsPercentOnHook(PolicyVisualizationsHook):
             ax.get_yaxis().set_ticks(range(num_tasks))
 
             plt.tight_layout()
-            figure = plt.gcf()
-            plt.savefig("/Users/lsouza/nta/results/test_figures")
+            plt_name = "hidden_activations_percent_on"
+            log_dict = {plt_name: wandb.Image(plt)}
 
-            return {"hidden_activations_percent_on": figure}
+            # Save a local copy if required by user
+            if local_save_path is not None and epoch is not None:
+                plot_save_path = os.path.join(local_save_path, plt_name)
+                os.makedirs(plot_save_path, exist_ok=True)
+                plt.savefig(f"{os.path.join(plot_save_path, str(epoch))}.svg", dpi=300)
+
+            plt.clf()
+
+            return log_dict
 
     def attach(self, network):
         """
@@ -220,8 +256,8 @@ class HiddenActivationsPercentOnHook(PolicyVisualizationsHook):
                 dendrite_layers.append(layer)
 
         # TODO: asserts failing, finding 2 preprocess layers
-        # assert len(preprocess_layers) == 1, f"Found {len(preprocess_layers)} layers"
-        # assert len(dendrite_layers) == 1, f"Found {len(dendrite_layers)} layers"
+        assert len(preprocess_layers) == 1, f"Found {len(preprocess_layers)} layers"
+        assert len(dendrite_layers) == 1, f"Found {len(dendrite_layers)} layers"
 
         preprocess_layers[0].register_forward_hook(self.target_hook_fn)
         dendrite_layers[0].register_forward_hook(self.activation_hook_fn)
@@ -230,19 +266,23 @@ class HiddenActivationsPercentOnHook(PolicyVisualizationsHook):
 class CombinedSparseVizHook():
 
     hooks_classes = [
-        # AverageSegmentActivationsHook,
+        AverageSegmentActivationsHook,
         HiddenActivationsPercentOnHook
     ]
 
     def __init__(self, network):
         self.hooks = [hook(network) for hook in self.hooks_classes]
+        network.collect_log_data = self.export_data
 
     def export_data(self):
         # Output of each hook is a tuple target, activations
-        return {hook.__class__: hook.export_data() for hook in self.hooks}
+        combined_hooks_data = {}
+        for hook in self.hooks:
+            combined_hooks_data.update(hook.export_data())
+        return combined_hooks_data
 
     @classmethod
-    def consolidate_and_report(cls, data):
+    def consolidate_and_report(cls, data, epoch=None, local_save_path=None):
         """
         Accepts a dictionary where key is the task index
         and value is a list with one entry per step take
@@ -251,12 +291,12 @@ class CombinedSparseVizHook():
         """
         # Loop through tasks
         visualizations = {}
-        for _, task_data in data.items():
-            # Loop through steps
-            for step_data in task_data:
-                # Loop through hooks - new in combined
-                for hook in cls.hooks_classes:
-                    targets, activations = step_data[hook.__class__]
-                    visualizations.update(hook.get_visualization(targets, activations))
+        for _, task_data in data.items():  # loop through tasks
+            for hook in cls.hooks_classes:   # loop through hooks
+                for episode in task_data[hook.__name__]:  # loop through episodes
+                    targets, activations = episode
+                    visualizations.update(hook.get_visualization(
+                        targets, activations, epoch, local_save_path
+                    ))
 
         return visualizations
