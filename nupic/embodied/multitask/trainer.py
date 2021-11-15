@@ -71,6 +71,11 @@ class Trainer():
         self.config_path = os.path.join(self.checkpoint_dir, "config.json")
         self.experiment_name = experiment_name
 
+        # Only define viz_save_path if required to save visualizations local
+        self.viz_save_path = None
+        if trainer_args.save_visualizations_local:
+            self.viz_save_path = os.path.join(self.checkpoint_dir, "viz")
+
         # Check if loading from existing experiment
         self.loading_from_existing = os.path.exists(self.checkpoint_dir)
         os.makedirs(self.checkpoint_dir, exist_ok=True)
@@ -298,7 +303,11 @@ class Trainer():
                 log_dict.update(eval_log_dict)
                 # Reports data from hook
                 if hook_manager_class is not None:
-                    hook_log_dict = hook_manager_class.consolidate_and_report(hook_data)
+                    hook_log_dict = hook_manager_class.consolidate_and_report(
+                        hook_data,
+                        epoch=epoch,
+                        local_save_path=self.viz_save_path
+                    )
                     log_dict.update(hook_log_dict)
 
             self.current_epoch = epoch + 1
