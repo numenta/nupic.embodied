@@ -37,7 +37,7 @@ from .multiseg_experiments import no_overlap_10d_abs_max_signed
 class HookManagerSample:
     """
     Requires:
-    - assigning a function to collect_log_data in the recipient network
+    - assigning a function to collect_hook_data in the recipient network
     - attaching a hook to the recipient network
     - a class method called consolidate_and_report that executes an action
     based on the data reported
@@ -46,7 +46,7 @@ class HookManagerSample:
     def __init__(self, network):
         self.hook_data = []
         # redirect function to the network
-        network.collect_log_data = self.export_data
+        network.collect_hook_data = self.export_data
         # attach hook
         network.module.mean_log_std.register_forward_hook(
             self.forward_hook
@@ -98,9 +98,16 @@ test_sparse_hook.update(
     policy_data_collection_hook=CombinedSparseVizHook,
 )
 
+no_overlap_10d_abs_max_signed_with_plots = deepcopy(no_overlap_10d_abs_max_signed)
+no_overlap_10d_abs_max_signed_with_plots.update(
+    policy_data_collection_hook=CombinedSparseVizHook,
+    save_visualizations_local=True,
+)
+
 
 # Export configurations in this file
 CONFIGS = dict(
     test_hook=test_hook,
-    test_sparse_hook=test_sparse_hook
+    test_sparse_hook=test_sparse_hook,
+    no_overlap_10d_abs_max_signed_with_plots=no_overlap_10d_abs_max_signed_with_plots
 )

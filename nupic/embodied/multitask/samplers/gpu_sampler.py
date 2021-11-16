@@ -33,7 +33,7 @@ from garage.sampler import DefaultWorker, Sampler
 
 class WorkerWithLogData():
 
-    def rollout_eval(self, collect_log_data=False):
+    def rollout_eval(self, collect_hook_data=False):
         """Sample a single episode of the agent in the environment.
 
         Returns:
@@ -45,11 +45,11 @@ class WorkerWithLogData():
             pass
         eps_batch = self.collect_episode()
 
-        log_data = None
-        if collect_log_data:
-            log_data = self.agent.collect_log_data()
+        hook_data = None
+        if collect_hook_data:
+            hook_data = self.agent.collect_hook_data()
 
-        return eps_batch, log_data
+        return eps_batch, hook_data
 
 
 class WorkerWithEvalMode():
@@ -324,7 +324,7 @@ class RaySampler(Sampler):
         self,
         n_eps_per_worker,
         agent_update,
-        collect_log_data=False,
+        collect_hook_data=False,
         env_updates=None
     ):
         """Sample an exact number of episodes per worker.
@@ -356,30 +356,33 @@ class RaySampler(Sampler):
         n_eps_per_worker = int(n_eps_per_worker / self.workers_per_env)
 
         # only include logdata if hook has been attached.
-        if(hasattr(agent_update, "collect_log_data")):
-            collect_log_data = True
+        if(hasattr(agent_update, "collect_hook_data")):
+            collect_hook_data = True
 
         episodes = defaultdict(list)
-        epoch_log_data = {}
+        data_to_export = {}
 
         def update_eval_results(results):
-            for worker_id, (episode_batch, log_data) in enumerate(results):
+            for worker_id, (episode_batch, hook_data) in enumerate(results):
                 episodes[worker_id].append(episode_batch)
-                if log_data is not None:
-                    if worker_id not in epoch_log_data:
-                        epoch_log_data[worker_id] = {}
-                    # Update data individually for each hook; allows composite hoooks
-                    for hook in log_data.keys():
-                        if hook not in epoch_log_data[worker_id]:
-                            epoch_log_data[worker_id][hook] = [log_data[hook]]
+                if hook_data is not None:
+                    # Loop through hooks, allow multiple hooks
+                    for hook, data in hook_data.items():
+                        # For each hook save data for each task separately
+                        # allowing for several episodes to be saved at once
+                        if worker_id not in data_to_export[hook]:
+                            data_to_export[hook][worker_id] = data
                         else:
-                            epoch_log_data[worker_id][hook].append(log_data[hook])
+                            data_to_export[hook][worker_id] = torch.cat(
+                                [data_to_export[hook][worker_id], data], dim=0
+                            )
 
-        # TODO: do it all async, including loop through episodes
+
+        # TODO: do it all async, including loop through episodes if more than one
         for _ in range(n_eps_per_worker):
             pids = [
-                w.rollout_eval.remote(collect_log_data=collect_log_data)
-                for w in self.workers
+                worker.rollout_eval.remote(collect_hook_data=collect_hook_data)
+                for worker in self.eval_workers
             ]
             episode_results = [ray.get(pid) for pid in pids]
             update_eval_results(episode_results)
@@ -391,7 +394,7 @@ class RaySampler(Sampler):
 
         samples = EpisodeBatch.concatenate(*ordered_episodes)  # concat
         self.total_env_steps += sum(samples.lengths)
-        return samples, epoch_log_data
+        return samples, data_to_export
 
     def shutdown_worker(self):
         """Shuts down all workers and Ray"""
@@ -470,7 +473,7 @@ class RaySamplerSyncEval(RaySampler):
         self,
         n_eps_per_worker,
         agent_update,
-        collect_log_data=False,
+        collect_hook_data=False,
         env_updates=None
     ):
         """Sample an exact number of episodes per worker.
@@ -501,31 +504,32 @@ class RaySamplerSyncEval(RaySampler):
             "Number of eps per worker should be a multiple of workers per env"
         n_eps_per_worker = int(n_eps_per_worker / self.workers_per_env)
 
-        # only include logdata if hook has been attached.
-        if(hasattr(agent_update, "collect_log_data")):
-            collect_log_data = True
+        # only include hook data if hook has been attached.
+        if(hasattr(agent_update, "collect_hook_data")):
+            collect_hook_data = True
 
         episodes = defaultdict(list)
-        epoch_log_data = {}
+        data_to_export = defaultdict(dict)
 
         def update_eval_results(results):
-            for worker_id, (episode_batch, log_data) in enumerate(results):
+            for worker_id, (episode_batch, hook_data) in enumerate(results):
                 episodes[worker_id].append(episode_batch)
-                if log_data is not None:
-                    if worker_id not in epoch_log_data:
-                        epoch_log_data[worker_id] = {}
-                    # Update data individually for each hook; allows composite hoooks
-                    for hook in log_data.keys():
-                        if hook not in epoch_log_data[worker_id]:
-                            epoch_log_data[worker_id][hook] = [log_data[hook]]
+                if hook_data is not None:
+                    # Loop through hooks, allow multiple hooks
+                    for hook, data in hook_data.items():
+                        # For each hook save data for each task separately
+                        # allowing for several episodes to be saved at once
+                        if worker_id not in data_to_export[hook]:
+                            data_to_export[hook][worker_id] = data
                         else:
-                            epoch_log_data[worker_id][hook].append(log_data[hook])
+                            data_to_export[hook][worker_id] = torch.cat(
+                                [data_to_export[hook][worker_id], data], dim=0
+                            )
 
-        # sync version
         for _ in range(n_eps_per_worker):
             episode_results = [
-                w.rollout_eval(collect_log_data=collect_log_data)
-                for w in self.eval_workers
+                worker.rollout_eval(collect_hook_data=collect_hook_data)
+                for worker in self.eval_workers
             ]
             update_eval_results(episode_results)
 
@@ -536,4 +540,4 @@ class RaySamplerSyncEval(RaySampler):
 
         samples = EpisodeBatch.concatenate(*ordered_episodes)  # concat
         self.total_env_steps += sum(samples.lengths)
-        return samples, epoch_log_data
+        return samples, data_to_export

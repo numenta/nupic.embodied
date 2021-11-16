@@ -26,14 +26,14 @@ import abc
 class HookManagerBase(metaclass=abc.ABCMeta):
     """
     Requires:
-    - assigning a function to collect_log_data in the recipient network
+    - assigning a function to collect_hook_data in the recipient network
     - attaching a hook to the recipient network
     - a class method called consolidate_and_report that executes an action
     based on the data reported
     """
 
     def __init__(self, network):
-        network.collect_log_data = self.export_data
+        network.collect_hook_data = self.export_data
         self.attach(network)
         self.init_data_collection()
 
