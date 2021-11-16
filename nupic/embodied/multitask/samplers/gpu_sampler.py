@@ -360,7 +360,7 @@ class RaySampler(Sampler):
             collect_hook_data = True
 
         episodes = defaultdict(list)
-        data_to_export = {}
+        data_to_export = defaultdict(dict)
 
         def update_eval_results(results):
             for worker_id, (episode_batch, hook_data) in enumerate(results):
@@ -377,12 +377,11 @@ class RaySampler(Sampler):
                                 [data_to_export[hook][worker_id], data], dim=0
                             )
 
-
         # TODO: do it all async, including loop through episodes if more than one
         for _ in range(n_eps_per_worker):
             pids = [
                 worker.rollout_eval.remote(collect_hook_data=collect_hook_data)
-                for worker in self.eval_workers
+                for worker in self.workers
             ]
             episode_results = [ray.get(pid) for pid in pids]
             update_eval_results(episode_results)
