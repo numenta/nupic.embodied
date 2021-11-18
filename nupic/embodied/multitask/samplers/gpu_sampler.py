@@ -459,6 +459,9 @@ class RaySamplerSyncEval(RaySampler):
                 in, it must have length exactly `factory.n_workers`, and will
                 be spread across the workers.
         """
+        if env_updates is None:
+            env_updates = [None] * len(self.eval_workers)
+
         agent_update.to(self.device)
         agent_update.eval()
         for p in agent_update.parameters():
