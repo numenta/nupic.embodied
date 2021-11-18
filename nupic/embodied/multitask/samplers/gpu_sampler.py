@@ -543,3 +543,40 @@ class RaySamplerSyncEval(RaySampler):
         samples = EpisodeBatch.concatenate(*ordered_episodes)  # concat
         self.total_env_steps += sum(samples.lengths)
         return samples, data_to_export
+
+
+class SamplerEvalOnly(RaySamplerSyncEval):
+    """
+    Sampler version that only does eval on cpu
+    Overrides init to remove initialization of Ray and trainer workers.
+    Uses SyncEval methods from parent class
+    """
+
+    def __init__(
+        self,
+        agent,
+        envs,
+        max_episode_length=None,
+        seed=None,
+        cpus_per_worker=1,
+        gpus_per_worker=0,
+        workers_per_env=1
+    ):
+
+        self.workers_per_env = workers_per_env
+        self.total_env_steps = 0
+        self.device = torch.device("cuda" if gpus_per_worker > 0 else "cpu")
+
+        # non Ray workers for evaluation
+        self.eval_workers = []
+        for _ in range(self.workers_per_env):
+            self.eval_workers.extend(
+                [CustomWorker(
+                    seed=seed,
+                    max_episode_length=max_episode_length,
+                    worker_number=idx,
+                    agent=agent,
+                    env=env,
+                    device_type="cuda" if gpus_per_worker > 0 else "cpu"
+                ) for idx, env in enumerate(envs)]
+            )
