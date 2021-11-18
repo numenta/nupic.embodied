@@ -64,6 +64,7 @@ class CustomMTSAC(MTSAC):
         # added
         fp16=False,
         log_per_task=False,
+        share_train_eval_env=False
     ):
 
         super().__init__(
@@ -108,6 +109,9 @@ class CustomMTSAC(MTSAC):
 
         # get updates for evaluation
         self.eval_env_updates = self.resample_environment(force_update=True)
+        self.share_train_eval_env = share_train_eval_env
+        if self.share_train_eval_env:
+            logging.warn("WARNING: Sharing train and eval environments")
 
         # Fix bug with alpha with optimizer
         self._use_automatic_entropy_tuning = fixed_alpha is None
@@ -207,6 +211,7 @@ class CustomMTSAC(MTSAC):
         if epoch % self._task_update_frequency == 0 or force_update:
             return self._train_task_sampler.sample(self._num_tasks)
         """
+        # TODO: remove first line to allow force update
         if epoch % self._task_update_frequency == 0 or force_update:
             return self._train_task_sampler.sample(self._num_tasks)
 
@@ -228,10 +233,15 @@ class CustomMTSAC(MTSAC):
         """
         t0 = time()
 
+        env_updates = (
+            self.eval_env_updates if self.share_train_eval_env
+            else self.resample_environment(epoch)
+        )
+
         new_trajectories = self._sampler.obtain_samples(
             num_samples=env_steps_per_epoch,
             agent_update=self.get_updated_policy(),
-            env_updates=self.resample_environment(epoch),
+            env_updates=env_updates,
         )
         self.update_buffer(new_trajectories)
         t1 = time()

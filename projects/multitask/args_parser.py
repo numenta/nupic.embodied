@@ -87,6 +87,7 @@ class TrainingArguments:
     num_buffer_transitions: float = 1e6
     evaluation_frequency: int = 10
     task_update_frequency: int = 1
+    share_train_eval_env: bool = False
     target_update_tau: float = 5e-3
     buffer_batch_size: int = 2560
     num_grad_steps_scale: float = 0.5

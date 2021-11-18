@@ -154,7 +154,8 @@ class Trainer():
             reward_scale=trainer_args.reward_scale,
             num_evaluation_episodes=trainer_args.eval_episodes,
             fp16=trainer_args.fp16 if use_gpu else False,
-            log_per_task=trainer_args.log_per_task
+            log_per_task=trainer_args.log_per_task,
+            share_train_eval_env=trainer_args.share_train_eval_env
         )
 
         # Override with loaded networks if existing experiment
