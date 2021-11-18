@@ -76,7 +76,7 @@ class AverageSegmentActivationsHook(PolicyVisualizationsHook):
         data,
         epoch=None,
         local_save_path=None,
-        unit_to_plot=0
+        unit_to_plot=[0, 5, 10]
     ):
         """
         Returns a heatmap of dendrite activations for a single unit, plotted using
@@ -90,44 +90,49 @@ class AverageSegmentActivationsHook(PolicyVisualizationsHook):
                              plots activations of unit 0 by default
         """
 
-        avg_activations = torch.stack([
-            data[task_id][:, unit_to_plot, :].mean(dim=0)
-            for task_id in sorted(data)
-        ]).numpy()
-
-        vmax = np.abs(avg_activations).max()
-        vmin = -1.0 * vmax
+        log_dict = {}
         num_segments = next(iter(data.values())).size(2)
 
-        ax = plt.gca()
-        ax.imshow(avg_activations, cmap="coolwarm_r", vmin=vmin, vmax=vmax)
-        plt.colorbar(
-            cm.ScalarMappable(norm=colors.Normalize(-1, 1), cmap="coolwarm_r"),
-            ax=ax, location="left",
-            shrink=0.6, drawedges=False, ticks=[-1.0, 0.0, 1.0]
-        )
+        for unit in unit_to_plot:
 
-        ax.set_xlabel("Task")
-        ax.set_ylabel("Segment")
-        ax.set_xticks(range(len(data)))
-        ax.set_yticks(range(num_segments))
+            # Have to transpose, as plot expects a matrix (segments, tasks)
+            avg_activations = torch.stack([
+                data[task_id][:, unit, :].mean(dim=0)
+                for task_id in sorted(data)
+            ]).T.numpy()
 
-        plt.tight_layout()
+            vmax = np.abs(avg_activations).max()
+            vmin = -1.0 * vmax
 
-        # Prepare to report it to wandb
-        plt_name = "average_segment_activations"
-        log_dict = {plt_name: wandb.Image(plt)}
+            ax = plt.gca()
+            ax.imshow(avg_activations, cmap="coolwarm_r", vmin=vmin, vmax=vmax)
+            plt.colorbar(
+                cm.ScalarMappable(norm=colors.Normalize(-1, 1), cmap="coolwarm_r"),
+                ax=ax, location="left",
+                shrink=0.6, drawedges=False, ticks=[-1.0, 0.0, 1.0]
+            )
 
-        # Save a local copy if required by user
-        if local_save_path is not None and epoch is not None:
-            plot_save_path = os.path.join(local_save_path, plt_name)
-            os.makedirs(plot_save_path, exist_ok=True)
-            plt.savefig(f"{os.path.join(plot_save_path, str(epoch))}.svg", dpi=300)
-            np.save(
-                f"{os.path.join(plot_save_path, str(epoch))}.npy", avg_activations)
+            ax.set_xlabel("Task")
+            ax.set_ylabel("Segment")
+            ax.set_xticks(range(len(data)))
+            ax.set_yticks(range(num_segments))
 
-        # Clear plot before exiting function to avoid interference
-        plt.clf()
+            plt.tight_layout()
+
+            # Prepare to report it to wandb
+            plt_name = f"average_segment_activations_{unit}"
+            log_dict[plt_name] = wandb.Image(plt)
+
+            # Save a local copy if required by user
+            if local_save_path is not None and epoch is not None:
+                plot_save_path = os.path.join(local_save_path, plt_name)
+                os.makedirs(plot_save_path, exist_ok=True)
+                plt.savefig(f"{os.path.join(plot_save_path, str(epoch))}.svg", dpi=300)
+                np.save(
+                    f"{os.path.join(plot_save_path, str(epoch))}.npy", avg_activations)
+
+            # Clear plot before exiting function to avoid interference
+            plt.clf()
 
         return log_dict
 
