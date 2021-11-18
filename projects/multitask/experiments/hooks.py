@@ -32,7 +32,7 @@ from nupic.embodied.multitask.hooks.sparse_viz import (
     CombinedSparseVizHook
 )
 
-from .multiseg_experiments import no_overlap_10d_abs_max_signed
+from .multiseg_experiments import no_overlap_10d_abs_max_signed, dendrites_relu
 
 class HookManagerSample:
     """
@@ -105,9 +105,35 @@ no_overlap_10d_abs_max_signed_with_plots.update(
 )
 
 
+no_overlap_10d_abs_max_signed_with_plots_mt50 = deepcopy(no_overlap_10d_abs_max_signed_with_plots)
+no_overlap_10d_abs_max_signed_with_plots_mt50.update(
+    policy_data_collection_hook=CombinedSparseVizHook,
+    save_visualizations_local=True,
+    num_tasks=50,
+    cpus_per_worker=0.14
+)
+
+
+dendrites_with_plots_noenvupdate = deepcopy(no_overlap_10d_abs_max_signed)
+dendrites_with_plots_noenvupdate.update(
+    task_update_frequency=1e12,  # fix it
+    policy_data_collection_hook=CombinedSparseVizHook,
+    save_visualizations_local=True,
+    share_train_eval_env=True,
+)
+
+dendrites_relu_with_plots = deepcopy(dendrites_relu)
+dendrites_relu_with_plots.update(
+    policy_data_collection_hook=CombinedSparseVizHook,
+    save_visualizations_local=True,
+)
+
 # Export configurations in this file
 CONFIGS = dict(
     test_hook=test_hook,
     test_sparse_hook=test_sparse_hook,
-    no_overlap_10d_abs_max_signed_with_plots=no_overlap_10d_abs_max_signed_with_plots
+    no_overlap_10d_abs_max_signed_with_plots=no_overlap_10d_abs_max_signed_with_plots,
+    dendrites_with_plots_noenvupdate=dendrites_with_plots_noenvupdate,
+    no_overlap_10d_abs_max_signed_with_plots_mt50=no_overlap_10d_abs_max_signed_with_plots_mt50,
+    dendrites_relu_with_plots=dendrites_relu_with_plots
 )
