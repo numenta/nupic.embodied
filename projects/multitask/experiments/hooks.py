@@ -126,12 +126,14 @@ dendrites_with_plots_noenvupdate.update(
     share_train_eval_env=True,
     policy_data_collection_hook=CombinedSparseVizHook,
     save_visualizations_local=False,  # True
+    evaluation_frequency=10,
 )
 
 new_metaworld_baseline_noenvupdate = deepcopy(new_metaworld_baseline)
 new_metaworld_baseline_noenvupdate.update(
     task_update_frequency=1e12,  # fix it
     share_train_eval_env=True,
+    evaluation_frequency=10,
 )
 
 # Export configurations in this file

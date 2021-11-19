@@ -90,8 +90,6 @@ class CustomDendriticMLP(nn.Module):
             bias=True
         )
 
-        ModularDendriticMLP._init_sparse_weights(linear_layer, 0.0)
-
         if module_type == "relu":
             nonlinearity = nn.ReLU()
         elif module_type == "kw":
