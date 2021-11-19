@@ -84,15 +84,11 @@ class CustomDendriticMLP(nn.Module):
         if module_type is None:
             return preprocess_module, self.context_dim
 
-        linear_layer = SparseWeights(
-            torch.nn.Linear(self.context_dim,
-                            preprocess_output_dim,
-                            bias=True),
-            sparsity=self.weight_sparsity,
-            allow_extremes=True
+        linear_layer = torch.nn.Linear(
+            self.context_dim,
+            preprocess_output_dim,
+            bias=True
         )
-
-        ModularDendriticMLP._init_sparse_weights(linear_layer, 0.0)
 
         if module_type == "relu":
             nonlinearity = nn.ReLU()
