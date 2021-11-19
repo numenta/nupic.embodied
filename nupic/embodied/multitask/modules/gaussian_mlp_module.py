@@ -141,7 +141,7 @@ class GaussianMLPBaseModule(nn.Module):
         self._max_std = buffers["max_std"]
 
     @abc.abstractmethod
-    def _get_mean_and_log_std(self, *inputs):
+    def get_mean_log_std(self, *inputs):
         pass
 
     def forward(self, *inputs):
@@ -152,7 +152,7 @@ class GaussianMLPBaseModule(nn.Module):
             torch.distributions.independent.Independent: Independent
                 distribution.
         """
-        mean, log_std_uncentered = self._get_mean_and_log_std(*inputs)
+        mean, log_std_uncentered = self.get_mean_log_std(*inputs)
 
         log_std_uncentered = log_std_uncentered.clamp(min=self._min_std.item(),
                                                       max=self._max_std.item())
@@ -265,7 +265,7 @@ class GaussianTwoHeadedMLPModule(GaussianMLPBaseModule):
             learn_std=learn_std,
         )
 
-        self._shared_mean_log_std_network = MultiHeadedMLPModule(
+        self.mean_log_std = MultiHeadedMLPModule(
             n_heads=2,
             input_dim=input_dim,
             output_dims=output_dim,
@@ -282,7 +282,7 @@ class GaussianTwoHeadedMLPModule(GaussianMLPBaseModule):
             layer_normalization=layer_normalization
         )
 
-    def _get_mean_and_log_std(self, *inputs):
+    def get_mean_log_std(self, *inputs):
         """Get mean and std of Gaussian distribution given inputs.
         Args:
             *inputs: Input to the module.
@@ -290,7 +290,7 @@ class GaussianTwoHeadedMLPModule(GaussianMLPBaseModule):
             torch.Tensor: The mean of Gaussian distribution.
             torch.Tensor: The variance of Gaussian distribution.
         """
-        return self._shared_mean_log_std_network(*inputs)
+        return self.mean_log_std(*inputs)
 
 
 class GaussianTwoHeadedDendriticMLPModule(GaussianMLPBaseModule):
@@ -340,7 +340,7 @@ class GaussianTwoHeadedDendriticMLPModule(GaussianMLPBaseModule):
             learn_std=learn_std
         )
 
-        self._shared_mean_log_std_network = CustomDendriticMLP(
+        self.mean_log_std = CustomDendriticMLP(
             input_dim=input_dim,
             context_dim=context_dim,
             output_sizes=(output_dim, output_dim),
@@ -360,7 +360,7 @@ class GaussianTwoHeadedDendriticMLPModule(GaussianMLPBaseModule):
             preprocess_kw_percent_on=preprocess_kw_percent_on,
         )
 
-    def _get_mean_and_log_std(self, *inputs):
+    def get_mean_log_std(self, *inputs):
         """Get mean and std of Gaussian distribution given inputs.
         Args:
             
@@ -368,4 +368,4 @@ class GaussianTwoHeadedDendriticMLPModule(GaussianMLPBaseModule):
             torch.Tensor: The mean of Gaussian distribution.
             torch.Tensor: The variance of Gaussian distribution.
         """
-        return self._shared_mean_log_std_network(*inputs)
+        return self.mean_log_std(*inputs)

@@ -34,7 +34,6 @@ from torch.cuda.amp import GradScaler, autocast
 from nupic.embodied.utils.garage_utils import log_multitask_performance
 from nupic.torch.modules.sparse_weights import rezero_weights
 
-
 class CustomMTSAC(MTSAC):
     def __init__(
         self,
@@ -65,6 +64,7 @@ class CustomMTSAC(MTSAC):
         # added
         fp16=False,
         log_per_task=False,
+        share_train_eval_env=False
     ):
 
         super().__init__(
@@ -108,13 +108,15 @@ class CustomMTSAC(MTSAC):
         self._gs_alpha = GradScaler()
 
         # get updates for evaluation
-        self.eval_env_update = self.resample_environment(force_update=True)
+        self.eval_env_updates = self.resample_environment(force_update=True)
+        self.share_train_eval_env = share_train_eval_env
+        if self.share_train_eval_env:
+            logging.warn("WARNING: Sharing train and eval environments")
 
         # Fix bug with alpha with optimizer
         self._use_automatic_entropy_tuning = fixed_alpha is None
         if self._use_automatic_entropy_tuning:
             self._alpha_optimizer = optimizer([self._log_alpha], lr=self._policy_lr)
-
 
     def state_dict(self):
         return {
@@ -125,22 +127,26 @@ class CustomMTSAC(MTSAC):
             "target_qf1": self._target_qf1.state_dict(),
             "target_qf2": self._target_qf2.state_dict(),
             "log_alpha": self._log_alpha,
+
             # scalers
             "gs_qf1": self._gs_qf1.state_dict(),
             "gs_qf2": self._gs_qf2.state_dict(),
             "gs_policy": self._gs_policy.state_dict(),
             "gs_alpha": self._gs_alpha.state_dict(),
+
             # optimizers
             "policy_optimizer": self._policy_optimizer.state_dict(),
             "qf1_optimizer": self._qf1_optimizer.state_dict(),
             "qf2_optimizer": self._qf2_optimizer.state_dict(),
             "alpha_optimizer": self._alpha_optimizer.state_dict(),
+
             # other variables
             "replay_buffer": self.replay_buffer,
-            "eval_env_update": self.eval_env_update,
             "total_envsteps": self._total_envsteps,
-
         }
+
+    def load_env_state(self, env_state):
+        self.eval_env_updates = env_state
 
     def load_state(self, state):
         # parameters
@@ -162,16 +168,18 @@ class CustomMTSAC(MTSAC):
         self._qf1_optimizer.load_state_dict(state["qf1_optimizer"])
         self._qf2_optimizer.load_state_dict(state["qf2_optimizer"])
         self._alpha_optimizer.load_state_dict(state["alpha_optimizer"])
-        
+
         # other variables
         self.replay_buffer = state["replay_buffer"]
-        self.eval_env_update = state["eval_env_update"]
         self._total_envsteps = state["total_envsteps"]
 
-    def get_updated_policy(self):
+    def get_updated_policy(self, policy_hook=None):
         with torch.no_grad():
             updated_policy = copy.deepcopy(self.policy)
         updated_policy.eval()
+        # attach hooks
+        if policy_hook:
+            policy_hook(updated_policy)
 
         return updated_policy
 
@@ -203,7 +211,9 @@ class CustomMTSAC(MTSAC):
         if epoch % self._task_update_frequency == 0 or force_update:
             return self._train_task_sampler.sample(self._num_tasks)
         """
-        return None
+        # TODO: remove first line to allow force update
+        if epoch % self._task_update_frequency == 0 or force_update:
+            return self._train_task_sampler.sample(self._num_tasks)
 
     def run_epoch(self, epoch, env_steps_per_epoch):
         """
@@ -223,10 +233,15 @@ class CustomMTSAC(MTSAC):
         """
         t0 = time()
 
+        env_updates = (
+            self.eval_env_updates if self.share_train_eval_env
+            else self.resample_environment(epoch)
+        )
+
         new_trajectories = self._sampler.obtain_samples(
             num_samples=env_steps_per_epoch,
             agent_update=self.get_updated_policy(),
-            env_update=self.resample_environment(epoch),
+            env_updates=env_updates,
         )
         self.update_buffer(new_trajectories)
         t1 = time()
@@ -268,7 +283,7 @@ class CustomMTSAC(MTSAC):
 
         return total_losses
 
-    def _evaluate_policy(self, epoch):
+    def _evaluate_policy(self, epoch, policy_hook=None):
         """Evaluate the performance of the policy via deterministic sampling.
 
             Statistics such as (average) discounted return and success rate are
@@ -282,13 +297,13 @@ class CustomMTSAC(MTSAC):
                 episodes
 
         """
-
         t0 = time()
+
         # Collect episodes for evaluation
-        eval_trajectories = self._sampler.obtain_exact_episodes(
+        eval_trajectories, policy_hook_data = self._sampler.obtain_exact_episodes(
             n_eps_per_worker=self._num_evaluation_episodes,
-            agent_update=self.get_updated_policy(),
-            env_update=self.eval_env_update,
+            agent_update=self.get_updated_policy(policy_hook=policy_hook),
+            env_updates=self.eval_env_updates,
         )
 
         # Log performance
@@ -299,9 +314,10 @@ class CustomMTSAC(MTSAC):
             log_per_task=self._log_per_task
         )
         log_dict["average_return"] = np.mean(undiscounted_returns)
+
         logging.warn(f"Time to evaluate policy: {time()-t0:.2f}")
 
-        return undiscounted_returns, log_dict
+        return undiscounted_returns, log_dict, policy_hook_data
 
     def _log_statistics(self, policy_loss, qf1_loss, qf2_loss):
         """Record training statistics to dowel such as losses and returns.

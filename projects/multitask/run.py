@@ -82,9 +82,7 @@ if __name__ == "__main__":
     if run_args.wandb_run_name != "":
         run_args.wandb_run_name = run_args.exp_name
 
-    # Restore last known experiment
-    print(run_args.restore, run_args.project_id, trainer_args.project_id)
-    # Restore andd override project id from config with project id from cmd parser
+    # Restore and override project id from config with project id from cmd parser
     if run_args.restore:
         if not run_args.project_id:
             trainer_args.project_id = find_latest_run(

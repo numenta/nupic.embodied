@@ -239,8 +239,24 @@ no_overlap_10d_abs_max_signed.update(
     fp16=True,
     preprocess_output_dim=10,
     dendritic_layer_class="abs_max_gating_signed",
+    wandb_group="MT10: Paper Figures",
+    evaluation_frequency=5,
 )
 
+dendrites_relu = deepcopy(seg10)
+dendrites_relu.update(
+    input_data="obs",
+    context_data="context",
+    policy_lr=3.0e-4,
+    qf_lr=3.0e-4,
+    hidden_sizes=(1950, 1950),
+    layers_modulated=(1,),
+    kw_percent_on=0.0,
+    weight_sparsity=0.10,
+    fp16=True,
+    preprocess_output_dim=10,
+    dendritic_layer_class="abs_max_gating_signed",
+)
 
 CONFIGS = dict(
     baseline_5d=baseline_5d,
@@ -256,4 +272,5 @@ CONFIGS = dict(
     no_overlap_10d_abs_max_unsigned=no_overlap_10d_abs_max_unsigned,
     no_overlap_15d_abs_max_unsigned=no_overlap_15d_abs_max_unsigned,
     no_overlap_10d_abs_max_signed=no_overlap_10d_abs_max_signed,
+    dendrites_relu=dendrites_relu
 )

@@ -101,7 +101,7 @@ class GaussianMLPPolicy(StochasticPolicy):
     ):
         super().__init__(env_spec, name="GaussianPolicy")
 
-        self._module = GaussianTwoHeadedMLPModule(
+        self.module = GaussianTwoHeadedMLPModule(
             input_dim=env_spec.observation_space.flat_dim,
             output_dim=env_spec.action_space.flat_dim,
             hidden_sizes=hidden_sizes,
@@ -130,7 +130,7 @@ class GaussianMLPPolicy(StochasticPolicy):
             torch.distributions.Distribution: Batch distribution of actions.
             dict[str, torch.Tensor]: Additional agent_info, as torch Tensors
         """
-        dist = self._module(observations)
+        dist = self.module(observations)
 
         return dist, dict(mean=dist.mean, log_std=(dist.variance.sqrt()).log())
 
@@ -225,7 +225,7 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
             self.context_dim = env_spec.observation_space.flat_dim
             self.context_func = get_mixed_data
 
-        self._module = GaussianTwoHeadedDendriticMLPModule(
+        self.module = GaussianTwoHeadedDendriticMLPModule(
             input_dim=self.input_dim,
             context_dim=self.context_dim,
             output_dim=env_spec.action_space.flat_dim,
@@ -265,6 +265,6 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
         obs_portion = self.input_func(observations=observations, num_tasks=self.num_tasks)
         context_portion = self.context_func(observations=observations, num_tasks=self.num_tasks)
 
-        dist = self._module(obs_portion, context_portion)
+        dist = self.module(obs_portion, context_portion)
 
         return dist, dict(mean=dist.mean, log_std=(dist.variance.sqrt()).log())

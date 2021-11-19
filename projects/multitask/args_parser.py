@@ -26,7 +26,7 @@ import numpy as np
 import os
 from dataclasses import dataclass, field
 from experiments import CONFIGS
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Callable
 from typing_extensions import Literal
 from nupic.embodied.utils.parser_utils import DataClassArgumentParser, create_id
 
@@ -42,6 +42,8 @@ class LoggingArguments:
             "help": "Whether or not to log individual results per task."
         }
     )
+    policy_data_collection_hook: Optional[Callable] = None
+    save_visualizations_local: bool = True
 
     def __post_init__(self):
         if self.log_dir is None:
@@ -85,6 +87,7 @@ class TrainingArguments:
     num_buffer_transitions: float = 1e6
     evaluation_frequency: int = 10
     task_update_frequency: int = 1
+    share_train_eval_env: bool = False
     target_update_tau: float = 5e-3
     buffer_batch_size: int = 2560
     num_grad_steps_scale: float = 0.5
@@ -209,7 +212,7 @@ def create_cmd_parser():
         "-c",
         "--cpu",
         action="store_true",
-        default="False",
+        default=False,
         help="Whether to use CPU even if GPU is available",
     )
     parser.add_argument(

@@ -21,6 +21,7 @@
 # ------------------------------------------------------------------------------
 import logging
 from collections import defaultdict
+from copy import deepcopy
 from itertools import chain
 
 import ray
@@ -30,7 +31,28 @@ from garage.experiment import deterministic
 from garage.sampler import DefaultWorker, Sampler
 
 
-class DefaultWorkerWithEval(DefaultWorker):
+class WorkerWithLogData():
+
+    def rollout_eval(self, collect_hook_data=False):
+        """Sample a single episode of the agent in the environment.
+
+        Returns:
+            EpisodeBatch: The collected episode.
+
+        """
+        self.start_episode()
+        while not self.step_episode():
+            pass
+        eps_batch = self.collect_episode()
+
+        hook_data = None
+        if collect_hook_data:
+            hook_data = self.agent.collect_hook_data()
+
+        return eps_batch, hook_data
+
+
+class WorkerWithEvalMode():
 
     def step_episode(self):
         """Take a single time-step in the current episode.
@@ -62,8 +84,7 @@ class DefaultWorkerWithEval(DefaultWorker):
         return True
 
 
-@ray.remote
-class RayWorker(DefaultWorkerWithEval):
+class CustomWorker(WorkerWithLogData, WorkerWithEvalMode, DefaultWorker):
     def __init__(
         self, seed, max_episode_length, worker_number, agent, env, device_type="cpu"
     ):
@@ -132,6 +153,9 @@ class RayWorker(DefaultWorkerWithEval):
         self._last_observations.append(self.to_numpy(self._prev_obs))  # fix it
         return True
 
+@ray.remote
+class RayWorker(CustomWorker):
+    pass
 
 
 class RaySampler(Sampler):
@@ -151,7 +175,7 @@ class RaySampler(Sampler):
 
     def __init__(
         self,
-        agents,  # it is actually a single network
+        agent,  # it is actually a single network
         envs,
         max_episode_length=None,
         seed=None,
@@ -159,7 +183,6 @@ class RaySampler(Sampler):
         gpus_per_worker=0,
         workers_per_env=1
     ):
-
 
         # Initialize Ray
         if not ray.is_initialized():
@@ -189,7 +212,7 @@ class RaySampler(Sampler):
                     seed=seed,
                     max_episode_length=max_episode_length,
                     worker_number=idx,
-                    agent=agents,
+                    agent=agent,
                     env=env,
                     device_type="cuda" if gpus_per_worker > 0 else "cpu"
                 ) for idx, env in enumerate(envs)]
@@ -204,7 +227,7 @@ class RaySampler(Sampler):
         self.total_env_steps = 0
         self.device = torch.device("cuda" if gpus_per_worker > 0 else "cpu")
 
-    def _update_workers(self, agent_update, env_update, eval_mode=False):
+    def update_workers_eval(self, agent_update, env_updates, eval_mode=False):
         """Update all of the workers
 
         Args:
@@ -217,6 +240,31 @@ class RaySampler(Sampler):
                 in, it must have length exactly `factory.n_workers`, and will
                 be spread across the workers.
         """
+        agent_update.to(self.device)
+        agent_update.eval()
+        for p in agent_update.parameters():
+            p.requires_grad_(False)
+
+        pids = [
+            worker.update.remote(deepcopy(agent_update), env_update, eval_mode)
+            for env_update, worker in zip(env_updates, self.workers)
+        ]
+        for pid in pids:
+            ray.get(pid)
+
+    def update_workers(self, agent_update, env_updates, eval_mode=False):
+        """Update all of the workers
+
+        Args:
+            agent_update (object): Value which will be passed into the
+                `agent_update_fn` before sampling episodes. If a list is passed
+                in, it must have length exactly `factory.n_workers`, and will
+                be spread across the workers.
+            env_updates (object): Value which will be passed into the
+                `env_update_fn` before sampling_episodes. If a list is passed
+                in, it must have length exactly `factory.n_workers`, and will
+                be spread across the workers.
+        """
 
         # Set to eval and turn off all gradient updates for inference only network
         agent_update = agent_update.to(self.device)
@@ -224,14 +272,18 @@ class RaySampler(Sampler):
         for p in agent_update.parameters():
             p.requires_grad_(False)
 
+        assert len(env_updates) == len(self.workers), \
+            "Number of envs should match number of workers"
+
         pids = [
-            w.update.remote(agent_update, env_update, eval_mode) for w in self.workers
+            worker.update.remote(agent_update, env_update, eval_mode)
+            for env_update, worker in zip(env_updates, self.workers)
         ]
         for pid in pids:
             ray.get(pid)
 
 
-    def obtain_samples(self, num_samples, agent_update, env_update=None):
+    def obtain_samples(self, num_samples, agent_update, env_updates=None):
         """Sample the policy for new episodes.
 
         Args:
@@ -240,7 +292,7 @@ class RaySampler(Sampler):
                 `agent_update_fn` before sampling episodes. If a list is passed
                 in, it must have length exactly `factory.n_workers`, and will
                 be spread across the workers.
-            env_update (object): Value which will be passed into the
+            env_updates (object): Value which will be passed into the
                 `env_update_fn` before sampling episodes. If a list is passed
                 in, it must have length exactly `factory.n_workers`, and will
                 be spread across the workers.
@@ -250,7 +302,7 @@ class RaySampler(Sampler):
 
         """
 
-        self._update_workers(agent_update, env_update)
+        self.update_workers(agent_update, env_updates)
         completed_samples = 0
         batches = []
 
@@ -272,7 +324,8 @@ class RaySampler(Sampler):
         self,
         n_eps_per_worker,
         agent_update,
-        env_update=None
+        collect_hook_data=False,
+        env_updates=None
     ):
         """Sample an exact number of episodes per worker.
 
@@ -295,29 +348,52 @@ class RaySampler(Sampler):
 
         """
 
-        self._update_workers(agent_update, env_update, eval_mode=True)
-        episodes = defaultdict(list)
+        self.update_workers_eval(agent_update, env_updates, eval_mode=True)
 
         # adjust n_eps_per_worker to account for the number of workers available per env
         assert n_eps_per_worker % self.workers_per_env == 0, \
             "Number of eps per worker should be a multiple of workers per env"
         n_eps_per_worker = int(n_eps_per_worker / self.workers_per_env)
 
-        # TODO: do it all async, including loop through episodes
-        for _ in range(n_eps_per_worker):
-            pids = [w.rollout.remote() for w in self.workers]
-            results = [ray.get(pid) for pid in pids]
-            for worker_id, episode_batch in enumerate(results):
+        # only include logdata if hook has been attached.
+        if(hasattr(agent_update, "collect_hook_data")):
+            collect_hook_data = True
+
+        episodes = defaultdict(list)
+        data_to_export = defaultdict(dict)
+
+        def update_eval_results(results):
+            for worker_id, (episode_batch, hook_data) in enumerate(results):
                 episodes[worker_id].append(episode_batch)
+                if hook_data is not None:
+                    # Loop through hooks, allow multiple hooks
+                    for hook, data in hook_data.items():
+                        # For each hook save data for each task separately
+                        # allowing for several episodes to be saved at once
+                        if worker_id not in data_to_export[hook]:
+                            data_to_export[hook][worker_id] = data
+                        else:
+                            data_to_export[hook][worker_id] = torch.cat(
+                                [data_to_export[hook][worker_id], data], dim=0
+                            )
+
+        # TODO: do it all async, including loop through episodes if more than one
+        for _ in range(n_eps_per_worker):
+            pids = [
+                worker.rollout_eval.remote(collect_hook_data=collect_hook_data)
+                for worker in self.workers
+            ]
+            episode_results = [ray.get(pid) for pid in pids]
+            update_eval_results(episode_results)
 
         # Note: do they need to be ordered?
         ordered_episodes = list(chain(
             *[episodes[i] for i in range(len(self.workers))]
         ))
 
-        samples = EpisodeBatch.concatenate(*ordered_episodes)
+        samples = EpisodeBatch.concatenate(*ordered_episodes)  # concat
         self.total_env_steps += sum(samples.lengths)
-        return samples
+        return samples, data_to_export
 
     def shutdown_worker(self):
         """Shuts down all workers and Ray"""
@@ -329,3 +405,178 @@ class RaySampler(Sampler):
         for worker in self.workers:
             ray.kill(worker)
         ray.shutdown()
+
+
+class RaySamplerSyncEval(RaySampler):
+    """
+    Copy of RaySampler, but with synchronous evaluation.
+    Used for debugging purposes only.
+    """
+
+    def __init__(
+        self,
+        agent,
+        envs,
+        max_episode_length=None,
+        seed=None,
+        cpus_per_worker=1,
+        gpus_per_worker=0,
+        workers_per_env=1
+    ):
+        super().__init__(
+            agent,
+            envs,
+            max_episode_length,
+            seed,
+            cpus_per_worker,
+            gpus_per_worker,
+            workers_per_env
+        )
+        # non Ray workers for evaluation
+        self.eval_workers = []
+        for _ in range(self.workers_per_env):
+            self.eval_workers.extend(
+                [CustomWorker(
+                    seed=seed,
+                    max_episode_length=max_episode_length,
+                    worker_number=idx,
+                    agent=agent,
+                    env=env,
+                    device_type="cuda" if gpus_per_worker > 0 else "cpu"
+                ) for idx, env in enumerate(envs)]
+            )
+
+    def update_workers_eval(self, agent_update, env_updates, eval_mode=False):
+        """Update all of the workers
+
+        Args:
+            agent_update (object): Value which will be passed into the
+                `agent_update_fn` before sampling episodes. If a list is passed
+                in, it must have length exactly `factory.n_workers`, and will
+                be spread across the workers.
+            env_update (object): Value which will be passed into the
+                `env_update_fn` before sampling_episodes. If a list is passed
+                in, it must have length exactly `factory.n_workers`, and will
+                be spread across the workers.
+        """
+        if env_updates is None:
+            env_updates = [None] * len(self.eval_workers)
+
+        agent_update.to(self.device)
+        agent_update.eval()
+        for p in agent_update.parameters():
+            p.requires_grad_(False)
+
+        # sync version
+        for env_update, worker in zip(env_updates, self.eval_workers):
+            worker.update(deepcopy(agent_update), env_update, eval_mode)
+
+    def obtain_exact_episodes(
+        self,
+        n_eps_per_worker,
+        agent_update,
+        collect_hook_data=False,
+        env_updates=None
+    ):
+        """Sample an exact number of episodes per worker.
+
+        Args:
+            n_eps_per_worker (int): Exact number of episodes to gather for
+                each worker.
+            agent_update (object): Value which will be passed into the
+                `agent_update_fn` before sampling episodes. If a list is passed
+                in, it must have length exactly `factory.n_workers`, and will
+                be spread across the workers.
+            env_update (object): Value which will be passed into the
+                `env_update_fn` before sampling episodes. If a list is passed
+                in, it must have length exactly `factory.n_workers`, and will
+                be spread across the workers.
+
+        Returns:
+            EpisodeBatch: Batch of gathered episodes. Always in worker
+                order. In other words, first all episodes from worker 0, then
+                all episodes from worker 1, etc.
+
+        """
+
+        self.update_workers_eval(agent_update, env_updates, eval_mode=True)
+
+        # adjust n_eps_per_worker to account for the number of workers available per env
+        assert n_eps_per_worker % self.workers_per_env == 0, \
+            "Number of eps per worker should be a multiple of workers per env"
+        n_eps_per_worker = int(n_eps_per_worker / self.workers_per_env)
+
+        # only include hook data if hook has been attached.
+        if(hasattr(agent_update, "collect_hook_data")):
+            collect_hook_data = True
+
+        episodes = defaultdict(list)
+        data_to_export = defaultdict(dict)
+
+        def update_eval_results(results):
+            for worker_id, (episode_batch, hook_data) in enumerate(results):
+                episodes[worker_id].append(episode_batch)
+                if hook_data is not None:
+                    # Loop through hooks, allow multiple hooks
+                    for hook, data in hook_data.items():
+                        # For each hook save data for each task separately
+                        # allowing for several episodes to be saved at once
+                        if worker_id not in data_to_export[hook]:
+                            data_to_export[hook][worker_id] = data
+                        else:
+                            data_to_export[hook][worker_id] = torch.cat(
+                                [data_to_export[hook][worker_id], data], dim=0
+                            )
+
+        for _ in range(n_eps_per_worker):
+            episode_results = [
+                worker.rollout_eval(collect_hook_data=collect_hook_data)
+                for worker in self.eval_workers
+            ]
+            update_eval_results(episode_results)
+
+        # Note: do they need to be ordered?
+        ordered_episodes = list(chain(
+            *[episodes[i] for i in range(len(self.eval_workers))]
+        ))
+
+        samples = EpisodeBatch.concatenate(*ordered_episodes)  # concat
+        self.total_env_steps += sum(samples.lengths)
+        return samples, data_to_export
+
+
+class SamplerEvalOnly(RaySamplerSyncEval):
+    """
+    Sampler version that only does eval on cpu
+    Overrides init to remove initialization of Ray and trainer workers.
+    Uses SyncEval methods from parent class
+    """
+
+    def __init__(
+        self,
+        agent,
+        envs,
+        max_episode_length=None,
+        seed=None,
+        cpus_per_worker=1,
+        gpus_per_worker=0,
+        workers_per_env=1
+    ):
+
+        self.workers_per_env = workers_per_env
+        self.total_env_steps = 0
+        self.device = torch.device("cuda" if gpus_per_worker > 0 else "cpu")
+
+        # non Ray workers for evaluation
+        self.eval_workers = []
+        for _ in range(self.workers_per_env):
+            self.eval_workers.extend(
+                [CustomWorker(
+                    seed=seed,
+                    max_episode_length=max_episode_length,
+                    worker_number=idx,
+                    agent=agent,
+                    env=env,
+                    device_type="cuda" if gpus_per_worker > 0 else "cpu"
+                ) for idx, env in enumerate(envs)]
+            )

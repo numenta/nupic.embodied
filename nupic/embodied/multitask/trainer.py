@@ -22,6 +22,7 @@
 import json
 import logging
 import os
+import cloudpickle
 from threading import Thread
 
 import metaworld
@@ -66,8 +67,14 @@ class Trainer():
         )
         print(f"Checkpoint dir: {self.checkpoint_dir}")
         self.state_path = os.path.join(self.checkpoint_dir, "experiment_state.p")
+        self.env_state_path = os.path.join(self.checkpoint_dir, "env_state.p")
         self.config_path = os.path.join(self.checkpoint_dir, "config.json")
         self.experiment_name = experiment_name
+
+        # Only define viz_save_path if required to save visualizations local
+        self.viz_save_path = None
+        if trainer_args.save_visualizations_local:
+            self.viz_save_path = os.path.join(self.checkpoint_dir, "viz")
 
         # Check if loading from existing experiment
         self.loading_from_existing = os.path.exists(self.checkpoint_dir)
@@ -116,7 +123,7 @@ class Trainer():
         self.num_epochs = trainer_args.timesteps // self.env_steps_per_epoch
 
         sampler = RaySampler(
-            agents=policy,
+            agent=policy,
             envs=mt_train_envs,
             max_episode_length=max_episode_length,
             cpus_per_worker=trainer_args.cpus_per_worker,
@@ -147,7 +154,8 @@ class Trainer():
             reward_scale=trainer_args.reward_scale,
             num_evaluation_episodes=trainer_args.eval_episodes,
             fp16=trainer_args.fp16 if use_gpu else False,
-            log_per_task=trainer_args.log_per_task
+            log_per_task=trainer_args.log_per_task,
+            share_train_eval_env=trainer_args.share_train_eval_env
         )
 
         # Override with loaded networks if existing experiment
@@ -160,7 +168,19 @@ class Trainer():
 
     def save_experiment_state(self):
         print("***Saving experiment state")
-        thread = Thread(target=lambda: torch.save(self.state_dict(), self.state_path))
+
+        def save_fn(state_dict, state_path, env_state, env_state_path):
+            torch.save(state_dict, self.state_path)
+            with open(env_state_path, "wb") as f:
+                cloudpickle.dump(env_state, f)
+
+        # save state dict
+        thread = Thread(target=lambda: save_fn(
+            self.state_dict(),
+            self.state_path,
+            self._algo.eval_env_updates,
+            self.env_state_path
+        ))
         thread.start()
         thread.join()
 
@@ -168,6 +188,11 @@ class Trainer():
         print(f"***Loading experiment state from {self.state_path}")
         experiment_state = torch.load(self.state_path)
         self._algo.load_state(experiment_state["algorithm"])
+
+        with open(self.env_state_path, "rb") as f:
+            env_state = cloudpickle.load(f)
+        self._algo.load_env_state(env_state)
+
         self.current_epoch = experiment_state["current_epoch"]
 
         if self.current_epoch == self.num_epochs:
@@ -184,27 +209,38 @@ class Trainer():
         if self.loading_from_existing:
             with open(self.config_path, "r") as file:
                 args_loaded = json.load(file)
-                self.verify_inconsistencies(trainer_args, args_loaded)
-                self.trainer_args = dict_to_dataclass(args_loaded)
+                updated_args = self.merge_loaded(trainer_args, args_loaded)
+                self.trainer_args = dict_to_dataclass(updated_args)
         else:
             self.trainer_args = trainer_args
             with open(self.config_path, "w") as file:
-                json.dump(self.trainer_args.__dict__, file)
+                export_dict = {
+                    k: v for k, v in self.trainer_args.__dict__.items()
+                    if not callable(v)
+                }
+                json.dump(export_dict, file)
 
-    def verify_inconsistencies(self, original, loaded):
-        """Loop that verifies inconsistency between defined config and checkpoint"""
-        inconsistencies_found = False
-        for k, v1 in original.__dict__.items():
-            if k in loaded:
-                v2 = loaded[k]
-                if v1 != v2:
-                    logging.warn(f"For key {k}, value defined in config {v1}"
-                                 f" doesn't equal value saved in checkpoint {v2}")
-                    inconsistencies_found = True
-
-        if inconsistencies_found:
-            logging.warn("Inconsistencies found between config in checkpoint and config"
-                         " defined in experiment file. Using checkpoint config only")
+    def merge_loaded(self, original, loaded):
+        """
+        Merge config from loaded checkpoing with config defined by experiment name.
+        Required since not callables are not saved to json.
+        Report if any inconsistencies are found.
+        """
+        updated_args = {}
+        for key, original_value in original.__dict__.items():
+            # If key in loaded config, use value from loaded config
+            if key in loaded:
+                new_value = loaded[key]
+                updated_args[key] = new_value
+                if original_value != new_value:
+                    logging.warn(
+                        f"For key {key}, value defined in config {original_value}"
+                        f" doesn't equal value saved in checkpoint {new_value}"
+                    )
+            # If key not in loaded config, use original one
+            else:
+                updated_args[key] = original_value
+        return updated_args
 
     def train(
         self,
@@ -257,11 +293,23 @@ class Trainer():
                 epoch=epoch, env_steps_per_epoch=self.env_steps_per_epoch
             )
 
-            # Run evaluation, with a given frequency
+        # Run evaluation, with a given frequency
             if epoch % evaluation_frequency == 0:
-                eval_returns, eval_log_dict = self._algo._evaluate_policy(epoch)
+                # Evalutes with optional hook to collect data
+                hook_manager_class = self.trainer_args.policy_data_collection_hook
+                eval_returns, eval_log_dict, hook_data = self._algo._evaluate_policy(
+                    epoch, hook_manager_class
+                )
                 log_dict["average_return"] = np.mean(eval_returns)
                 log_dict.update(eval_log_dict)
+                # Reports data from hook
+                if hook_manager_class is not None:
+                    hook_log_dict = hook_manager_class.consolidate_and_report(
+                        hook_data,
+                        epoch=epoch,
+                        local_save_path=self.viz_save_path
+                    )
+                    log_dict.update(hook_log_dict)
 
             self.current_epoch = epoch + 1
             log_dict["epoch"] = self.current_epoch
