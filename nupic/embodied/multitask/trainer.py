@@ -246,7 +246,7 @@ class Trainer():
         self,
         use_wandb=True,
         evaluation_frequency=25,
-        checkpoint_frequency=5,
+        checkpoint_frequency=25,
     ):
         """
         Start training.
