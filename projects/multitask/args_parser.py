@@ -77,7 +77,7 @@ class ExperimentArguments:
     debug_mode: bool = False
     use_deterministic_evaluation: bool = False
     fp16: bool = False
-    checkpoint_frequency: int = 5
+    checkpoint_frequency: int = 100
 
 
 @dataclass
