@@ -115,6 +115,10 @@ class Trainer():
         qf1 = create_qf_net(env_spec=env.spec, net_params=trainer_args)
         qf2 = create_qf_net(env_spec=env.spec, net_params=trainer_args)
 
+        if trainer_args.override_weight_initialization:
+            logging.warn("Overriding dendritic layer weight initialization")
+            self.override_weight_initialization([policy, qf1, qf2])
+
         replay_buffer = PathBuffer(
             capacity_in_transitions=trainer_args.num_buffer_transitions
         )
@@ -165,6 +169,25 @@ class Trainer():
 
         # Move all networks within the model on device
         self._algo.to()
+
+    def override_weight_initialization(self, networks):
+        """Override weight initialization for dendrite layers"""
+        if type(networks) != list:
+            networks = [networks]
+
+        for network in networks:
+            for name, layer in network.named_modules():
+                if isinstance(layer, torch.nn.Sequential) and "dendrite" in name:
+                    segments = layer[0].segments
+                    linear_dim, segments_dim, context_dim = segments.weights.shape
+                    new_weights = []
+                    for _ in range(segments_dim):
+                        new_weights.append(
+                            torch.rand(linear_dim, context_dim).unsqueeze(dim=1)
+                            / np.sqrt(linear_dim + context_dim)
+                        )
+                    new_weights = torch.cat(new_weights, dim=1)
+                    segments.weights.data = new_weights
 
     def save_experiment_state(self):
         print("***Saving experiment state")

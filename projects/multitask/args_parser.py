@@ -78,7 +78,7 @@ class ExperimentArguments:
     use_deterministic_evaluation: bool = False
     fp16: bool = False
     checkpoint_frequency: int = 100
-
+    override_weight_initialization: bool = False
 
 @dataclass
 class TrainingArguments:

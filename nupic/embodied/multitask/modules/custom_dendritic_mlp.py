@@ -87,7 +87,7 @@ class CustomDendriticMLP(nn.Module):
         linear_layer = torch.nn.Linear(
             self.context_dim,
             preprocess_output_dim,
-            bias=True
+            bias=False
         )
 
         if module_type == "relu":
