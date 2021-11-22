@@ -43,7 +43,7 @@ class LoggingArguments:
         }
     )
     policy_data_collection_hook: Optional[Callable] = None
-    save_visualizations_local: bool = False
+    save_visualizations_local: bool = True
 
     def __post_init__(self):
         if self.log_dir is None:
