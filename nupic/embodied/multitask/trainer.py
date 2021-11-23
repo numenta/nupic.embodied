@@ -183,7 +183,7 @@ class Trainer():
                     new_weights = []
                     for _ in range(segments_dim):
                         new_weights.append(
-                            torch.rand(linear_dim, context_dim).unsqueeze(dim=1)
+                            (torch.rand(linear_dim, context_dim).unsqueeze(dim=1) - 0.5)
                             / np.sqrt(linear_dim + context_dim)
                         )
                     new_weights = torch.cat(new_weights, dim=1)
