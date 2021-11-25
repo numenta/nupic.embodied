@@ -69,6 +69,7 @@ class LoggingArguments:
 class ExperimentArguments:
     seed: Optional[int] = None
     env_seed: Optional[int] = np.random.randint(10e4)
+    params_seed: Optional[int] = None
     timesteps: int = 15000000
     cpus_per_worker: float = 0.5
     gpus_per_worker: float = 0

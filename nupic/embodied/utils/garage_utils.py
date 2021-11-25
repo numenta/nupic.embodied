@@ -47,6 +47,7 @@ from nupic.research.frameworks.dendrites import (
 
 from nupic.research.frameworks.dendrites import AbsoluteMaxGatingDendriticLayer as AbsoluteMaxGatingSignedDendriticLayer
 
+import logging
 
 def create_policy_net(env_spec, net_params):
     if net_params.net_type == "MLP":
@@ -311,3 +312,11 @@ def log_performance(itr, batch, discount, prefix="Evaluation"):
         log_dict[prefix + "Misc/EpisodeMeanMinInPlaceReward"] = np.mean(episode_min_in_place_reward)
 
     return undiscounted_returns, log_dict
+
+
+def calculate_mean_param(name, network):
+    """Calculate and output mean of tensor means for a given network"""
+    means = []
+    for param in network.parameters():
+        means.append(torch.mean(param).item())
+    logging.warn(f"Mean weight for {name} is: {np.mean(means):.4f}")
