@@ -125,7 +125,7 @@ class Trainer():
         if trainer_args.params_seed is not None:
             calculate_mean_param("policy", policy)
             calculate_mean_param("qf1", qf1)
-            calculate_mean_param("qd2", qf2)
+            calculate_mean_param("qf2", qf2)
 
         if trainer_args.override_weight_initialization:
             logging.warn("Overriding dendritic layer weight initialization")
