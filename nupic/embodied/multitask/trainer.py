@@ -36,7 +36,11 @@ from garage.torch import set_gpu_mode
 
 from nupic.embodied.multitask.algorithms.custom_mtsac import CustomMTSAC
 from nupic.embodied.multitask.samplers.gpu_sampler import RaySampler
-from nupic.embodied.utils.garage_utils import create_policy_net, create_qf_net
+from nupic.embodied.utils.garage_utils import (
+    calculate_mean_param,
+    create_policy_net,
+    create_qf_net,
+)
 from nupic.embodied.utils.parser_utils import dict_to_dataclass
 
 
@@ -111,9 +115,17 @@ class Trainer():
         mt_train_envs = train_task_sampler.sample(num_tasks)
         env = mt_train_envs[0]()
 
+        if trainer_args.params_seed is not None:
+            torch.manual_seed(trainer_args.params_seed)
+
         policy = create_policy_net(env_spec=env.spec, net_params=trainer_args)
         qf1 = create_qf_net(env_spec=env.spec, net_params=trainer_args)
         qf2 = create_qf_net(env_spec=env.spec, net_params=trainer_args)
+
+        if trainer_args.params_seed is not None:
+            calculate_mean_param("policy", policy)
+            calculate_mean_param("qf1", qf1)
+            calculate_mean_param("qd2", qf2)
 
         if trainer_args.override_weight_initialization:
             logging.warn("Overriding dendritic layer weight initialization")
