@@ -96,9 +96,6 @@ class TrainingArguments:
     qf_lr: float = 3.91e-4
     reward_scale: float = 1.0
 
-
-    3.9e-4
-
     def __post_init__(self):
         self.num_buffer_transitions = int(self.num_buffer_transitions)
 
