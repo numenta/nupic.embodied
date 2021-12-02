@@ -313,10 +313,9 @@ def log_performance(itr, batch, discount, prefix="Evaluation"):
 
     return undiscounted_returns, log_dict
 
-
 def calculate_mean_param(name, network):
     """Calculate and output mean of tensor means for a given network"""
-    means = []
+    logging.warn("Logging few samples from the network")
     for param in network.parameters():
-        means.append(torch.mean(param).item())
-    logging.warn(f"Mean weight for {name} is: {np.mean(means):.4f}")
+        if len(param.size()) == 2:
+            logging.warn(param[0, 0].item())
