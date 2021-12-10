@@ -26,3 +26,7 @@ To save models, set the `CHECKPOINT_DIR=<path_to_checkpointing_directory>`. As b
 To run an experiment, first define a new experiment in a python module under the folder experiments. Please follow the example of other configs already created.
 
 To run, on projects/multitask call `python run.py -e <experiment_name>`
+
+### Results
+
+For results shown in the paper Avoiding Catastrophe: Active Dendrites Enable Multi-task Learning in Dynamic Environments, refer to the [public wandb workspace](https://wandb.ai/nupic-research/multitask_journal)
