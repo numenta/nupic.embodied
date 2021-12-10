@@ -19,4 +19,4 @@
 #  http://numenta.org/licenses/
 #
 # ------------------------------------------------------------------------------
-from .gaussian_mlp_policy import GaussianMLPPolicy, GaussianDendriticMLPPolicy
+from .gaussian_mlp_policy import GaussianMLPPolicy, GaussianDendriticMLPPolicy, ContinuousMLPQFunction
