@@ -94,9 +94,10 @@ MLP RUNS:
 
 5 configs that have been seeded with random parameter seeds
 1 config that uses a random parameter seed each time
+1 config that is a large MLP and uses a random parameter seed each time
 '''
-mlp_run_seed1 = deepcopy(mlp_mt10_base)
-mlp_run_seed1.update(
+mlp_group1 = deepcopy(mlp_mt10_base)
+mlp_group1.update(
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
     hidden_sizes=(2800, 2800),
@@ -111,8 +112,8 @@ mlp_run_seed1.update(
     params_seed=401513,
 )
 
-mlp_run_seed2 = deepcopy(mlp_mt10_base)
-mlp_run_seed2.update(
+mlp_group2 = deepcopy(mlp_mt10_base)
+mlp_group2.update(
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
     hidden_sizes=(2800, 2800),
@@ -127,8 +128,8 @@ mlp_run_seed2.update(
     params_seed=123456,
 )
 
-mlp_run_seed3 = deepcopy(mlp_mt10_base)
-mlp_run_seed3.update(
+mlp_group3 = deepcopy(mlp_mt10_base)
+mlp_group3.update(
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
     hidden_sizes=(2800, 2800),
@@ -143,8 +144,8 @@ mlp_run_seed3.update(
     params_seed=607891,
 )
 
-mlp_run_seed4 = deepcopy(mlp_mt10_base)
-mlp_run_seed4.update(
+mlp_group4 = deepcopy(mlp_mt10_base)
+mlp_group4.update(
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
     hidden_sizes=(2800, 2800),
@@ -159,8 +160,8 @@ mlp_run_seed4.update(
     params_seed=871291,
 )
 
-mlp_run_seed5 = deepcopy(mlp_mt10_base)
-mlp_run_seed5.update(
+mlp_group5 = deepcopy(mlp_mt10_base)
+mlp_group5.update(
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
     hidden_sizes=(2800, 2800),
@@ -176,11 +177,26 @@ mlp_run_seed5.update(
 )
 
 
-mlp_run_random_seed = deepcopy(mlp_mt10_base)
-mlp_run_random_seed.update(
+mlp_baseline = deepcopy(mlp_mt10_base)
+mlp_baseline.update(
     policy_lr=3.0e-4,
     qf_lr=3.0e-4,
     hidden_sizes=(2800, 2800),
+    kw_percent_on=None,
+    fp16=True,
+    weight_sparsity=1.0,
+    wandb_group="Paper Figures",
+    share_train_eval_env=True,
+    task_update_frequency=1e12,
+    log_per_task=True,
+    env_seed=59071,
+)
+
+large_mlp = deepcopy(mlp_mt10_base)
+large_mlp.update(
+    policy_lr=3.0e-4,
+    qf_lr=3.0e-4,
+    hidden_sizes=(3000, 3000),
     kw_percent_on=None,
     fp16=True,
     weight_sparsity=1.0,
@@ -197,8 +213,8 @@ DENDRITE RUNS:
 5 configs that have been seeded with random parameter seeds
 1 config that uses a random parameter seed each time
 '''
-dendrite_run_seed1 = deepcopy(seg10)
-dendrite_run_seed1.update(
+dendrite_group1 = deepcopy(seg10)
+dendrite_group1.update(
     input_data="obs",
     context_data="context",
     policy_lr=3.0e-4,
@@ -221,8 +237,8 @@ dendrite_run_seed1.update(
     params_seed=320443,
 )
 
-dendrite_run_seed2 = deepcopy(seg10)
-dendrite_run_seed2.update(
+dendrite_group2 = deepcopy(seg10)
+dendrite_group2.update(
     input_data="obs",
     context_data="context",
     policy_lr=3.0e-4,
@@ -245,8 +261,8 @@ dendrite_run_seed2.update(
     params_seed=528491,
 )
 
-dendrite_run_seed3 = deepcopy(seg10)
-dendrite_run_seed3.update(
+dendrite_group3 = deepcopy(seg10)
+dendrite_group3.update(
     input_data="obs",
     context_data="context",
     policy_lr=3.0e-4,
@@ -269,8 +285,8 @@ dendrite_run_seed3.update(
     params_seed=301402,
 )
 
-dendrite_run_seed4 = deepcopy(seg10)
-dendrite_run_seed4.update(
+dendrite_group4 = deepcopy(seg10)
+dendrite_group4.update(
     input_data="obs",
     context_data="context",
     policy_lr=3.0e-4,
@@ -293,8 +309,8 @@ dendrite_run_seed4.update(
     params_seed=123456,
 )
 
-dendrite_run_seed5 = deepcopy(seg10)
-dendrite_run_seed5.update(
+dendrite_group5 = deepcopy(seg10)
+dendrite_group5.update(
     input_data="obs",
     context_data="context",
     policy_lr=3.0e-4,
@@ -317,8 +333,8 @@ dendrite_run_seed5.update(
     params_seed=888007,
 )
 
-dendrite_run_random_seed = deepcopy(seg10)
-dendrite_run_random_seed.update(
+dendrite = deepcopy(seg10)
+dendrite.update(
     input_data="obs",
     context_data="context",
     policy_lr=3.0e-4,
@@ -341,16 +357,17 @@ dendrite_run_random_seed.update(
 )
 
 CONFIGS = dict(
-    mlp_run_seed1=mlp_run_seed1,
-    mlp_run_seed2=mlp_run_seed2,
-    mlp_run_seed3=mlp_run_seed3,
-    mlp_run_seed4=mlp_run_seed4,
-    mlp_run_seed5=mlp_run_seed5,
-    mlp_run_random_seed=mlp_run_random_seed,
-    dendrite_run_seed1=dendrite_run_seed1,
-    dendrite_run_seed2=dendrite_run_seed2,
-    dendrite_run_seed3=dendrite_run_seed3,
-    dendrite_run_seed4=dendrite_run_seed4,
-    dendrite_run_seed5=dendrite_run_seed5,
-    dendrite_run_random_seed=dendrite_run_random_seed,
+    mlp_group1=mlp_group1,
+    mlp_group2=mlp_group2,
+    mlp_group3=mlp_group3,
+    mlp_group4=mlp_group4,
+    mlp_group5=mlp_group5,
+    mlp_baseline=mlp_baseline,
+    large_mlp=large_mlp,
+    dendrite_group1=dendrite_group1,
+    dendrite_group2=dendrite_group2,
+    dendrite_group3=dendrite_group3,
+    dendrite_group4=dendrite_group4,
+    dendrite_group5=dendrite_group5,
+    dendrite=dendrite,
 )
