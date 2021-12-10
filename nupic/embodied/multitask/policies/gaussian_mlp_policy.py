@@ -99,7 +99,7 @@ class GaussianMLPPolicy(StochasticPolicy):
         hidden_b_init=nn.init.zeros_,
         output_w_init=nn.init.xavier_uniform_,
         output_b_init=nn.init.zeros_,
-        layer_normalization=True,
+        layer_normalization=False,
         learn_std=True
     ):
         super().__init__(env_spec, name="GaussianPolicy")
