@@ -313,6 +313,7 @@ class Trainer():
                 name=self.experiment_name,
                 project=self.trainer_args.project_name,
                 group=self.trainer_args.wandb_group,
+                entity=self.trainer_args.wandb_entity,
                 reinit=True,
                 config=self.trainer_args.__dict__,
                 id=self.trainer_args.project_id,

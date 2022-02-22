@@ -36,6 +36,7 @@ class LoggingArguments:
     log_dir: Optional[str] = None
     project_id: str = create_id()
     wandb_group: Optional[str] = None
+    wandb_entity: Optional[str] = None
     log_per_task: bool = field(
         default=False,
         metadata={
