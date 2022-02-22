@@ -22,8 +22,9 @@
 # Requirements specific to garage + metaworld project
 
 # Install nupic.torch and nupic.tensorflow directly from github master branch
-# nupic.torch @ git+https://github.com/numenta/nupic.torch.git
-# nupic.research @ git+https://github.com/numenta/nupic.research.git
+nupic.torch @ git+https://github.com/numenta/nupic.torch.git
+nupic.research @ git+https://github.com/numenta/nupic.research.git
+nupic.research.dendrites @ git+https://github.com/numenta/nupic.research.git&subdirectory=packages/dendrites
 
 mujoco-py<2.1,>=2.0
 metaworld @ git+https://github.com/rlworkgroup/metaworld.git@cfd837e31d65c9d2b62b7240c68a26b04a9166d9
