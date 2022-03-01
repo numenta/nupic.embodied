@@ -26,6 +26,7 @@ from .multiseg_experiments import CONFIGS as MULTISEGKW
 from .mlp_experiments import CONFIGS as MLP
 from .paper_experiments import CONFIGS as PAPER
 from .hooks import CONFIGS as HOOKS
+from .paper_experiments_extra import CONFIGS as PAPER_EXTRA
 
 """
 Import and collect all experiment configurations into one CONFIG
@@ -41,3 +42,4 @@ CONFIGS.update(MULTISEGKW)
 CONFIGS.update(MLP)
 CONFIGS.update(HOOKS)
 CONFIGS.update(PAPER)
+CONFIGS.update(PAPER_EXTRA)
