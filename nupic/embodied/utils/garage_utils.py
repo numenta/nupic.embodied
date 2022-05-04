@@ -29,12 +29,12 @@ from garage import EpisodeBatch, StepType
 from garage.np import discount_cumsum
 from garage.torch import global_device
 from garage.torch.distributions import TanhNormal
-from garage.torch.q_functions import ContinuousMLPQFunction
 from torch.distributions import Normal
 
 from nupic.embodied.multitask.policies import (
     GaussianDendriticMLPPolicy,
     GaussianMLPPolicy,
+    ContinuousMLPQFunction
 )
 from nupic.embodied.multitask.value_functions import ContinuousDendriteMLPQFunction
 

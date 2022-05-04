@@ -28,11 +28,14 @@ from torch.distributions import Normal
 from nupic.embodied.multitask.modules import (
     GaussianTwoHeadedMLPModule,
     GaussianTwoHeadedDendriticMLPModule,
+    MLPModule
 )
+
+import torch.nn.functional as F
 
 def get_input_separate(observations, num_tasks):
     return observations[:, :-num_tasks]
-    
+
 def get_context_separate(observations, num_tasks):
     return observations[:, -num_tasks:]
 
@@ -87,7 +90,7 @@ class GaussianMLPPolicy(StochasticPolicy):
         hidden_sizes,
         hidden_nonlinearity,
         output_nonlinearity,
-        min_std, 
+        min_std,
         max_std,
         normal_distribution_cls,
         init_std=1.0,
@@ -96,7 +99,7 @@ class GaussianMLPPolicy(StochasticPolicy):
         hidden_b_init=nn.init.zeros_,
         output_w_init=nn.init.xavier_uniform_,
         output_b_init=nn.init.zeros_,
-        layer_normalization=False, 
+        layer_normalization=False,
         learn_std=True
     ):
         super().__init__(env_spec, name="GaussianPolicy")
@@ -120,7 +123,7 @@ class GaussianMLPPolicy(StochasticPolicy):
             learn_std=learn_std
         )
 
-        
+
     def forward(self, observations):
         """Compute the action distributions from the observations.
         Args:
@@ -201,13 +204,13 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
         normal_distribution_cls,
         init_std=1.0,
         std_parameterization="exp",
-        layer_normalization=False, 
+        layer_normalization=False,
         learn_std=True
     ):
         super().__init__(env_spec, name="GaussianPolicy")
 
         self.num_tasks = num_tasks
-        
+
         self.input_func = None
         self.context_func = None
 
@@ -249,7 +252,7 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
             init_std=init_std,
             std_parameterization=std_parameterization,
             layer_normalization=layer_normalization,
-            learn_std=learn_std            
+            learn_std=learn_std
         )
 
 
@@ -268,3 +271,40 @@ class GaussianDendriticMLPPolicy(StochasticPolicy):
         dist = self.module(obs_portion, context_portion)
 
         return dist, dict(mean=dist.mean, log_std=(dist.variance.sqrt()).log())
+
+
+class ContinuousMLPQFunction(MLPModule):
+    """Implements a continuous MLP Q-value network.
+
+    It predicts the Q-value for all actions based on the input state. It uses
+    a PyTorch neural network module to fit the function of Q(s, a).
+    """
+
+    def __init__(self, env_spec, **kwargs):
+        """Initialize class with multiple attributes.
+
+        Args:
+            env_spec (EnvSpec): Environment specification.
+            **kwargs: Keyword arguments.
+
+        """
+        self._env_spec = env_spec
+        self._obs_dim = env_spec.observation_space.flat_dim
+        self._action_dim = env_spec.action_space.flat_dim
+
+        MLPModule.__init__(self,
+                           input_dim=self._obs_dim + self._action_dim,
+                           output_dim=1,
+                           **kwargs)
+
+    def forward(self, observations, actions):
+        """Return Q-value(s).
+
+        Args:
+            observations (np.ndarray): observations.
+            actions (np.ndarray): actions.
+
+        Returns:
+            torch.Tensor: Output value
+        """
+        return super().forward(torch.cat([observations, actions], 1))
